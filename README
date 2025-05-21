@@ -1,0 +1,10 @@
+# Burn Image Models
+
+## Overview
+
+This (as yet unreleased) package aims to provide a small part of the python `timm` package,
+for the Rust Burn ecosystem.
+
+It is a collection of image models, and their support machinery.
+
+Currently, it is a work in progress to build an initial version of SWIN-Transformer V2.

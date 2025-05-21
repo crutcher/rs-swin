@@ -1,0 +1,17 @@
+[package]
+name = "bimm"
+edition = "2024"
+version = "0.1.0"
+
+[dependencies]
+burn = { version = "^0.17.0" }
+burn-contracts = { version = "^0.3.1" }
+
+[dev-dependencies]
+anyhow = { version = "^1.0.98" }
+burn = { version = "^0.17.0", features = ["ndarray"] }
+burn-contracts = { version = "^0.3.1", features = ["testing"] }
+
+[features]
+burn_0_18_0 = []
+
