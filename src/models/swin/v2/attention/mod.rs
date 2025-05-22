@@ -27,6 +27,15 @@ pub trait WindowAttentionMeta {
 
     /// Get the number of attention heads.
     fn num_heads(&self) -> usize;
+
+    /// Get the drop rate for attention.
+    fn attn_drop(&self) -> f64;
+
+    /// Get the drop rate for projection.
+    fn proj_drop(&self) -> f64;
+
+    /// Is the QKV bias enabled?
+    fn enable_qkv_bias(&self) -> bool;
 }
 
 /// Configuration for the WindowAttention module.
@@ -39,7 +48,7 @@ pub struct WindowAttentionConfig {
     pub num_heads: usize,
 
     #[config(default = true)]
-    pub qkv_bias: bool,
+    pub enable_qkv_bias: bool,
 
     #[config(default = 0.)]
     pub attn_drop: f64,
@@ -59,6 +68,18 @@ impl WindowAttentionMeta for WindowAttentionConfig {
 
     fn num_heads(&self) -> usize {
         self.num_heads
+    }
+
+    fn attn_drop(&self) -> f64 {
+        self.attn_drop
+    }
+
+    fn proj_drop(&self) -> f64 {
+        self.proj_drop
+    }
+
+    fn enable_qkv_bias(&self) -> bool {
+        self.enable_qkv_bias
     }
 }
 
@@ -92,6 +113,18 @@ impl<B: Backend> WindowAttentionMeta for WindowAttention<B> {
 
     fn num_heads(&self) -> usize {
         self.num_heads
+    }
+
+    fn attn_drop(&self) -> f64 {
+        self.attn_drop.prob
+    }
+
+    fn proj_drop(&self) -> f64 {
+        self.proj_drop.prob
+    }
+
+    fn enable_qkv_bias(&self) -> bool {
+        self.q_linear.bias.is_some()
     }
 }
 
@@ -237,11 +270,11 @@ impl WindowAttentionConfig {
             d_input,
             num_heads,
             q_linear: LinearConfig::new(d_input, d_input)
-                .with_bias(self.qkv_bias)
+                .with_bias(self.enable_qkv_bias)
                 .init(device),
             k_linear: LinearConfig::new(d_input, d_input).init(device),
             v_linear: LinearConfig::new(d_input, d_input)
-                .with_bias(self.qkv_bias)
+                .with_bias(self.enable_qkv_bias)
                 .init(device),
             logit_scale: Param::initialized(
                 ParamId::new(),
