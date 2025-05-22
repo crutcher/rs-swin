@@ -1,6 +1,7 @@
 mod grid;
 mod mask;
 mod rpb;
+pub mod swmsa;
 
 pub use grid::*;
 pub use mask::*;

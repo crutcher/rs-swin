@@ -3,6 +3,7 @@ use burn::config::Config;
 use burn::module::Module;
 use burn::nn::{LayerNorm, LayerNormConfig, Linear, LinearConfig};
 use burn::prelude::{Backend, Tensor};
+use burn::tensor::BasicOps;
 use burn_contracts::assert_tensor;
 
 /// Metadata for PatchMerging.
@@ -161,11 +162,14 @@ impl<B: Backend> PatchMerging<B> {
 /// # Returns
 ///
 /// * A tensor of shape (B, H/2 * W/2, 4 * C).
-pub fn collate_patches<B: Backend>(
-    x: Tensor<B, 3>,
+pub fn collate_patches<B: Backend, K>(
+    x: Tensor<B, 3, K>,
     h: usize,
     w: usize,
-) -> Tensor<B, 3> {
+) -> Tensor<B, 3, K>
+where
+    K: BasicOps<B>,
+{
     let [b, h, w, c] = assert_tensor(&x)
         .unpacks_shape(["b", "h", "w", "c"], "b (h w) c", &[("h", h), ("w", w)])
         .unwrap();
@@ -199,11 +203,14 @@ pub fn collate_patches<B: Backend>(
 /// # Returns
 ///
 /// * A tensor of shape (B, (H * W), C).
-pub fn decollate_patches<B: Backend>(
-    x: Tensor<B, 3>,
+pub fn decollate_patches<B: Backend, K>(
+    x: Tensor<B, 3, K>,
     h: usize,
     w: usize,
-) -> Tensor<B, 3> {
+) -> Tensor<B, 3, K>
+where
+    K: BasicOps<B>,
+{
     let h2 = h / 2;
     let w2 = w / 2;
 

@@ -1,4 +1,5 @@
 use burn::prelude::{Backend, Tensor};
+use burn::tensor::BasicOps;
 use burn_contracts::assert_tensor;
 
 /// Window Partition
@@ -10,10 +11,13 @@ use burn_contracts::assert_tensor;
 ///
 /// ## Returns
 ///   - Output tensor of shape (B * h_windows * w_windows, window_size, window_size, C).
-pub fn window_partition<B: Backend>(
-    tensor: Tensor<B, 4>,
+pub fn window_partition<B: Backend, K>(
+    tensor: Tensor<B, 4, K>,
     window_size: usize,
-) -> Tensor<B, 4> {
+) -> Tensor<B, 4, K>
+where
+    K: BasicOps<B>,
+{
     let [b, h_wins, w_wins, c] = assert_tensor(&tensor)
         .unpacks_shape(
             ["b", "h_wins", "w_wins", "c"],
@@ -38,12 +42,15 @@ pub fn window_partition<B: Backend>(
 ///
 /// ## Returns
 /// - Output tensor of shape (B, H, W, C).
-pub fn window_reverse<B: Backend>(
-    windows: Tensor<B, 4>,
+pub fn window_reverse<B: Backend, K>(
+    windows: Tensor<B, 4, K>,
     window_size: usize,
     h: usize,
     w: usize,
-) -> Tensor<B, 4> {
+) -> Tensor<B, 4, K>
+where
+    K: BasicOps<B>,
+{
     let h_wins = h / window_size;
     let w_wins = w / window_size;
 
@@ -89,11 +96,11 @@ mod tests {
         let distribution = Distribution::Uniform(0.0, 1.0);
         let input = Tensor::<NdArray, 4>::random([b, h, w, channels], distribution, &device);
 
-        let windows = window_partition::<NdArray>(input.clone(), window_size);
+        let windows = window_partition(input.clone(), window_size);
 
         assert_tensor(&windows).has_dims([b * h_wins * w_wins, window_size, window_size, channels]);
 
-        let reverse = window_reverse::<NdArray>(windows, window_size, h, w);
+        let reverse = window_reverse(windows, window_size, h, w);
 
         assert_tensor(&reverse)
             .has_dims([b, h, w, channels])
