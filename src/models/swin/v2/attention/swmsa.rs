@@ -93,16 +93,10 @@ pub fn sw_attn_mask<B: Backend>(
     let mask_windows = mask_windows.reshape([-1, (window_size * window_size) as i32]);
     // b_nw=nW, ws * ws
 
-    // println!("{:?}", mask_windows);
-
     let mask =
         mask_windows.clone().unsqueeze_dim::<3>(1) - mask_windows.clone().unsqueeze_dim::<3>(2);
-    //  println!("{:?}", mask);
 
-    let x = mask.not_equal_elem(0);
-
-    println!("{:?}", x);
-    x
+    mask.not_equal_elem(0)
 }
 
 #[cfg(test)]
@@ -116,39 +110,177 @@ mod tests {
     fn test_attn_mask() {
         // let b_nw = 1;
         let device = Default::default();
-        let input_shape = [4, 4];
-        let window_size = 2;
-        let shift_size = 1;
 
-        let attn_mask = sw_attn_mask::<NdArray>(input_shape, window_size, shift_size, &device);
-        attn_mask.to_data().assert_eq(
-            &TensorData::from([
-                [
-                    [false, false, false, false],
-                    [false, false, false, false],
-                    [false, false, false, false],
-                    [false, false, false, false],
-                ],
-                [
-                    [false, true, false, true],
-                    [true, false, true, false],
-                    [false, true, false, true],
-                    [true, false, true, false],
-                ],
-                [
-                    [false, false, true, true],
-                    [false, false, true, true],
-                    [true, true, false, false],
-                    [true, true, false, false],
-                ],
-                [
-                    [false, true, true, true],
-                    [true, false, true, true],
-                    [true, true, false, true],
-                    [true, true, true, false],
-                ],
-            ]),
-            true,
-        );
+        sw_attn_mask::<NdArray>([4, 4], 2, 1, &device)
+            .to_data()
+            .assert_eq(
+                &TensorData::from([
+                    [
+                        [false, false, false, false],
+                        [false, false, false, false],
+                        [false, false, false, false],
+                        [false, false, false, false],
+                    ],
+                    [
+                        [false, true, false, true],
+                        [true, false, true, false],
+                        [false, true, false, true],
+                        [true, false, true, false],
+                    ],
+                    [
+                        [false, false, true, true],
+                        [false, false, true, true],
+                        [true, true, false, false],
+                        [true, true, false, false],
+                    ],
+                    [
+                        [false, true, true, true],
+                        [true, false, true, true],
+                        [true, true, false, true],
+                        [true, true, true, false],
+                    ],
+                ]),
+                true,
+            );
+
+        sw_attn_mask::<NdArray>([6, 6], 3, 1, &device)
+            .to_data()
+            .assert_eq(
+                &TensorData::from([
+                    [
+                        [
+                            false, false, false, false, false, false, false, false, false,
+                        ],
+                        [
+                            false, false, false, false, false, false, false, false, false,
+                        ],
+                        [
+                            false, false, false, false, false, false, false, false, false,
+                        ],
+                        [
+                            false, false, false, false, false, false, false, false, false,
+                        ],
+                        [
+                            false, false, false, false, false, false, false, false, false,
+                        ],
+                        [
+                            false, false, false, false, false, false, false, false, false,
+                        ],
+                        [
+                            false, false, false, false, false, false, false, false, false,
+                        ],
+                        [
+                            false, false, false, false, false, false, false, false, false,
+                        ],
+                        [
+                            false, false, false, false, false, false, false, false, false,
+                        ],
+                    ],
+                    [
+                        [false, false, true, false, false, true, false, false, true],
+                        [false, false, true, false, false, true, false, false, true],
+                        [true, true, false, true, true, false, true, true, false],
+                        [false, false, true, false, false, true, false, false, true],
+                        [false, false, true, false, false, true, false, false, true],
+                        [true, true, false, true, true, false, true, true, false],
+                        [false, false, true, false, false, true, false, false, true],
+                        [false, false, true, false, false, true, false, false, true],
+                        [true, true, false, true, true, false, true, true, false],
+                    ],
+                    [
+                        [false, false, false, false, false, false, true, true, true],
+                        [false, false, false, false, false, false, true, true, true],
+                        [false, false, false, false, false, false, true, true, true],
+                        [false, false, false, false, false, false, true, true, true],
+                        [false, false, false, false, false, false, true, true, true],
+                        [false, false, false, false, false, false, true, true, true],
+                        [true, true, true, true, true, true, false, false, false],
+                        [true, true, true, true, true, true, false, false, false],
+                        [true, true, true, true, true, true, false, false, false],
+                    ],
+                    [
+                        [false, false, true, false, false, true, true, true, true],
+                        [false, false, true, false, false, true, true, true, true],
+                        [true, true, false, true, true, false, true, true, true],
+                        [false, false, true, false, false, true, true, true, true],
+                        [false, false, true, false, false, true, true, true, true],
+                        [true, true, false, true, true, false, true, true, true],
+                        [true, true, true, true, true, true, false, false, true],
+                        [true, true, true, true, true, true, false, false, true],
+                        [true, true, true, true, true, true, true, true, false],
+                    ],
+                ]),
+                true,
+            );
+
+        sw_attn_mask::<NdArray>([6, 6], 3, 2, &device)
+            .to_data()
+            .assert_eq(
+                &TensorData::from([
+                    [
+                        [
+                            false, false, false, false, false, false, false, false, false,
+                        ],
+                        [
+                            false, false, false, false, false, false, false, false, false,
+                        ],
+                        [
+                            false, false, false, false, false, false, false, false, false,
+                        ],
+                        [
+                            false, false, false, false, false, false, false, false, false,
+                        ],
+                        [
+                            false, false, false, false, false, false, false, false, false,
+                        ],
+                        [
+                            false, false, false, false, false, false, false, false, false,
+                        ],
+                        [
+                            false, false, false, false, false, false, false, false, false,
+                        ],
+                        [
+                            false, false, false, false, false, false, false, false, false,
+                        ],
+                        [
+                            false, false, false, false, false, false, false, false, false,
+                        ],
+                    ],
+                    [
+                        [false, true, true, false, true, true, false, true, true],
+                        [true, false, false, true, false, false, true, false, false],
+                        [true, false, false, true, false, false, true, false, false],
+                        [false, true, true, false, true, true, false, true, true],
+                        [true, false, false, true, false, false, true, false, false],
+                        [true, false, false, true, false, false, true, false, false],
+                        [false, true, true, false, true, true, false, true, true],
+                        [true, false, false, true, false, false, true, false, false],
+                        [true, false, false, true, false, false, true, false, false],
+                    ],
+                    [
+                        [false, false, false, true, true, true, true, true, true],
+                        [false, false, false, true, true, true, true, true, true],
+                        [false, false, false, true, true, true, true, true, true],
+                        [true, true, true, false, false, false, false, false, false],
+                        [true, true, true, false, false, false, false, false, false],
+                        [true, true, true, false, false, false, false, false, false],
+                        [true, true, true, false, false, false, false, false, false],
+                        [true, true, true, false, false, false, false, false, false],
+                        [true, true, true, false, false, false, false, false, false],
+                    ],
+                    [
+                        [false, true, true, true, true, true, true, true, true],
+                        [true, false, false, true, true, true, true, true, true],
+                        [true, false, false, true, true, true, true, true, true],
+                        [true, true, true, false, true, true, false, true, true],
+                        [true, true, true, true, false, false, true, false, false],
+                        [true, true, true, true, false, false, true, false, false],
+                        [true, true, true, false, true, true, false, true, true],
+                        [true, true, true, true, false, false, true, false, false],
+                        [true, true, true, true, false, false, true, false, false],
+                    ],
+                ]),
+                true,
+            );
     }
 }
