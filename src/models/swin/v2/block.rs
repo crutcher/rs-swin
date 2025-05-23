@@ -284,6 +284,7 @@ impl<B: Backend> TransformerBlock<B> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use burn::backend::NdArray;
 
     #[test]
     fn test_config() {
@@ -301,5 +302,29 @@ mod tests {
         assert_eq!(config.mlp_ratio, 4.0);
         assert!(config.enable_qkv_bias);
         assert_eq!(config.drop_path_rate, 0.0);
+    }
+
+    #[test]
+    fn test_block() {
+        let b = 1;
+        let num_heads = 4;
+        let channels_per_head = 3;
+        let d_input = num_heads * channels_per_head;
+        let window_size = 4;
+
+        let h = 2 * window_size;
+        let w = 3 * window_size;
+        let input_resolution = [h, w];
+
+        let config = TransformerBlockConfig::new(d_input, input_resolution, num_heads).with_window_size(window_size);
+
+        let device = Default::default();
+
+        let block = config.init::<NdArray>(&device);
+
+        let distribution = burn::tensor::Distribution::Uniform(0.0, 1.0);
+        let input = Tensor::<NdArray, 3>::random([b, h * w, d_input], distribution, &device);
+
+        let _output = block.forward(input);
     }
 }
