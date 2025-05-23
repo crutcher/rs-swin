@@ -10,32 +10,54 @@ use burn::prelude::{Backend, Tensor};
 
 /// Common introspection interface for TransformerBlock.
 pub trait TransformerBlockMeta {
+    /// Get the input dimension size.
     fn d_input(&self) -> usize;
+    
+    /// Get the output dimension size.
+    fn d_output(&self) -> usize {
+        self.d_input()
+    }
 
+    /// Get the input resolution.
     fn input_resolution(&self) -> [usize; 2];
 
+    /// Get the input height.
     fn input_height(&self) -> usize {
         self.input_resolution()[0]
     }
 
+    /// Get the input width.
     fn input_width(&self) -> usize {
         self.input_resolution()[1]
     }
 
+    /// Get the number of attention heads.
     fn num_heads(&self) -> usize;
 
+    /// Window size for window attention.
     fn window_size(&self) -> usize;
 
+    /// Shift size for shifted window attention; 0 means no shift.
     fn shift_size(&self) -> usize;
 
+    /// Is shifted window attention enabled?
+    fn swa_enabled(&self) -> bool {
+        self.shift_size() > 0
+    }
+
+    /// Whether to enable QKV bias.
     fn enable_qkv_bias(&self) -> bool;
 
-    fn drop(&self) -> f64;
+    /// Dropout rate for MLP.
+    fn drop_rate(&self) -> f64;
 
-    fn attn_drop(&self) -> f64;
+    /// Dropout rate for attention.
+    fn attn_drop_rate(&self) -> f64;
 
+    /// Ratio of hidden dimension to input dimension in MLP.
     fn mlp_ratio(&self) -> f64;
 
+    /// Drop path rate for stochastic depth.
     fn drop_path_rate(&self) -> f64;
 }
 
@@ -61,10 +83,10 @@ pub struct TransformerBlockConfig {
     pub enable_qkv_bias: bool,
 
     #[config(default = 0.0)]
-    pub drop: f64,
+    pub drop_rate: f64,
 
     #[config(default = 0.0)]
-    pub attn_drop: f64,
+    pub attn_drop_rate: f64,
 
     #[config(default = 0.0)]
     pub drop_path_rate: f64,
@@ -96,12 +118,12 @@ impl TransformerBlockMeta for TransformerBlockConfig {
         self.enable_qkv_bias
     }
 
-    fn drop(&self) -> f64 {
-        self.drop
+    fn drop_rate(&self) -> f64 {
+        self.drop_rate
     }
 
-    fn attn_drop(&self) -> f64 {
-        self.attn_drop
+    fn attn_drop_rate(&self) -> f64 {
+        self.attn_drop_rate
     }
 
     fn mlp_ratio(&self) -> f64 {
@@ -125,7 +147,7 @@ impl TransformerBlockConfig {
             self.input_resolution
         );
 
-        let attn_mask = if self.shift_size > 0 {
+        let attn_mask = if self.swa_enabled() {
             Some(
                 sw_attn_mask(
                     self.input_resolution,
@@ -152,15 +174,15 @@ impl TransformerBlockConfig {
                 self.num_heads,
             )
             .with_enable_qkv_bias(self.enable_qkv_bias)
-            .with_attn_drop(self.attn_drop)
-            .with_proj_drop(self.drop)
+            .with_attn_drop(self.attn_drop_rate)
+            .with_proj_drop(self.drop_rate)
             .init(device),
             drop_path: DropPathConfig::new()
                 .with_drop_prob(self.drop_path_rate)
                 .init(),
             mlp: MlpConfig::new(self.d_input)
                 .with_d_hidden(Some(mlp_hidden_dim))
-                .with_drop(self.drop)
+                .with_drop(self.drop_rate)
                 .init(device),
             attn_mask,
         }
@@ -210,11 +232,11 @@ impl<B: Backend> TransformerBlockMeta for TransformerBlock<B> {
         self.attn.enable_qkv_bias()
     }
 
-    fn drop(&self) -> f64 {
+    fn drop_rate(&self) -> f64 {
         self.mlp.drop()
     }
 
-    fn attn_drop(&self) -> f64 {
+    fn attn_drop_rate(&self) -> f64 {
         self.attn.attn_drop()
     }
 
@@ -239,7 +261,7 @@ impl<B: Backend> TransformerBlock<B> {
         let shortcut = x.clone();
         let x = x.reshape([b, h, w, c]);
 
-        let x = if self.shift_size > 0 {
+        let x = if self.swa_enabled() {
             panic!("tensor.roll() is not implemented yet");
         } else {
             x
@@ -259,7 +281,7 @@ impl<B: Backend> TransformerBlock<B> {
         ]);
         let shifted_x = window_reverse(attn_windows, self.window_size, h, w);
 
-        let x = if self.shift_size > 0 {
+        let x = if self.swa_enabled() {
             panic!("tensor.roll() is not implemented yet");
         } else {
             shifted_x
@@ -325,6 +347,8 @@ mod tests {
         let distribution = burn::tensor::Distribution::Uniform(0.0, 1.0);
         let input = Tensor::<NdArray, 3>::random([b, h * w, d_input], distribution, &device);
 
-        let _output = block.forward(input);
+        let _output = block.forward(input.clone());
+        
+        assert_eq!(input.dims(), _output.dims());
     }
 }
