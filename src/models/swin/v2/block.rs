@@ -6,13 +6,14 @@ use crate::models::swin::v2::attention::{
 use crate::models::swin::v2::mlp::{Mlp, MlpConfig, MlpMeta};
 use crate::models::swin::v2::windowing::{window_partition, window_reverse};
 use burn::config::Config;
+use burn::module::Module;
 use burn::prelude::{Backend, Tensor};
 
 /// Common introspection interface for TransformerBlock.
 pub trait TransformerBlockMeta {
     /// Get the input dimension size.
     fn d_input(&self) -> usize;
-    
+
     /// Get the output dimension size.
     fn d_output(&self) -> usize {
         self.d_input()
@@ -189,6 +190,7 @@ impl TransformerBlockConfig {
     }
 }
 
+#[derive(Module, Debug)]
 pub struct TransformerBlock<B: Backend> {
     pub input_resolution: [usize; 2],
     pub window_size: usize,
@@ -338,7 +340,8 @@ mod tests {
         let w = 3 * window_size;
         let input_resolution = [h, w];
 
-        let config = TransformerBlockConfig::new(d_input, input_resolution, num_heads).with_window_size(window_size);
+        let config = TransformerBlockConfig::new(d_input, input_resolution, num_heads)
+            .with_window_size(window_size);
 
         let device = Default::default();
 
@@ -348,7 +351,7 @@ mod tests {
         let input = Tensor::<NdArray, 3>::random([b, h * w, d_input], distribution, &device);
 
         let _output = block.forward(input.clone());
-        
+
         assert_eq!(input.dims(), _output.dims());
     }
 }
