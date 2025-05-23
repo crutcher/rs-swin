@@ -6,5 +6,11 @@
 /// The grid module.
 pub mod grid;
 
+/// Dimension / Indexing utilities.
+pub mod dims;
+
 /// The linear algebra module.
 pub mod linalg;
+
+/// Tensor ops.
+pub mod ops;
