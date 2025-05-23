@@ -1,4 +1,5 @@
-use crate::compat::dims::canonicalize_permutation;
+use std::iter::zip;
+use crate::compat::dims::{canonicalize_dim, canonicalize_dims};
 use burn::prelude::{Backend, Tensor};
 use burn::tensor::{BasicOps, Slice};
 
@@ -73,7 +74,9 @@ where
         D
     );
 
-    let dims = canonicalize_permutation(D, dims);
+    let dims = canonicalize_dims(D, dims, false);
+    
+    // TODO: strip shift-by-effective-zero work.
 
     // Avoid modulo by zero
     if a.shape().num_elements() == 0 {
@@ -123,7 +126,7 @@ where
 
     let mut r = Vec::with_capacity(D);
     for i in 0..D {
-        r.push(Slice::from(start..));
+        r.push(Slice::from(..));
     }
 
     let mut r_first = r.clone();
@@ -151,11 +154,14 @@ mod tests {
     fn test_roll() {
         let device = Default::default();
         let input: Tensor<NdArray, 2, Int> = Tensor::arange(0..6, &device).reshape::<2, _>([2, 3]);
-
-        let actual = roll(input.clone(), &[1], &[0]);
-
-        actual
+        
+        // No-op shift:
+        roll(input.clone(), &[0, 0], &[0, 1])
             .to_data()
-            .assert_eq(&TensorData::from([[0, 1, 2], [3, 4, 5]]), true);
+            .assert_eq(&input.clone().to_data(), false);
+
+        roll(input.clone(), &[1, -1], &[0, 1])
+            .to_data()
+            .assert_eq(&TensorData::from([[4, 5, 3], [1, 2,0]]), false);
     }
 }
