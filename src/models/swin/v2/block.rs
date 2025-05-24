@@ -4,7 +4,7 @@ use crate::models::swin::v2::attention::swmsa::sw_attn_mask;
 use crate::models::swin::v2::attention::{
     WindowAttention, WindowAttentionConfig, WindowAttentionMeta,
 };
-use crate::models::swin::v2::mlp::{Mlp, MlpConfig, MlpMeta};
+use crate::models::swin::v2::mlp::{BlockMlp, MlpConfig, MlpMeta};
 use crate::models::swin::v2::windowing::{window_partition, window_reverse};
 use burn::config::Config;
 use burn::module::Module;
@@ -140,6 +140,7 @@ impl TransformerBlockMeta for TransformerBlockConfig {
 }
 
 impl TransformerBlockConfig {
+    #[must_use]
     pub fn init<B: Backend>(
         &self,
         device: &B::Device,
@@ -151,29 +152,31 @@ impl TransformerBlockConfig {
             self.input_resolution
         );
 
-        let attn_mask = if self.swa_enabled() {
-            Some(
-                sw_attn_mask(
-                    self.input_resolution,
-                    self.window_size,
-                    self.shift_size,
-                    device,
-                )
-                .float()
-                .mul_scalar(-100.0),
-            )
-        } else {
-            None
-        };
-
         let mlp_hidden_dim = (self.d_input as f64 * self.mlp_ratio) as usize;
 
         TransformerBlock {
             input_resolution: self.input_resolution,
-            norm1: LayerNormConfig::new(self.d_input).init(device),
-            norm2: LayerNormConfig::new(self.d_input).init(device),
             window_size: self.window_size,
             shift_size: self.shift_size,
+            shift_mask: if self.shift_size == 0 {
+                None
+            } else {
+                Some(
+                    sw_attn_mask(
+                        self.input_resolution,
+                        self.window_size,
+                        self.shift_size,
+                        device,
+                    )
+                    .float()
+                    .mul_scalar(-100.0),
+                )
+            },
+            drop_path: DropPathConfig::new()
+                .with_drop_prob(self.drop_path_rate)
+                .init(),
+            norm1: LayerNormConfig::new(self.d_input).init(device),
+            norm2: LayerNormConfig::new(self.d_input).init(device),
             attn: WindowAttentionConfig::new(
                 self.d_input,
                 [self.window_size, self.window_size],
@@ -183,14 +186,10 @@ impl TransformerBlockConfig {
             .with_attn_drop(self.attn_drop_rate)
             .with_proj_drop(self.drop_rate)
             .init(device),
-            drop_path: DropPathConfig::new()
-                .with_drop_prob(self.drop_path_rate)
-                .init(),
             mlp: MlpConfig::new(self.d_input)
                 .with_d_hidden(Some(mlp_hidden_dim))
                 .with_drop(self.drop_rate)
                 .init(device),
-            attn_mask,
         }
     }
 }
@@ -199,19 +198,16 @@ impl TransformerBlockConfig {
 pub struct TransformerBlock<B: Backend> {
     pub input_resolution: [usize; 2],
     pub window_size: usize,
+
     pub shift_size: usize,
+    pub shift_mask: Option<Tensor<B, 3>>,
+
+    pub drop_path: DropPath,
 
     pub norm1: LayerNorm<B>,
     pub norm2: LayerNorm<B>,
     pub attn: WindowAttention<B>,
-    pub drop_path: DropPath,
-    pub mlp: Mlp<B>,
-
-    // nw, ws, ws, 1
-    // nw, ws * ws
-    // nw, 1, ws * ws
-    // nw, 1, 1, ws * ws
-    pub attn_mask: Option<Tensor<B, 3>>,
+    pub mlp: BlockMlp<B>,
 }
 
 impl<B: Backend> TransformerBlockMeta for TransformerBlock<B> {
@@ -268,6 +264,7 @@ impl<B: Backend> TransformerBlock<B> {
     /// # Returns
     ///
     /// A new tensor of shape (B, H * W, D) with the transformer block applied.
+    #[must_use]
     pub fn forward(
         &self,
         x: Tensor<B, 3>,
@@ -298,6 +295,7 @@ impl<B: Backend> TransformerBlock<B> {
     }
 
     /// Applies an inner function under conditional stochastic residual/depth-skip connection.
+    #[must_use]
     #[inline(always)]
     fn with_skip<const D: usize, F>(
         &self,
@@ -323,6 +321,7 @@ impl<B: Backend> TransformerBlock<B> {
     /// ## Returns
     ///
     /// A new tensor of shape (B, H, W, C) with window attention applied.
+    #[must_use]
     #[inline(always)]
     fn apply_window(
         &self,
@@ -339,7 +338,7 @@ impl<B: Backend> TransformerBlock<B> {
         let x_windows = x_windows.reshape([-1, ws * ws, c]);
         // b*nW, ws*ws, c
 
-        let attn_windows = self.attn.forward(x_windows, self.attn_mask.clone());
+        let attn_windows = self.attn.forward(x_windows, self.shift_mask.clone());
         // b*nW, ws*ws, c
 
         // Merge windows back to the original shape.
@@ -364,6 +363,7 @@ impl<B: Backend> TransformerBlock<B> {
 /// ## Returns
 ///
 /// A new tensor of the same shape as `x`, with the function `f` applied after cyclic shifting.
+#[must_use]
 #[inline(always)]
 fn with_shift<B: Backend, F, K>(
     x: Tensor<B, 4, K>,
@@ -409,9 +409,10 @@ mod tests {
         let distribution = burn::tensor::Distribution::Uniform(0.0, 1.0);
         let input = Tensor::<NdArray, 4>::random([b, h, w, c], distribution, &device);
 
-        let idx :Tensor<NdArray, 4> = Tensor::arange(0..input.shape().num_elements() as i64, &device)
-            .reshape([b, h, w, c])
-            .float();
+        let idx: Tensor<NdArray, 4> =
+            Tensor::arange(0..input.shape().num_elements() as i64, &device)
+                .reshape([b, h, w, c])
+                .float();
 
         // No-op shift:
         with_shift(input.clone(), 0, |x| x + idx.clone())
@@ -426,7 +427,8 @@ mod tests {
                     let x = roll(x, &[-1, -1], &[1, 2]);
                     let x = x + idx.clone();
                     roll(x, &[1, 1], &[1, 2])
-                }).to_data(),
+                })
+                .to_data(),
                 true,
             );
     }

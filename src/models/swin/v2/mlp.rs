@@ -50,12 +50,12 @@ impl MlpConfig {
     pub fn init<B: Backend>(
         &self,
         device: &B::Device,
-    ) -> Mlp<B> {
+    ) -> BlockMlp<B> {
         let d_input = self.d_input();
         let d_hidden = self.d_hidden();
         let d_output = self.d_output();
 
-        Mlp {
+        BlockMlp {
             fc1: LinearConfig::new(d_input, d_hidden).init(device),
             fc2: LinearConfig::new(d_hidden, d_output).init(device),
             act: Gelu::new(),
@@ -66,14 +66,14 @@ impl MlpConfig {
 
 /// Swin MLP Module
 #[derive(Module, Debug)]
-pub struct Mlp<B: Backend> {
+pub struct BlockMlp<B: Backend> {
     fc1: Linear<B>,
     fc2: Linear<B>,
     act: Gelu,
     drop: Dropout,
 }
 
-impl<B: Backend> MlpMeta for Mlp<B> {
+impl<B: Backend> MlpMeta for BlockMlp<B> {
     fn d_input(&self) -> usize {
         self.fc1.weight.dims()[0]
     }
@@ -91,7 +91,7 @@ impl<B: Backend> MlpMeta for Mlp<B> {
     }
 }
 
-impl<B: Backend> Mlp<B> {
+impl<B: Backend> BlockMlp<B> {
     pub fn forward<const D: usize>(
         &self,
         x: Tensor<B, D>,
@@ -178,7 +178,7 @@ mod tests {
             .with_d_output(Some(d_output))
             .with_drop(drop);
 
-        let mlp: Mlp<B> = config.init(&device);
+        let mlp: BlockMlp<B> = config.init(&device);
 
         assert_eq!(mlp.d_input(), config.d_input());
         assert_eq!(mlp.d_hidden(), config.d_hidden());
