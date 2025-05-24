@@ -10,6 +10,7 @@ use burn::config::Config;
 use burn::module::Module;
 use burn::nn::{LayerNorm, LayerNormConfig};
 use burn::prelude::{Backend, Tensor};
+use burn::tensor::BasicOps;
 
 /// Common introspection interface for TransformerBlock.
 pub trait TransformerBlockMeta {
@@ -364,13 +365,14 @@ impl<B: Backend> TransformerBlock<B> {
 ///
 /// A new tensor of the same shape as `x`, with the function `f` applied after cyclic shifting.
 #[inline(always)]
-fn with_shift<B: Backend, F>(
-    x: Tensor<B, 4>,
+fn with_shift<B: Backend, F, K>(
+    x: Tensor<B, 4, K>,
     shift: isize,
     f: F,
-) -> Tensor<B, 4>
+) -> Tensor<B, 4, K>
 where
-    F: FnOnce(Tensor<B, 4>) -> Tensor<B, 4>,
+    K: BasicOps<B>,
+    F: FnOnce(Tensor<B, 4, K>) -> Tensor<B, 4, K>,
 {
     let dims = [1, 2];
 
@@ -395,6 +397,39 @@ where
 mod tests {
     use super::*;
     use burn::backend::NdArray;
+
+    #[test]
+    fn test_with_shift() {
+        let device = Default::default();
+        let b = 1;
+        let h = 4;
+        let w = 4;
+        let c = 3;
+
+        let distribution = burn::tensor::Distribution::Uniform(0.0, 1.0);
+        let input = Tensor::<NdArray, 4>::random([b, h, w, c], distribution, &device);
+
+        let idx :Tensor<NdArray, 4> = Tensor::arange(0..input.shape().num_elements() as i64, &device)
+            .reshape([b, h, w, c])
+            .float();
+
+        // No-op shift:
+        with_shift(input.clone(), 0, |x| x + idx.clone())
+            .to_data()
+            .assert_eq(&(input.clone() + idx.clone()).to_data(), true);
+
+        with_shift(input.clone(), 1, |x| x + idx.clone())
+            .to_data()
+            .assert_eq(
+                &({
+                    let x = input.clone();
+                    let x = roll(x, &[-1, -1], &[1, 2]);
+                    let x = x + idx.clone();
+                    roll(x, &[1, 1], &[1, 2])
+                }).to_data(),
+                true,
+            );
+    }
 
     #[test]
     fn test_config() {
