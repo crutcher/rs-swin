@@ -15,8 +15,8 @@
 /// * If `wrap_scalar` is false and the tensor has no dimensions.
 /// * If the dimension index is out of range.
 pub fn canonicalize_dim(
-    rank: usize,
     idx: isize,
+    rank: usize,
     wrap_scalar: bool,
 ) -> usize {
     let rank = if rank > 0 {
@@ -46,6 +46,31 @@ pub fn canonicalize_dim(
     _idx as usize
 }
 
+/// Wraps a dimension index to be within the bounds of the dimension size.
+///
+/// ## Arguments
+///
+/// * `idx` - The dimension index to wrap.
+/// * `size` - The size of the dimension.
+///
+/// ## Returns
+///
+/// The positive wrapped dimension index.
+pub fn wrap_idx(
+    idx: isize,
+    size: usize,
+) -> usize {
+    if size == 0 {
+        return 0; // Avoid modulo by zero
+    }
+    let wrapped = idx.rem_euclid(size as isize);
+    if wrapped < 0 {
+        (wrapped + size as isize) as usize
+    } else {
+        wrapped as usize
+    }
+}
+
 /// Canonicalizes and bounds checks a list of dimension indices.
 ///
 /// ## Arguments
@@ -58,12 +83,12 @@ pub fn canonicalize_dim(
 ///
 /// A vector of canonicalized dimension indices.
 pub fn canonicalize_dims(
-    rank: usize,
     dims: &[isize],
+    rank: usize,
     wrap_scalar: bool,
 ) -> Vec<usize> {
     dims.iter()
-        .map(|&idx| canonicalize_dim(rank, idx, wrap_scalar))
+        .map(|&idx| canonicalize_dim(idx, rank, wrap_scalar))
         .collect()
 }
 
@@ -78,8 +103,8 @@ pub fn canonicalize_dims(
 ///
 /// True if the permutation is valid, false otherwise.
 pub fn is_valid_permutation(
-    rank: usize,
     perm: &[usize],
+    rank: usize,
 ) -> bool {
     if perm.len() != rank {
         return false;
@@ -110,11 +135,11 @@ pub fn is_valid_permutation(
 ///
 /// * If the permutation is invalid.
 pub fn canonicalize_permutation(
-    rank: usize,
     perm: &[isize],
+    rank: usize,
 ) -> Vec<usize> {
-    let _perm = canonicalize_dims(rank, perm, false);
-    if !is_valid_permutation(rank, &_perm) {
+    let _perm = canonicalize_dims(perm, rank, false);
+    if !is_valid_permutation(&_perm, rank) {
         panic!(
             "Invalid permutation: expected a permutation of length {}, but got {:?}",
             rank, perm
@@ -128,19 +153,30 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_wrap_idx() {
+        for idx in 0..3 {
+            assert_eq!(wrap_idx(idx, 3), idx as usize);
+            assert_eq!(wrap_idx(idx + 3, 3), idx as usize);
+            assert_eq!(wrap_idx(idx + 2 * 3, 3), idx as usize);
+            assert_eq!(wrap_idx(idx - 3, 3), idx as usize);
+            assert_eq!(wrap_idx(idx - 2 * 3, 3), idx as usize);
+        }
+    }
+
+    #[test]
     fn test_canonicalize_dim() {
         for idx in 0..3 {
             let wrap_scalar = false;
-            assert_eq!(canonicalize_dim(3, idx, wrap_scalar), idx as usize);
+            assert_eq!(canonicalize_dim(idx, 3, wrap_scalar), idx as usize);
             assert_eq!(
-                canonicalize_dim(3, -(idx + 1), wrap_scalar),
+                canonicalize_dim(-(idx + 1), 3, wrap_scalar),
                 (3 - (idx + 1)) as usize
             );
         }
 
         let wrap_scalar = true;
         assert_eq!(canonicalize_dim(0, 0, wrap_scalar), 0);
-        assert_eq!(canonicalize_dim(0, -1, wrap_scalar), 0);
+        assert_eq!(canonicalize_dim(-1, 0, wrap_scalar), 0);
     }
 
     #[test]
@@ -157,15 +193,15 @@ mod tests {
     #[test]
     #[should_panic = "Dimension out of range (expected to be in range of [-3, 2], but got -4)"]
     fn test_canonicalize_error_too_small() {
-        canonicalize_dim(3, -4, false);
+        canonicalize_dim(-4, 3, false);
     }
 
     #[test]
     fn test_canonicalize_dims() {
         let dims = vec![0, 1, 2];
         let wrap_scalar = false;
-        assert_eq!(canonicalize_dims(3, &dims, wrap_scalar), vec![0, 1, 2]);
-        assert_eq!(canonicalize_dims(3, &[-1, -2], wrap_scalar), vec![2, 1]);
+        assert_eq!(canonicalize_dims(&dims, 3, wrap_scalar), vec![0, 1, 2]);
+        assert_eq!(canonicalize_dims(&[-1, -2], 3, wrap_scalar), vec![2, 1]);
     }
 
     #[test]
@@ -174,8 +210,8 @@ mod tests {
         let valid_perm = vec![2, 0, 1];
         let invalid_perm = vec![2, 0, 3];
 
-        assert!(is_valid_permutation(rank, &valid_perm));
-        assert!(!is_valid_permutation(rank, &invalid_perm));
+        assert!(is_valid_permutation(&valid_perm, rank));
+        assert!(!is_valid_permutation(&invalid_perm, rank));
     }
 
     #[test]
@@ -183,7 +219,7 @@ mod tests {
     fn test_canonicalize_permutation_error_too_short() {
         let rank = 3;
         let perm = vec![0, 1];
-        canonicalize_permutation(rank, &perm);
+        canonicalize_permutation(&perm, rank);
     }
 
     #[test]
@@ -191,7 +227,7 @@ mod tests {
     fn test_canonicalize_permutation_error_too_long() {
         let rank = 3;
         let perm = vec![0, 1, 2, 3];
-        canonicalize_permutation(rank, &perm);
+        canonicalize_permutation(&perm, rank);
     }
 
     #[test]
@@ -199,13 +235,13 @@ mod tests {
     fn test_canonicalize_permutation_error_duplicate() {
         let rank = 3;
         let perm = vec![0, 1, 1];
-        canonicalize_permutation(rank, &perm);
+        canonicalize_permutation(&perm, rank);
     }
 
     #[test]
     fn test_canonicalize_permutation() {
         let rank = 3;
         let perm = vec![-1, -3, 1];
-        assert_eq!(canonicalize_permutation(rank, &perm), vec![2, 0, 1]);
+        assert_eq!(canonicalize_permutation(&perm, rank), vec![2, 0, 1]);
     }
 }
