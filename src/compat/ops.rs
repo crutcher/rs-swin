@@ -124,7 +124,7 @@ where
     };
 
     let mut r = Vec::with_capacity(D);
-    for i in 0..D {
+    for _i in 0..D {
         r.push(Slice::from(..));
     }
 
