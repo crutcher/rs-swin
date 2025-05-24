@@ -1,3 +1,4 @@
+use crate::compat::ops::roll;
 use crate::layers::drop::{DropPath, DropPathConfig};
 use crate::models::swin::v2::attention::swmsa::sw_attn_mask;
 use crate::models::swin::v2::attention::{
@@ -255,54 +256,138 @@ impl<B: Backend> TransformerBlockMeta for TransformerBlock<B> {
 }
 
 impl<B: Backend> TransformerBlock<B> {
+    /// Applies the forward pass on the input tensor.
+    ///
+    /// H and W are the height and width of the input resolution, and D is the input dimension.
+    ///
+    /// # Parameters
+    ///
+    /// * `x` - Input tensor of shape (B, H * W, D), where B is the batch size,
+    ///
+    /// # Returns
+    ///
+    /// A new tensor of shape (B, H * W, D) with the transformer block applied.
     pub fn forward(
         &self,
         x: Tensor<B, 3>,
     ) -> Tensor<B, 3> {
         let [h, w] = self.input_resolution;
         let [b, l, c] = x.dims();
-        assert_eq!(l, h * w);
+        assert_eq!(
+            l,
+            h * w,
+            "Expected input shape (B, H ({}) * W ({}), D), but got {:?}",
+            h,
+            w,
+            x.dims()
+        );
 
-        let shortcut = x.clone();
-        let x = x.reshape([b, h, w, c]);
+        let x = self.with_skip(x, |x| {
+            let x = x.reshape([b, h, w, c]);
 
-        let x = if self.swa_enabled() {
-            panic!("tensor.roll() is not implemented yet");
-        } else {
-            x
-        };
+            let x = with_shift(x, self.shift_size as isize, |x| self.apply_window(x, c));
+            // b, h, w, c
 
+            let x = x.reshape([b, h * w, c]);
+            self.norm1.forward(x)
+        });
+        // b, h * w, c
+
+        self.with_skip(x, |x| self.norm2.forward(self.mlp.forward(x)))
+    }
+
+    /// Applies an inner function under conditional stochastic residual/depth-skip connection.
+    #[inline(always)]
+    fn with_skip<const D: usize, F>(
+        &self,
+        x: Tensor<B, D>,
+        f: F,
+    ) -> Tensor<B, D>
+    where
+        F: FnOnce(Tensor<B, D>) -> Tensor<B, D>,
+    {
+        self.drop_path.with_skip(x, f)
+    }
+
+    /// Applies window attention to the input tensor.
+    ///
+    /// This function partitions the input tensor into windows, applies window attention,
+    /// and then merges the windows back to the original shape.
+    ///
+    /// ## Parameters
+    ///
+    /// * `x` - Input tensor of shape (B, H, W, C).
+    /// * `c` - Number of channels in the input tensor.
+    ///
+    /// ## Returns
+    ///
+    /// A new tensor of shape (B, H, W, C) with window attention applied.
+    #[inline(always)]
+    fn apply_window(
+        &self,
+        x: Tensor<B, 4>,
+        c: usize,
+    ) -> Tensor<B, 4> {
+        let [h, w] = self.input_resolution;
+        let ws = self.window_size as i32;
+        let c = c as i32;
+
+        // Partition into windows.
         let x_windows = window_partition(x, self.window_size);
-        let x_windows =
-            x_windows.reshape([-1, (self.window_size * self.window_size) as i32, c as i32]);
+        // b*nW, ws, ws, c
+        let x_windows = x_windows.reshape([-1, ws * ws, c]);
+        // b*nW, ws*ws, c
 
         let attn_windows = self.attn.forward(x_windows, self.attn_mask.clone());
+        // b*nW, ws*ws, c
 
-        let attn_windows = attn_windows.reshape([
-            -1,
-            self.window_size as i32,
-            self.window_size as i32,
-            c as i32,
-        ]);
-        let shifted_x = window_reverse(attn_windows, self.window_size, h, w);
+        // Merge windows back to the original shape.
+        let attn_windows = attn_windows.reshape([-1, ws, ws, c]);
+        window_reverse(attn_windows, self.window_size, h, w)
+    }
+}
 
-        let x = if self.swa_enabled() {
-            panic!("tensor.roll() is not implemented yet");
-        } else {
-            shifted_x
-        };
+/// Applies an inner function under conditional cyclic shift.
+///
+/// This is used for shifted window attention. When `swa_enabled` is true,
+/// it cyclically shifts the input tensor by `shift_size` in the last two dimensions,
+/// applies the function `f`, and then reverses the cyclic shift.
+///
+/// When `swa_enabled` is false, it simply applies the function `f` without any shift.
+///
+/// ## Parameters
+///
+/// * `x` - Input tensor of shape (B, H, W, C).
+/// * `f` - Function to apply on the shifted tensor.
+///
+/// ## Returns
+///
+/// A new tensor of the same shape as `x`, with the function `f` applied after cyclic shifting.
+#[inline(always)]
+fn with_shift<B: Backend, F>(
+    x: Tensor<B, 4>,
+    shift: isize,
+    f: F,
+) -> Tensor<B, 4>
+where
+    F: FnOnce(Tensor<B, 4>) -> Tensor<B, 4>,
+{
+    let dims = [1, 2];
 
-        let x = x.reshape([b, h * w, c]);
+    // Cyclic shift for shifted window attention.
+    let x = if shift != 0 {
+        roll(x, &[-shift, -shift], &dims)
+    } else {
+        x
+    };
 
-        let x = self.norm1.forward(x);
+    let x = f(x);
 
-        let x = self.drop_path.forward(x);
-        let x = shortcut + x;
-
-        let x = self.mlp.forward(x);
-        let x = self.norm2.forward(x);
-
-        self.drop_path.forward(x)
+    // Reverse cyclic shift.
+    if shift != 0 {
+        roll(x, &[shift, shift], &dims)
+    } else {
+        x
     }
 }
 

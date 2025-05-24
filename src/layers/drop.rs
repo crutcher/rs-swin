@@ -171,6 +171,31 @@ impl DropPath {
         let training = B::ad_enabled();
         drop_path(input, self.drop_prob, training, self.scale_by_keep)
     }
+
+    /// Applies an inner function under conditional stochastic residual/depth-skip connection.
+    ///
+    /// This is used for stochastic depth in the transformer block.
+    ///
+    /// ## Parameters
+    ///
+    /// * `x` - Input tensor of shape (B, D).
+    /// * `f` - Function to apply on the input tensor.
+    ///
+    /// ## Returns
+    ///
+    /// The result of the function application, with a stochastic skip connection applied.
+    #[must_use]
+    #[inline]
+    pub fn with_skip<B: Backend, const D: usize, F>(
+        &self,
+        x: Tensor<B, D>,
+        f: F,
+    ) -> Tensor<B, D>
+    where
+        F: FnOnce(Tensor<B, D>) -> Tensor<B, D>,
+    {
+        x.clone() + self.forward(f(x))
+    }
 }
 
 #[cfg(test)]
