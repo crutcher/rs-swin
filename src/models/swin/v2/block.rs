@@ -12,6 +12,52 @@ use burn::nn::{LayerNorm, LayerNormConfig};
 use burn::prelude::{Backend, Tensor};
 use burn::tensor::BasicOps;
 
+/// Applies an inner function under conditional cyclic shift.
+///
+/// This is used for shifted window attention. When `swa_enabled` is true,
+/// it cyclically shifts the input tensor by `shift_size` in the last two dimensions,
+/// applies the function `f`, and then reverses the cyclic shift.
+///
+/// When `swa_enabled` is false, it simply applies the function `f` without any shift.
+///
+/// ## Parameters
+///
+/// * `x` - Input tensor of shape (B, H, W, C).
+/// * `f` - Function to apply on the shifted tensor.
+///
+/// ## Returns
+///
+/// A new tensor of the same shape as `x`, with the function `f` applied after cyclic shifting.
+#[must_use]
+#[inline(always)]
+fn with_shift<B: Backend, F, K>(
+    x: Tensor<B, 4, K>,
+    shift: isize,
+    f: F,
+) -> Tensor<B, 4, K>
+where
+    K: BasicOps<B>,
+    F: FnOnce(Tensor<B, 4, K>) -> Tensor<B, 4, K>,
+{
+    let dims = [1, 2];
+
+    // Cyclic shift for shifted window attention.
+    let x = if shift != 0 {
+        roll(x, &[-shift, -shift], &dims)
+    } else {
+        x
+    };
+
+    let x = f(x);
+
+    // Reverse cyclic shift.
+    if shift != 0 {
+        roll(x, &[shift, shift], &dims)
+    } else {
+        x
+    }
+}
+
 /// Common introspection interface for TransformerBlock.
 pub trait TransformerBlockMeta {
     /// Get the input dimension size.
@@ -152,44 +198,49 @@ impl TransformerBlockConfig {
             self.input_resolution
         );
 
-        let mlp_hidden_dim = (self.d_input as f64 * self.mlp_ratio) as usize;
+        let hidden_dim = (self.d_input as f64 * self.mlp_ratio) as usize;
+        let block_mlp = MlpConfig::new(self.d_input)
+            .with_d_hidden(Some(hidden_dim))
+            .with_drop(self.drop_rate)
+            .init(device);
+
+        let win_attn = WindowAttentionConfig::new(
+            self.d_input,
+            [self.window_size, self.window_size],
+            self.num_heads,
+        )
+        .with_enable_qkv_bias(self.enable_qkv_bias)
+        .with_attn_drop(self.attn_drop_rate)
+        .with_proj_drop(self.drop_rate)
+        .init(device);
+
+        let shift_mask = if self.shift_size == 0 {
+            None
+        } else {
+            Some(
+                sw_attn_mask(
+                    self.input_resolution,
+                    self.window_size,
+                    self.shift_size,
+                    device,
+                )
+                .float()
+                .mul_scalar(-100.0),
+            )
+        };
 
         TransformerBlock {
             input_resolution: self.input_resolution,
             window_size: self.window_size,
             shift_size: self.shift_size,
-            shift_mask: if self.shift_size == 0 {
-                None
-            } else {
-                Some(
-                    sw_attn_mask(
-                        self.input_resolution,
-                        self.window_size,
-                        self.shift_size,
-                        device,
-                    )
-                    .float()
-                    .mul_scalar(-100.0),
-                )
-            },
+            shift_mask,
             drop_path: DropPathConfig::new()
                 .with_drop_prob(self.drop_path_rate)
                 .init(),
             norm1: LayerNormConfig::new(self.d_input).init(device),
             norm2: LayerNormConfig::new(self.d_input).init(device),
-            attn: WindowAttentionConfig::new(
-                self.d_input,
-                [self.window_size, self.window_size],
-                self.num_heads,
-            )
-            .with_enable_qkv_bias(self.enable_qkv_bias)
-            .with_attn_drop(self.attn_drop_rate)
-            .with_proj_drop(self.drop_rate)
-            .init(device),
-            mlp: MlpConfig::new(self.d_input)
-                .with_d_hidden(Some(mlp_hidden_dim))
-                .with_drop(self.drop_rate)
-                .init(device),
+            win_attn,
+            block_mlp,
         }
     }
 }
@@ -206,13 +257,13 @@ pub struct TransformerBlock<B: Backend> {
 
     pub norm1: LayerNorm<B>,
     pub norm2: LayerNorm<B>,
-    pub attn: WindowAttention<B>,
-    pub mlp: BlockMlp<B>,
+    pub win_attn: WindowAttention<B>,
+    pub block_mlp: BlockMlp<B>,
 }
 
 impl<B: Backend> TransformerBlockMeta for TransformerBlock<B> {
     fn d_input(&self) -> usize {
-        self.attn.d_input()
+        self.win_attn.d_input()
     }
 
     fn input_resolution(&self) -> [usize; 2] {
@@ -220,7 +271,7 @@ impl<B: Backend> TransformerBlockMeta for TransformerBlock<B> {
     }
 
     fn num_heads(&self) -> usize {
-        self.attn.num_heads()
+        self.win_attn.num_heads()
     }
 
     fn window_size(&self) -> usize {
@@ -232,19 +283,19 @@ impl<B: Backend> TransformerBlockMeta for TransformerBlock<B> {
     }
 
     fn enable_qkv_bias(&self) -> bool {
-        self.attn.enable_qkv_bias()
+        self.win_attn.enable_qkv_bias()
     }
 
     fn drop_rate(&self) -> f64 {
-        self.mlp.drop()
+        self.block_mlp.drop()
     }
 
     fn attn_drop_rate(&self) -> f64 {
-        self.attn.attn_drop()
+        self.win_attn.attn_drop()
     }
 
     fn mlp_ratio(&self) -> f64 {
-        self.mlp.d_hidden() as f64 / self.d_input() as f64
+        self.block_mlp.d_hidden() as f64 / self.d_input() as f64
     }
 
     fn drop_path_rate(&self) -> f64 {
@@ -291,7 +342,7 @@ impl<B: Backend> TransformerBlock<B> {
         });
         // b, h * w, c
 
-        self.with_skip(x, |x| self.norm2.forward(self.mlp.forward(x)))
+        self.with_skip(x, |x| self.norm2.forward(self.block_mlp.forward(x)))
     }
 
     /// Applies an inner function under conditional stochastic residual/depth-skip connection.
@@ -338,58 +389,12 @@ impl<B: Backend> TransformerBlock<B> {
         let x_windows = x_windows.reshape([-1, ws * ws, c]);
         // b*nW, ws*ws, c
 
-        let attn_windows = self.attn.forward(x_windows, self.shift_mask.clone());
+        let attn_windows = self.win_attn.forward(x_windows, self.shift_mask.clone());
         // b*nW, ws*ws, c
 
         // Merge windows back to the original shape.
         let attn_windows = attn_windows.reshape([-1, ws, ws, c]);
         window_reverse(attn_windows, self.window_size, h, w)
-    }
-}
-
-/// Applies an inner function under conditional cyclic shift.
-///
-/// This is used for shifted window attention. When `swa_enabled` is true,
-/// it cyclically shifts the input tensor by `shift_size` in the last two dimensions,
-/// applies the function `f`, and then reverses the cyclic shift.
-///
-/// When `swa_enabled` is false, it simply applies the function `f` without any shift.
-///
-/// ## Parameters
-///
-/// * `x` - Input tensor of shape (B, H, W, C).
-/// * `f` - Function to apply on the shifted tensor.
-///
-/// ## Returns
-///
-/// A new tensor of the same shape as `x`, with the function `f` applied after cyclic shifting.
-#[must_use]
-#[inline(always)]
-fn with_shift<B: Backend, F, K>(
-    x: Tensor<B, 4, K>,
-    shift: isize,
-    f: F,
-) -> Tensor<B, 4, K>
-where
-    K: BasicOps<B>,
-    F: FnOnce(Tensor<B, 4, K>) -> Tensor<B, 4, K>,
-{
-    let dims = [1, 2];
-
-    // Cyclic shift for shifted window attention.
-    let x = if shift != 0 {
-        roll(x, &[-shift, -shift], &dims)
-    } else {
-        x
-    };
-
-    let x = f(x);
-
-    // Reverse cyclic shift.
-    if shift != 0 {
-        roll(x, &[shift, shift], &dims)
-    } else {
-        x
     }
 }
 
