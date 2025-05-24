@@ -60,26 +60,11 @@ pub fn roll<B: Backend, const D: usize, K>(
 where
     K: BasicOps<B>,
 {
-    assert!(
-        shifts.len() <= D,
-        "shifts must be less than or equal to the number of dimensions, but got {} and {}",
-        shifts.len(),
-        D
-    );
-    assert!(
-        dims.len() <= D,
-        "dims must be less than or equal to the number of dimensions, but got {} and {}",
-        dims.len(),
-        D
-    );
-
     let dims = canonicalize_dims(D, dims, false);
-
-    // TODO: strip shift-by-effective-zero work.
 
     // Avoid modulo by zero
     if a.shape().num_elements() == 0 {
-        return a.clone();
+        return a;
     }
 
     if a.shape().num_dims() == 0 && !dims.is_empty() {
@@ -89,7 +74,7 @@ where
         );
     }
 
-    if shifts.len() != 1 || dims.len() != 1 {
+    if shifts.len() > 1 {
         if dims.is_empty() && shifts.len() == 1 {
             let shape = a.shape();
             return roll(a.reshape([-1]), &[shifts[0]], &[0]).reshape(shape);
@@ -123,23 +108,21 @@ where
         (start as usize) % size
     };
 
+    // If the start is 0, we can return the original tensor.
+    if start == 0 {
+        return a;
+    }
+
+    // a. Split the tensor into two chunks along the roll dimension;
+    // b. Re-order the chunks.
+
     let mut r = Vec::with_capacity(D);
     for _i in 0..D {
         r.push(Slice::from(..));
     }
 
-    let mut r_first = r.clone();
-    r_first[dim] = Slice::from(0..start);
-    let r_first: [Slice; D] = r_first.try_into().unwrap();
-
-    let mut r_second = r.clone();
-    r_second[dim] = Slice::from(start..);
-    let r_second: [Slice; D] = r_second.try_into().unwrap();
-
-    let first = a.clone().slice(r_first);
-    let second = a.slice(r_second);
-
-    Tensor::cat(vec![second, first], dim)
+    let parts = a.clone().split_with_sizes(Tensor::from([start, (size - start) as usize], a.device()), dim);
+    Tensor::cat(vec![parts[1].clone(), parts[0].clone()], dim)
 }
 
 #[cfg(test)]

@@ -87,7 +87,7 @@ pub fn is_valid_permutation(
 
     let mut seen = vec![false; rank];
     for &idx in perm {
-        if idx < 0 || idx >= rank || seen[idx] {
+        if idx >= rank || seen[idx] {
             return false;
         }
         seen[idx] = true;
