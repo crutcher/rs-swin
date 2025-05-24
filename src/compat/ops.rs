@@ -1,5 +1,4 @@
-use std::iter::zip;
-use crate::compat::dims::{canonicalize_dim, canonicalize_dims};
+use crate::compat::dims::canonicalize_dims;
 use burn::prelude::{Backend, Tensor};
 use burn::tensor::{BasicOps, Slice};
 
@@ -75,7 +74,7 @@ where
     );
 
     let dims = canonicalize_dims(D, dims, false);
-    
+
     // TODO: strip shift-by-effective-zero work.
 
     // Avoid modulo by zero
@@ -154,7 +153,7 @@ mod tests {
     fn test_roll() {
         let device = Default::default();
         let input: Tensor<NdArray, 2, Int> = Tensor::arange(0..6, &device).reshape::<2, _>([2, 3]);
-        
+
         // No-op shift:
         roll(input.clone(), &[0, 0], &[0, 1])
             .to_data()
@@ -162,6 +161,6 @@ mod tests {
 
         roll(input.clone(), &[1, -1], &[0, 1])
             .to_data()
-            .assert_eq(&TensorData::from([[4, 5, 3], [1, 2,0]]), false);
+            .assert_eq(&TensorData::from([[4, 5, 3], [1, 2, 0]]), false);
     }
 }

@@ -7,6 +7,7 @@ use crate::models::swin::v2::mlp::{Mlp, MlpConfig, MlpMeta};
 use crate::models::swin::v2::windowing::{window_partition, window_reverse};
 use burn::config::Config;
 use burn::module::Module;
+use burn::nn::{LayerNorm, LayerNormConfig};
 use burn::prelude::{Backend, Tensor};
 
 /// Common introspection interface for TransformerBlock.
@@ -167,6 +168,8 @@ impl TransformerBlockConfig {
 
         TransformerBlock {
             input_resolution: self.input_resolution,
+            norm1: LayerNormConfig::new(self.d_input).init(device),
+            norm2: LayerNormConfig::new(self.d_input).init(device),
             window_size: self.window_size,
             shift_size: self.shift_size,
             attn: WindowAttentionConfig::new(
@@ -196,8 +199,8 @@ pub struct TransformerBlock<B: Backend> {
     pub window_size: usize,
     pub shift_size: usize,
 
-    // norm1
-    // norm2
+    pub norm1: LayerNorm<B>,
+    pub norm2: LayerNorm<B>,
     pub attn: WindowAttention<B>,
     pub drop_path: DropPath,
     pub mlp: Mlp<B>,
@@ -291,15 +294,13 @@ impl<B: Backend> TransformerBlock<B> {
 
         let x = x.reshape([b, h * w, c]);
 
-        // TODO
-        // let x = self.norm1.forward(x);
+        let x = self.norm1.forward(x);
 
         let x = self.drop_path.forward(x);
         let x = shortcut + x;
 
-        // TODO
         let x = self.mlp.forward(x);
-        // let x = self.norm2.forward(x);
+        let x = self.norm2.forward(x);
 
         self.drop_path.forward(x)
     }
