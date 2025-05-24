@@ -1,6 +1,7 @@
 use crate::compat::dims::{canonicalize_dim, wrap_idx};
 use burn::prelude::{Backend, Tensor};
 use burn::tensor::BasicOps;
+use std::iter::zip;
 
 /// Roll operation along a specific dimension.
 ///
@@ -22,15 +23,25 @@ where
     K: BasicOps<B>,
 {
     let dim = canonicalize_dim(dim, D, false);
-
     let size = x.shape().dims[dim];
-    if size == 0 {
-        // No-op for empty dimension
-        return x;
-    }
-
     let shift = wrap_idx(shift, size);
-    if shift == 0 {
+
+    _roll_dim(x, shift, dim)
+}
+
+/// Internal implementation of `roll_dim` that does not canonicalize dimensions or shifts.
+pub fn _roll_dim<B: Backend, const D: usize, K>(
+    x: Tensor<B, D, K>,
+    shift: usize,
+    dim: usize,
+) -> Tensor<B, D, K>
+where
+    K: BasicOps<B>,
+{
+    let size = x.shape().dims[dim];
+    assert!(shift < size);
+
+    if size == 0 || shift == 0 {
         return x;
     }
 
@@ -70,15 +81,30 @@ where
         shifts.len()
     );
 
-    _roll(x, shifts, dims)
+    // Canonicalize dimensions and shifts before any copies or modifications.
+    // This is duplicated check logic, but enforces no-copy on no-op.
+    let dims = dims
+        .iter()
+        .map(|d| canonicalize_dim(*d, D, false))
+        .collect::<Vec<_>>();
+    let mut _shifts = Vec::with_capacity(shifts.len());
+    for (shift, dim) in zip(shifts, dims.clone()) {
+        let size = x.shape().dims[dim];
+        if size == 0 {
+            return x;
+        }
+        _shifts.push(wrap_idx(*shift, size));
+    }
+
+    _roll(x, &_shifts, &dims)
 }
 
 /// `roll` internal implementation.
 #[inline(always)]
 fn _roll<B: Backend, const D: usize, K>(
     x: Tensor<B, D, K>,
-    shifts: &[isize],
-    dims: &[isize],
+    shifts: &[usize],
+    dims: &[usize],
 ) -> Tensor<B, D, K>
 where
     K: BasicOps<B>,
@@ -87,7 +113,7 @@ where
         return x;
     }
 
-    let x = roll_dim(x, shifts[0], dims[0]);
+    let x = _roll_dim(x, shifts[0], dims[0]);
     if dims.len() == 1 {
         return x;
     }
