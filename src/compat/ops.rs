@@ -32,6 +32,17 @@ where
     _unchecked_roll_dim(x, shift, dim)
 }
 
+/// Contract for the `_unchecked_roll_dim` operation.
+///
+/// ## Parameters
+///
+/// - `shift`: The number of positions to shift; must be (0 < shift < size).
+/// - `dim`: The dimension to roll; must be a valid index for the tensor's shape.
+/// - `size`: The size of the dimension to roll; must be greater than 0.
+///
+/// ## Panics
+///
+/// Panics if the contract conditions are not met.
 fn _unchecked_roll_dim_contract(
     shift: usize,
     dim: usize,
@@ -161,6 +172,16 @@ where
     _unchecked_roll(x, &_shifts, &_dims)
 }
 
+/// Contract for the `_unchecked_roll` operation.
+///
+/// ## Parameters
+///
+/// - `shifts`: A slice of shifts corresponding to each dimension; must not be empty.
+/// - `dims`: A slice of dimensions to roll; must be the same length as `shifts`, and must not contain repeats.
+///
+/// ## Panics
+///
+/// Panics if the shifts and dimensions do not align, or if dimensions contain repeats.
 fn _unchecked_roll_contract(
     shifts: &[usize],
     dims: &[usize],
