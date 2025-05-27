@@ -2,6 +2,7 @@
 
 pub mod attention;
 pub mod block;
+pub mod layer;
 pub mod mlp;
 pub mod patch;
 pub mod windowing;
