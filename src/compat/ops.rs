@@ -32,6 +32,25 @@ where
     _unchecked_roll_dim(x, shift, dim)
 }
 
+fn _unchecked_roll_dim_contract(
+    shift: usize,
+    dim: usize,
+    size: usize,
+) {
+    assert!(
+        0 < shift && shift < size,
+        "Expected: 0 < shift < size: found shift={}, size={}",
+        shift,
+        size,
+    );
+    assert!(
+        dim < size,
+        "Expected: dim < size: found dim={}, size={}",
+        dim,
+        size,
+    );
+}
+
 /// Internal implementation of `roll_dim` that does not canonicalize dimensions or shifts.
 ///
 /// ## Parameters
@@ -44,7 +63,7 @@ where
 ///
 /// A new tensor with the specified dimension rolled by the given shift amount.
 #[inline(always)]
-pub fn _unchecked_roll_dim<B: Backend, const D: usize, K>(
+fn _unchecked_roll_dim<B: Backend, const D: usize, K>(
     x: Tensor<B, D, K>,
     shift: usize,
     dim: usize,
@@ -54,14 +73,8 @@ where
 {
     let size = x.shape().dims[dim];
 
-    // By contract: 0 < shift < size;
     #[cfg(debug_assertions)]
-    assert!(
-        0 < shift && shift < size,
-        "Expected: 0 < shift < size: found shift={}, size={}",
-        shift,
-        size,
-    );
+    _unchecked_roll_dim_contract(shift, dim, size);
 
     let mut parts = x.split_with_sizes(vec![shift, size - shift], dim);
     parts.rotate_right(1);
@@ -148,7 +161,44 @@ where
     _unchecked_roll(x, &_shifts, &_dims)
 }
 
+fn _unchecked_roll_contract(
+    shifts: &[usize],
+    dims: &[usize],
+) {
+    assert!(!shifts.is_empty());
+    assert_eq!(
+        shifts.len(),
+        dims.len(),
+        "Shifts and dimensions must align; found {} shifts and {} dims",
+        shifts.len(),
+        dims.len()
+    );
+
+    let mut _dims = dims.to_vec();
+    _dims.dedup();
+
+    assert_eq!(
+        _dims.len(),
+        dims.len(),
+        "Dimensions must not contain repeats; found {} unique dims and {} total dims",
+        _dims.len(),
+        dims.len()
+    )
+}
+
 /// `roll` internal implementation.
+///
+/// ## Parameters
+///
+/// - `x`: The input tensor.
+/// - `shifts`: per-dimension shifts; must be non-empty,
+///   and contain only non-zero values.
+/// - `dims`: indices for `shifts`. Must be the same length as `shifts`,
+///   must not contain repeats.
+///
+/// ## Returns
+///
+/// A new tensor with the specified dimensions rolled by the given shifts.
 #[inline(always)]
 fn _unchecked_roll<B: Backend, const D: usize, K>(
     x: Tensor<B, D, K>,
@@ -158,6 +208,9 @@ fn _unchecked_roll<B: Backend, const D: usize, K>(
 where
     K: BasicOps<B>,
 {
+    #[cfg(debug_assertions)]
+    _unchecked_roll_contract(shifts, dims);
+
     if dims.is_empty() {
         return x;
     }
