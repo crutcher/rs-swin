@@ -1,6 +1,7 @@
 use crate::models::swin::v2::windowing::{window_partition, window_reverse};
 use burn::config::Config;
 use burn::module::Module;
+use burn::nn::conv::{Conv2d, Conv2dConfig};
 use burn::nn::{LayerNorm, LayerNormConfig, Linear, LinearConfig};
 use burn::prelude::{Backend, Tensor};
 use burn::tensor::BasicOps;
@@ -226,6 +227,190 @@ where
     x.reshape([b, h * w, c])
 }
 
+pub trait PatchEmbedMeta {
+    /// Input resolution (height, width).
+    fn input_resolution(&self) -> [usize; 2];
+
+    /// Input height.
+    fn input_height(&self) -> usize {
+        self.input_resolution()[0]
+    }
+
+    /// Input width.
+    fn input_width(&self) -> usize {
+        self.input_resolution()[1]
+    }
+
+    fn patch_size(&self) -> usize;
+
+    fn embed_resolution(&self) -> [usize; 2] {
+        let [h, w] = self.input_resolution();
+        [h / self.patch_size(), w / self.patch_size()]
+    }
+
+    fn embed_height(&self) -> usize {
+        self.embed_resolution()[0]
+    }
+
+    fn embed_width(&self) -> usize {
+        self.embed_resolution()[1]
+    }
+
+    /// Input feature dimension size.
+    fn d_input(&self) -> usize;
+
+    /// Output feature dimension size.
+    fn d_output(&self) -> usize {
+        self.d_input()
+    }
+
+    /// Enable patch normalization.
+    fn enable_patch_norm(&self) -> bool;
+}
+
+/// Configuration for PatchEmbed.
+#[derive(Config, Debug, Copy)]
+pub struct PatchEmbedConfig {
+    /// Input resolution (height, width).
+    input_resolution: [usize; 2],
+
+    /// Patch size.
+    patch_size: usize,
+
+    /// Input feature dimension size.
+    d_input: usize,
+
+    /// Output feature dimension size.
+    d_output: usize,
+
+    /// Enable patch normalization.
+    #[config(default = true)]
+    enable_patch_norm: bool,
+}
+
+impl PatchEmbedMeta for PatchEmbedConfig {
+    fn input_resolution(&self) -> [usize; 2] {
+        self.input_resolution
+    }
+
+    fn patch_size(&self) -> usize {
+        self.patch_size
+    }
+
+    fn d_input(&self) -> usize {
+        self.d_input
+    }
+
+    fn d_output(&self) -> usize {
+        self.d_output
+    }
+
+    fn enable_patch_norm(&self) -> bool {
+        self.enable_patch_norm
+    }
+}
+
+impl PatchEmbedConfig {
+    /// Initialize a PatchEmbed module with the given configuration.
+    ///
+    /// ## Arguments
+    ///
+    /// * `device` - The device on which the module will be initialized.
+    ///
+    /// ## Returns
+    ///
+    /// * A `PatchEmbed` module configured with the specified parameters.
+    pub fn init<B: Backend>(
+        &self,
+        device: &B::Device,
+    ) -> PatchEmbed<B> {
+        let [h, w] = self.input_resolution;
+        assert!(
+            h % self.patch_size == 0 && w % self.patch_size == 0,
+            "Input resolution must be divisible by patch size: {:?}",
+            self.input_resolution
+        );
+
+        let stride = [self.patch_size, self.patch_size];
+
+        PatchEmbed {
+            input_resolution: self.input_resolution,
+            patch_size: self.patch_size,
+            projection: Conv2dConfig::new([self.d_input, self.d_output], stride)
+                .with_stride(stride)
+                .init(device),
+            norm: match self.enable_patch_norm {
+                true => Some(LayerNormConfig::new(self.d_output()).init(device)),
+                false => None,
+            },
+        }
+    }
+}
+
+/// SWIN-Transformer v2 PatchEmbed module.
+#[derive(Module, Debug)]
+pub struct PatchEmbed<B: Backend> {
+    pub input_resolution: [usize; 2],
+    pub patch_size: usize,
+    pub projection: Conv2d<B>,
+    pub norm: Option<LayerNorm<B>>,
+}
+
+impl<B: Backend> PatchEmbedMeta for PatchEmbed<B> {
+    fn input_resolution(&self) -> [usize; 2] {
+        self.input_resolution
+    }
+
+    fn patch_size(&self) -> usize {
+        self.patch_size
+    }
+
+    fn d_input(&self) -> usize {
+        self.projection.weight.dims()[1]
+    }
+
+    fn d_output(&self) -> usize {
+        self.projection.weight.dims()[0]
+    }
+
+    fn enable_patch_norm(&self) -> bool {
+        self.norm.is_some()
+    }
+}
+
+impl<B: Backend> PatchEmbed<B> {
+    /// Apply the PatchEmbed module to an input tensor.
+    ///
+    /// ## Arguments
+    ///
+    /// * `x` - Input tensor of shape ``(B, C, H, W)``.
+    ///
+    /// ## Returns
+    ///
+    /// * Output tensor of shape ``(B, H/patch_size * W/patch_size, d_output)``.
+    pub fn forward(
+        &self,
+        x: Tensor<B, 4>,
+    ) -> Tensor<B, 3> {
+        assert_tensor(&x)
+            .unpacks_shape(
+                [],
+                "b c h w",
+                &[("h", self.input_height()), ("w", self.input_width())],
+            )
+            .unwrap();
+
+        let x = self.projection.forward(x);
+        let x = x.flatten(2, 3);
+        let x = x.swap_dims(1, 2);
+
+        match self.norm {
+            None => x,
+            Some(ref norm) => norm.forward(x),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -285,5 +470,86 @@ mod tests {
             ("H/2*W/2", (h / 2) * (w / 2)),
             ("4*C", 2 * c),
         ]);
+    }
+
+    #[test]
+    fn test_patch_embed_meta() {
+        let config = PatchEmbedConfig::new([12, 8], 4, 3, 6).with_enable_patch_norm(false);
+
+        assert_eq!(config.input_resolution(), [12, 8]);
+        assert_eq!(config.patch_size(), 4);
+        assert_eq!(config.d_input(), 3);
+        assert_eq!(config.d_output(), 6);
+        assert!(!config.enable_patch_norm());
+        assert_eq!(config.embed_resolution(), [3, 2]);
+        assert_eq!(config.embed_height(), 3);
+        assert_eq!(config.embed_width(), 2);
+
+        let patch_embed = config.init::<NdArray>(&Default::default());
+
+        assert_eq!(patch_embed.input_resolution(), [12, 8]);
+        assert_eq!(patch_embed.patch_size(), 4);
+        assert_eq!(patch_embed.d_input(), 3);
+        assert_eq!(patch_embed.d_output(), 6);
+        assert!(!patch_embed.enable_patch_norm());
+        assert_eq!(patch_embed.embed_resolution(), [3, 2]);
+        assert_eq!(patch_embed.embed_height(), 3);
+        assert_eq!(patch_embed.embed_width(), 2);
+    }
+
+    #[test]
+    fn test_patch_embed() {
+        let device = Default::default();
+
+        let b = 2;
+        let h = 12;
+        let w = 8;
+
+        let patch_size = 4;
+        let d_input = 3;
+        let d_output = d_input * 2;
+
+        let distribution = Distribution::Normal(0., 1.);
+        let x = Tensor::random([b, d_input, h, w], distribution, &device);
+
+        // W/O Norm.
+        {
+            let config = PatchEmbedConfig::new([h, w], patch_size, d_input, d_output)
+                .with_enable_patch_norm(false);
+            let patch_embed = config.init::<NdArray>(&device);
+
+            let y = patch_embed.forward(x.clone());
+            assert_tensor(&y).has_named_dims([
+                ("B", b),
+                ("H/patch_size*W/patch_size", (h / 4) * (w / 4)),
+                ("d_out", d_output),
+            ]);
+
+            let z = patch_embed.projection.forward(x.clone());
+            let z: Tensor<NdArray, 3> = z.flatten(2, 3);
+            let z = z.swap_dims(1, 2);
+
+            y.into_data().assert_eq(&z.into_data(), true);
+        }
+
+        // With Norm.
+        {
+            let config = PatchEmbedConfig::new([h, w], patch_size, d_input, d_output);
+            let patch_embed = config.init::<NdArray>(&device);
+
+            let y = patch_embed.forward(x.clone());
+            assert_tensor(&y).has_named_dims([
+                ("B", b),
+                ("H/patch_size*W/patch_size", (h / 4) * (w / 4)),
+                ("d_out", d_output),
+            ]);
+
+            let z = patch_embed.projection.forward(x.clone());
+            let z: Tensor<NdArray, 3> = z.flatten(2, 3);
+            let z = z.swap_dims(1, 2);
+            let z = patch_embed.norm.as_ref().unwrap().forward(z);
+
+            y.into_data().assert_eq(&z.into_data(), true);
+        }
     }
 }
