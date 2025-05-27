@@ -25,10 +25,24 @@ where
     let size = x.shape().dims[dim];
     let shift = wrap_idx(shift, size);
 
+    if size == 0 || shift == 0 {
+        return x;
+    }
+
     _unchecked_roll_dim(x, shift, dim)
 }
 
 /// Internal implementation of `roll_dim` that does not canonicalize dimensions or shifts.
+///
+/// ## Parameters
+///
+/// - `x`: The input tensor.
+/// - `shift`: The number of positions to shift; must be (0 < shift < size).
+/// - `dim`: The dimension to roll; must be a valid index for the tensor's shape.
+///
+/// ## Returns
+///
+/// A new tensor with the specified dimension rolled by the given shift amount.
 #[inline(always)]
 pub fn _unchecked_roll_dim<B: Backend, const D: usize, K>(
     x: Tensor<B, D, K>,
@@ -38,11 +52,16 @@ pub fn _unchecked_roll_dim<B: Backend, const D: usize, K>(
 where
     K: BasicOps<B>,
 {
-    // By contract: assert!(shift < size);
     let size = x.shape().dims[dim];
-    if size == 0 || shift == 0 {
-        return x;
-    }
+
+    // By contract: 0 < shift < size;
+    #[cfg(debug_assertions)]
+    assert!(
+        0 < shift && shift < size,
+        "Expected: 0 < shift < size: found shift={}, size={}",
+        shift,
+        size,
+    );
 
     let mut parts = x.split_with_sizes(vec![shift, size - shift], dim);
     parts.rotate_right(1);
@@ -81,12 +100,22 @@ where
         shifts.len()
     );
 
-    // Canonicalize dimensions and shifts before any copies or modifications.
-    // This is duplicated check logic, but enforces no-copy on no-op.
-    let cannon_dims: Vec<usize> = dims
-        .iter()
-        .map(|d| canonicalize_dim(*d, D, false))
-        .collect();
+    // This is a fair amount of complexity, which could be replaced
+    // by a simple canonicalization of `dims` and wrapping of `shifts`.
+    // The work is done here to ensure that any roll operation
+    // which could be a no-op is a no-op; simplifying the accounting
+    // needed by backend-specific implementations of the inner roll op.
+
+    let item_count = dims.len();
+
+    let shape = x.shape().dims;
+
+    // Accumulate the effective shifts for each dimension.
+    let mut shift_accum: Vec<isize> = vec![0; shape.len()];
+    for i in 0..item_count {
+        let dim = canonicalize_dim(dims[i], D, false);
+        shift_accum[dim] += shifts[i];
+    }
 
     // Do this after we've checked the validity of `dims` and `shifts`.
     if x.shape().num_elements() == 0 {
@@ -94,17 +123,29 @@ where
         return x;
     }
 
-    // All relative shifts are legal; we just need them wrapped.
-    let cannon_shifts: Vec<usize> = shifts
-        .iter()
-        .zip(cannon_dims.iter())
-        .map(|(shift, &dim)| {
-            let size = x.shape().dims[dim];
-            wrap_idx(*shift, size)
-        })
-        .collect();
+    let sizes = x.shape().dims;
 
-    _unchecked_roll(x, &cannon_shifts, &cannon_dims)
+    // Wrap the accumulated shifts, and filter out empty dimensions.
+    let mut _dims: Vec<usize> = Vec::with_capacity(item_count);
+    let mut _shifts: Vec<usize> = Vec::with_capacity(item_count);
+    for dim in 0..item_count {
+        let shift = wrap_idx(shift_accum[dim], sizes[dim]);
+        if shift != 0 {
+            _shifts.push(shift);
+            _dims.push(dim);
+        }
+    }
+
+    // If no shifts are needed, return the original tensor.
+    if _shifts.is_empty() {
+        return x;
+    }
+
+    // At this point:
+    // - the roll is non-trivial (i.e., at least one accumulated shift is non-zero),
+    // - `dims` contains the effective dimensions to roll, in index order,
+    // - `shifts` contains the effective usize shifts for each dimension.
+    _unchecked_roll(x, &_shifts, &_dims)
 }
 
 /// `roll` internal implementation.
