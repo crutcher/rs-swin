@@ -241,19 +241,29 @@ pub trait PatchEmbedMeta {
         self.input_resolution()[1]
     }
 
+    /// The size of each patch.
     fn patch_size(&self) -> usize;
 
-    fn embed_resolution(&self) -> [usize; 2] {
+    /// Image resolution, measured in patches.
+    fn patches_resolution(&self) -> [usize; 2] {
         let [h, w] = self.input_resolution();
         [h / self.patch_size(), w / self.patch_size()]
     }
 
-    fn embed_height(&self) -> usize {
-        self.embed_resolution()[0]
+    /// Total number of patches.
+    fn num_patches(&self) -> usize {
+        let [h, w] = self.patches_resolution();
+        h * w
     }
 
-    fn embed_width(&self) -> usize {
-        self.embed_resolution()[1]
+    /// Height of the image, measured in patches.
+    fn patches_height(&self) -> usize {
+        self.patches_resolution()[0]
+    }
+
+    /// Width of the image, measured in patches.
+    fn patches_width(&self) -> usize {
+        self.patches_resolution()[1]
     }
 
     /// Input feature dimension size.
@@ -481,9 +491,9 @@ mod tests {
         assert_eq!(config.d_input(), 3);
         assert_eq!(config.d_output(), 6);
         assert!(!config.enable_patch_norm());
-        assert_eq!(config.embed_resolution(), [3, 2]);
-        assert_eq!(config.embed_height(), 3);
-        assert_eq!(config.embed_width(), 2);
+        assert_eq!(config.patches_resolution(), [3, 2]);
+        assert_eq!(config.patches_height(), 3);
+        assert_eq!(config.patches_width(), 2);
 
         let patch_embed = config.init::<NdArray>(&Default::default());
 
@@ -492,9 +502,9 @@ mod tests {
         assert_eq!(patch_embed.d_input(), 3);
         assert_eq!(patch_embed.d_output(), 6);
         assert!(!patch_embed.enable_patch_norm());
-        assert_eq!(patch_embed.embed_resolution(), [3, 2]);
-        assert_eq!(patch_embed.embed_height(), 3);
-        assert_eq!(patch_embed.embed_width(), 2);
+        assert_eq!(patch_embed.patches_resolution(), [3, 2]);
+        assert_eq!(patch_embed.patches_height(), 3);
+        assert_eq!(patch_embed.patches_width(), 2);
     }
 
     #[test]

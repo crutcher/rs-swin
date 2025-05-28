@@ -2,6 +2,7 @@ use crate::models::swin::v2::block::{
     TransformerBlock, TransformerBlockConfig, TransformerBlockMeta,
 };
 use burn::config::Config;
+use burn::module::Module;
 use burn::prelude::{Backend, Tensor};
 
 /// Common introspection train for BasicLayer.
@@ -175,6 +176,7 @@ impl BasicLayerConfig {
 }
 
 /// SWIN-Transformer Basic Layer.
+#[derive(Module, Debug)]
 pub struct BasicLayer<B: Backend> {
     blocks: Vec<TransformerBlock<B>>,
 }

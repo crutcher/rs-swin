@@ -5,4 +5,5 @@ pub mod block;
 pub mod layer;
 pub mod mlp;
 pub mod patch;
+pub mod transformer;
 pub mod windowing;
