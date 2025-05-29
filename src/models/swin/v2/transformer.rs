@@ -1,3 +1,4 @@
+use crate::compat::ops::float_vec_linspace;
 use crate::models::swin::v2::layer::BasicLayer;
 use crate::models::swin::v2::patch::{PatchEmbed, PatchEmbedConfig, PatchEmbedMeta};
 use burn::config::Config;
@@ -185,6 +186,8 @@ impl SwinTransformerV2Config {
         self,
         device: &B::Device,
     ) -> SwinTransformerV2<B> {
+        let num_layers = self.layer_configs.len();
+
         let patch_embed: PatchEmbed<B> = PatchEmbedConfig::new(
             self.input_resolution,
             self.patch_size,
@@ -211,6 +214,14 @@ impl SwinTransformerV2Config {
         };
 
         let pos_drop = DropoutConfig::new(self.drop_rate).init();
+
+        // Stochastic depth delay rule
+        let dpr = float_vec_linspace(
+            0.0,
+            self.drop_path_rate,
+            // Total number of layers
+            self.layer_configs.iter().map(|c| c.depth).sum::<usize>(),
+        );
 
         let norm: LayerNorm<B> = LayerNormConfig::new(self.d_embed).init(device);
 
