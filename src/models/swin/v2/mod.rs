@@ -2,6 +2,7 @@
 
 pub mod attention;
 pub mod block;
+pub mod dpr;
 pub mod layer;
 pub mod mlp;
 pub mod patch;

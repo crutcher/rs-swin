@@ -34,6 +34,15 @@ dependencies = [
 
 [[package]]
 name = "aho-corasick"
+version = "0.6.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "81ce3d38065e618af2d7b77e10c5ad9a069859b4be3c2250f674af3840d9c8a5"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
+name = "aho-corasick"
 version = "1.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8e60d3430d3a69478ad0993f19238d2df97c507009a52b3c10addcd7f6bcb916"
@@ -137,7 +146,7 @@ dependencies = [
  "arrayvec",
  "log",
  "nom 7.1.3",
- "num-rational",
+ "num-rational 0.4.2",
  "v_frame",
 ]
 
@@ -166,9 +175,10 @@ checksum = "8c3c1a368f70d6cf7302d78f8f7093da241fb8e8807c05cc9e51a125895a6d5b"
 name = "bimm"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "burn",
  "burn-contracts",
+ "hamcrest",
+ "num-traits",
 ]
 
 [[package]]
@@ -1587,6 +1597,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "fuchsia-cprng"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a06f77d526c1a601b7c4cdd98f54b5eaabffc14d5f2f0296febdc7f357c6d3ba"
+
+[[package]]
 name = "futures-core"
 version = "0.3.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1661,7 +1677,7 @@ dependencies = [
  "gemm-f16 0.17.1",
  "gemm-f32 0.17.1",
  "gemm-f64 0.17.1",
- "num-complex",
+ "num-complex 0.4.6",
  "num-traits",
  "paste",
  "raw-cpuid 10.7.0",
@@ -1681,7 +1697,7 @@ dependencies = [
  "gemm-f16 0.18.2",
  "gemm-f32 0.18.2",
  "gemm-f64 0.18.2",
- "num-complex",
+ "num-complex 0.4.6",
  "num-traits",
  "paste",
  "raw-cpuid 11.4.0",
@@ -1696,7 +1712,7 @@ checksum = "b9c030d0b983d1e34a546b86e08f600c11696fde16199f971cd46c12e67512c0"
 dependencies = [
  "dyn-stack 0.10.0",
  "gemm-common 0.17.1",
- "num-complex",
+ "num-complex 0.4.6",
  "num-traits",
  "paste",
  "raw-cpuid 10.7.0",
@@ -1711,7 +1727,7 @@ checksum = "f6db9fd9f40421d00eea9dd0770045a5603b8d684654816637732463f4073847"
 dependencies = [
  "dyn-stack 0.13.0",
  "gemm-common 0.18.2",
- "num-complex",
+ "num-complex 0.4.6",
  "num-traits",
  "paste",
  "raw-cpuid 11.4.0",
@@ -1726,7 +1742,7 @@ checksum = "fbb5f2e79fefb9693d18e1066a557b4546cd334b226beadc68b11a8f9431852a"
 dependencies = [
  "dyn-stack 0.10.0",
  "gemm-common 0.17.1",
- "num-complex",
+ "num-complex 0.4.6",
  "num-traits",
  "paste",
  "raw-cpuid 10.7.0",
@@ -1741,7 +1757,7 @@ checksum = "dfcad8a3d35a43758330b635d02edad980c1e143dc2f21e6fd25f9e4eada8edf"
 dependencies = [
  "dyn-stack 0.13.0",
  "gemm-common 0.18.2",
- "num-complex",
+ "num-complex 0.4.6",
  "num-traits",
  "paste",
  "raw-cpuid 11.4.0",
@@ -1757,7 +1773,7 @@ dependencies = [
  "bytemuck",
  "dyn-stack 0.10.0",
  "half",
- "num-complex",
+ "num-complex 0.4.6",
  "num-traits",
  "once_cell",
  "paste",
@@ -1778,7 +1794,7 @@ dependencies = [
  "dyn-stack 0.13.0",
  "half",
  "libm",
- "num-complex",
+ "num-complex 0.4.6",
  "num-traits",
  "once_cell",
  "paste",
@@ -1799,7 +1815,7 @@ dependencies = [
  "gemm-common 0.17.1",
  "gemm-f32 0.17.1",
  "half",
- "num-complex",
+ "num-complex 0.4.6",
  "num-traits",
  "paste",
  "raw-cpuid 10.7.0",
@@ -1817,7 +1833,7 @@ dependencies = [
  "gemm-common 0.18.2",
  "gemm-f32 0.18.2",
  "half",
- "num-complex",
+ "num-complex 0.4.6",
  "num-traits",
  "paste",
  "raw-cpuid 11.4.0",
@@ -1833,7 +1849,7 @@ checksum = "e9a69f51aaefbd9cf12d18faf273d3e982d9d711f60775645ed5c8047b4ae113"
 dependencies = [
  "dyn-stack 0.10.0",
  "gemm-common 0.17.1",
- "num-complex",
+ "num-complex 0.4.6",
  "num-traits",
  "paste",
  "raw-cpuid 10.7.0",
@@ -1848,7 +1864,7 @@ checksum = "bc8d3d4385393304f407392f754cd2dc4b315d05063f62cf09f47b58de276864"
 dependencies = [
  "dyn-stack 0.13.0",
  "gemm-common 0.18.2",
- "num-complex",
+ "num-complex 0.4.6",
  "num-traits",
  "paste",
  "raw-cpuid 11.4.0",
@@ -1863,7 +1879,7 @@ checksum = "aa397a48544fadf0b81ec8741e5c0fba0043008113f71f2034def1935645d2b0"
 dependencies = [
  "dyn-stack 0.10.0",
  "gemm-common 0.17.1",
- "num-complex",
+ "num-complex 0.4.6",
  "num-traits",
  "paste",
  "raw-cpuid 10.7.0",
@@ -1878,7 +1894,7 @@ checksum = "35b2a4f76ce4b8b16eadc11ccf2e083252d8237c1b589558a49b0183545015bd"
 dependencies = [
  "dyn-stack 0.13.0",
  "gemm-common 0.18.2",
- "num-complex",
+ "num-complex 0.4.6",
  "num-traits",
  "paste",
  "raw-cpuid 11.4.0",
@@ -2111,6 +2127,16 @@ dependencies = [
  "rand 0.9.1",
  "rand_distr",
  "serde",
+]
+
+[[package]]
+name = "hamcrest"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a70d66db6fd5a50b704eb55ce979bc5509d3a919d764bddec92f72a3e06ed7f6"
+dependencies = [
+ "num 0.1.43",
+ "regex 0.2.11",
 ]
 
 [[package]]
@@ -2781,7 +2807,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "882ed72dce9365842bf196bdeedf5055305f11fc8c03dee7bb0194a6cad34841"
 dependencies = [
  "matrixmultiply",
- "num-complex",
+ "num-complex 0.4.6",
  "num-integer",
  "num-traits",
  "portable-atomic",
@@ -2851,16 +2877,43 @@ dependencies = [
 
 [[package]]
 name = "num"
+version = "0.1.43"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c9bdb1fb680e609c2e0930c1866cafdd0be7e7c7a1ecf92aec71ed8d99d3e133"
+dependencies = [
+ "num-bigint 0.1.45",
+ "num-complex 0.1.44",
+ "num-integer",
+ "num-iter",
+ "num-rational 0.1.43",
+ "num-traits",
+]
+
+[[package]]
+name = "num"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "35bd024e8b2ff75562e5f34e7f4905839deb4b22955ef5e73d2fea1b9813cb23"
 dependencies = [
- "num-bigint",
- "num-complex",
+ "num-bigint 0.4.6",
+ "num-complex 0.4.6",
  "num-integer",
  "num-iter",
- "num-rational",
+ "num-rational 0.4.2",
  "num-traits",
+]
+
+[[package]]
+name = "num-bigint"
+version = "0.1.45"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1357c02fa1d647dd0769ef5bc2bf86281f064231c09c192a46c71246e3ec9258"
+dependencies = [
+ "autocfg",
+ "num-integer",
+ "num-traits",
+ "rand 0.4.6",
+ "rustc-serialize",
 ]
 
 [[package]]
@@ -2871,6 +2924,17 @@ checksum = "a5e44f723f1133c9deac646763579fdb3ac745e418f2a7af9cd0c431da1f20b9"
 dependencies = [
  "num-integer",
  "num-traits",
+]
+
+[[package]]
+name = "num-complex"
+version = "0.1.44"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "17cf384bef067563c44d41028840dbecc7f06f2aa5d7881a81dfb0fc7c72f202"
+dependencies = [
+ "autocfg",
+ "num-traits",
+ "rustc-serialize",
 ]
 
 [[package]]
@@ -2922,11 +2986,24 @@ dependencies = [
 
 [[package]]
 name = "num-rational"
+version = "0.1.43"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fbfff0773e8a07fb033d726b9ff1327466709820788e5298afce4d752965ff1e"
+dependencies = [
+ "autocfg",
+ "num-bigint 0.1.45",
+ "num-integer",
+ "num-traits",
+ "rustc-serialize",
+]
+
+[[package]]
+name = "num-rational"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f83d14da390562dca69fc84082e73e548e1ad308d24accdedd2720017cb37824"
 dependencies = [
- "num-bigint",
+ "num-bigint 0.4.6",
  "num-integer",
  "num-traits",
 ]
@@ -3229,7 +3306,7 @@ checksum = "a0a01a0dc67cf4558d279f0c25b0962bd08fc6dec0137699eae304103e882fe6"
 dependencies = [
  "bytemuck",
  "libm",
- "num-complex",
+ "num-complex 0.4.6",
  "reborrow",
 ]
 
@@ -3242,7 +3319,7 @@ dependencies = [
  "bytemuck",
  "cfg-if",
  "libm",
- "num-complex",
+ "num-complex 0.4.6",
  "reborrow",
  "version_check",
 ]
@@ -3307,6 +3384,19 @@ dependencies = [
 
 [[package]]
 name = "rand"
+version = "0.4.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "552840b97013b1a26992c11eac34bdd778e464601a4c2054b5f0bff7c6761293"
+dependencies = [
+ "fuchsia-cprng",
+ "libc",
+ "rand_core 0.3.1",
+ "rdrand",
+ "winapi",
+]
+
+[[package]]
+name = "rand"
 version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34af8d1a0e25924bc5b7c43c079c942339d8f0a8b57c39049bef581b46327404"
@@ -3345,6 +3435,21 @@ dependencies = [
  "ppv-lite86",
  "rand_core 0.9.1",
 ]
+
+[[package]]
+name = "rand_core"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7a6fdeb83b075e8266dcc8762c22776f6877a63111121f5f8c7411e5be7eed4b"
+dependencies = [
+ "rand_core 0.4.2",
+]
+
+[[package]]
+name = "rand_core"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9c33a3c44ca05fa6f1807d8e6743f3824e8509beca625669633be0acbdf509dc"
 
 [[package]]
 name = "rand_core"
@@ -3504,6 +3609,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rdrand"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "678054eb77286b51581ba43620cc911abf02758c91f93f479767aed0f90458b2"
+dependencies = [
+ "rand_core 0.3.1",
+]
+
+[[package]]
 name = "reborrow"
 version = "0.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3542,14 +3656,27 @@ dependencies = [
 
 [[package]]
 name = "regex"
+version = "0.2.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9329abc99e39129fcceabd24cf5d85b4671ef7c29c50e972bc5afe32438ec384"
+dependencies = [
+ "aho-corasick 0.6.10",
+ "memchr",
+ "regex-syntax 0.5.6",
+ "thread_local 0.3.6",
+ "utf8-ranges",
+]
+
+[[package]]
+name = "regex"
 version = "1.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b544ef1b4eac5dc2db33ea63606ae9ffcfac26c1416a2806ae0bf5f56b201191"
 dependencies = [
- "aho-corasick",
+ "aho-corasick 1.1.3",
  "memchr",
  "regex-automata",
- "regex-syntax",
+ "regex-syntax 0.8.5",
 ]
 
 [[package]]
@@ -3558,9 +3685,18 @@ version = "0.4.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "809e8dc61f6de73b46c85f4c96486310fe304c434cfa43669d7b40f711150908"
 dependencies = [
- "aho-corasick",
+ "aho-corasick 1.1.3",
  "memchr",
- "regex-syntax",
+ "regex-syntax 0.8.5",
+]
+
+[[package]]
+name = "regex-syntax"
+version = "0.5.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7d707a4fa2637f2dca2ef9fd02225ec7661fe01a53623c1e6515b6916511f7a7"
+dependencies = [
+ "ucd-util",
 ]
 
 [[package]]
@@ -3646,7 +3782,7 @@ dependencies = [
  "proc-macro-crate",
  "proc-macro2",
  "quote",
- "regex",
+ "regex 1.11.1",
  "relative-path",
  "rustc_version",
  "syn",
@@ -3672,6 +3808,12 @@ name = "rustc-hash"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
+
+[[package]]
+name = "rustc-serialize"
+version = "0.3.25"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe834bc780604f4674073badbad26d7219cadfb4a2275802db12cbae17498401"
 
 [[package]]
 name = "rustc_version"
@@ -3788,7 +3930,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2ed72fbaf78e6f2d41744923916966c4fbe3d7c74e3037a8ee482f1115572603"
 dependencies = [
  "lazy_static",
- "regex",
+ "regex 1.11.1",
 ]
 
 [[package]]
@@ -3797,7 +3939,7 @@ version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bc984f4f9ceb736a7bb755c3e3bd17dc56370af2600c9780dcc48c66453da34d"
 dependencies = [
- "regex",
+ "regex 1.11.1",
 ]
 
 [[package]]
@@ -4288,6 +4430,15 @@ dependencies = [
 
 [[package]]
 name = "thread_local"
+version = "0.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c6b53e329000edc2b34dbe8545fd20e55a333362d0a321909685a19bd28c3f1b"
+dependencies = [
+ "lazy_static",
+]
+
+[[package]]
+name = "thread_local"
 version = "1.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b9ef9bad013ada3808854ceac7b46812a6465ba368859a37e2100283d2d719c"
@@ -4478,7 +4629,7 @@ dependencies = [
  "nu-ansi-term",
  "sharded-slab",
  "smallvec",
- "thread_local",
+ "thread_local 1.1.8",
  "tracing-core",
  "tracing-log",
 ]
@@ -4490,6 +4641,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42ff0bf0c66b8238c6f3b578df37d0b7848e55df8577b3f74f92a69acceeb825"
 
 [[package]]
+name = "ucd-util"
+version = "0.1.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "abd2fc5d32b590614af8b0a20d837f32eca055edd0bbead59a9cfe80858be003"
+
+[[package]]
 name = "ug"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4499,7 +4656,7 @@ dependencies = [
  "half",
  "libloading",
  "memmap2",
- "num",
+ "num 0.4.3",
  "num-traits",
  "num_cpus",
  "rayon",
@@ -4606,6 +4763,12 @@ name = "utf16_iter"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c8232dd3cdaed5356e0f716d285e4b40b932ac434100fe9b7e0e8e935b9e6246"
+
+[[package]]
+name = "utf8-ranges"
+version = "1.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7fcfc827f90e53a02eaef5e535ee14266c1d569214c6aa70133a624d8a3164ba"
 
 [[package]]
 name = "utf8_iter"
