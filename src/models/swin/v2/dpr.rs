@@ -98,6 +98,31 @@ impl DropPathRateDepthTable {
 
         progressive_dpr1[start..end].to_vec()
     }
+
+    /// Returns the `layer_dprs` for all layers as a vector of vectors.
+    pub fn layer_rates(&self) -> Vec<Vec<f64>> {
+        (0..self.num_layers()).map(|i| self.layer_dprs(i)).collect()
+    }
+
+    /// Returns the progressive drop path rates for layer with the given depths.
+    ///
+    /// This is a convenience function that creates a new `DropPathRateDepthTable` and returns the layer rates.
+    ///
+    /// # Arguments
+    ///
+    /// * `drop_path_rate`: The final drop path rate to be achieved.
+    /// * `layer_depths`: A slice of layer depths, where each element represents the depth of a specific layer.
+    ///
+    /// # Returns
+    ///
+    /// A vector of vectors, where each inner vector contains the progressive drop path rates for a specific layer.
+    pub fn dpr_layer_rates(
+        drop_path_rate: f64,
+        layer_depths: &[usize],
+    ) -> Vec<Vec<f64>> {
+        let dpr_table = DropPathRateDepthTable::new(drop_path_rate, layer_depths);
+        dpr_table.layer_rates()
+    }
 }
 
 #[cfg(test)]
@@ -132,5 +157,24 @@ mod tests {
         assert_close_to_vec(&dpr_table.layer_dprs(0), &[0.0, 0.0125], 0.001);
 
         assert_close_to_vec(&dpr_table.layer_dprs(1), &[0.025, 0.0375, 0.05], 0.001);
+
+        let rates = dpr_table.layer_rates();
+
+        assert_eq!(rates.len(), 3);
+        assert_close_to_vec(&rates[0], &[0.0, 0.0125], 0.001);
+        assert_close_to_vec(&rates[1], &[0.025, 0.0375, 0.05], 0.001);
+        assert_close_to_vec(&rates[2], &[0.0625, 0.075, 0.0875, 0.1], 0.001);
+    }
+
+    #[test]
+    fn test_dpr_layer_rates() {
+        let drop_path_rate = 0.1;
+        let layer_depths = vec![2, 3, 4];
+        let rates = DropPathRateDepthTable::dpr_layer_rates(drop_path_rate, &layer_depths);
+
+        assert_eq!(rates.len(), 3);
+        assert_close_to_vec(&rates[0], &[0.0, 0.0125], 0.001);
+        assert_close_to_vec(&rates[1], &[0.025, 0.0375, 0.05], 0.001);
+        assert_close_to_vec(&rates[2], &[0.0625, 0.075, 0.0875, 0.1], 0.001);
     }
 }
