@@ -1,5 +1,5 @@
 use crate::models::swin::v2::dpr::DropPathRateDepthTable;
-use crate::models::swin::v2::layer::BasicLayer;
+use crate::models::swin::v2::layer::{BasicLayer, BasicLayerConfig};
 use crate::models::swin::v2::patch::{PatchEmbed, PatchEmbedConfig, PatchEmbedMeta};
 use burn::config::Config;
 use burn::module::{Module, Param};
@@ -186,8 +186,6 @@ impl SwinTransformerV2Config {
         self,
         device: &B::Device,
     ) -> SwinTransformerV2<B> {
-        let num_layers = self.layer_configs.len();
-
         let patch_embed: PatchEmbed<B> = PatchEmbedConfig::new(
             self.input_resolution,
             self.patch_size,
@@ -215,22 +213,60 @@ impl SwinTransformerV2Config {
 
         let pos_drop = DropoutConfig::new(self.drop_rate).init();
 
+        let depths = self
+            .layer_configs
+            .iter()
+            .map(|c| c.depth)
+            .collect::<Vec<usize>>();
+        let num_heads = self
+            .layer_configs
+            .iter()
+            .map(|c| c.num_heads)
+            .collect::<Vec<usize>>();
+
         // Stochastic depth delay rule
-        let dpr_layer_rates = DropPathRateDepthTable::dpr_layer_rates(
-            self.drop_path_rate,
-            &self
-                .layer_configs
-                .iter()
-                .map(|c| c.depth)
-                .collect::<Vec<usize>>(),
-        );
+        let dpr_layer_rates = DropPathRateDepthTable::dpr_layer_rates(self.drop_path_rate, &depths);
 
         let norm: LayerNorm<B> = LayerNormConfig::new(self.d_embed).init(device);
 
         let avgpool = AdaptiveAvgPool1dConfig::new(1).init();
         let head: Linear<B> = LinearConfig::new(self.d_embed, self.num_classes).init(device);
 
-        unimplemented!()
+        let layers: Vec<BasicLayer<B>> = (0..self.layer_configs.len())
+            .map(|layer_i| {
+                let layer_p = 2usize.pow(layer_i as u32); // Power of 2 for each layer
+
+                let layer_resolution =
+                    [self.input_height() / layer_p, self.input_width() / layer_p];
+
+                let config = BasicLayerConfig::new(
+                    // Double the embedding size for each layer
+                    self.d_embed * layer_p,
+                    layer_resolution,
+                    depths[layer_i],
+                    num_heads[layer_i],
+                    self.window_size,
+                )
+                .with_mlp_ratio(self.mlp_ratio)
+                .with_enable_qkv_bias(self.enable_qkv_bias)
+                .with_drop_path_rates(Some(dpr_layer_rates[layer_i].clone()));
+
+                // TODO: downsample
+
+                config.init::<B>(device)
+            })
+            .collect();
+
+        /// TODO: verify that the incremental layers chain correctly.
+        SwinTransformerV2 {
+            patch_embed,
+            ape,
+            pos_drop,
+            layers,
+            norm,
+            avgpool,
+            head,
+        }
     }
 }
 
@@ -243,4 +279,88 @@ pub struct SwinTransformerV2<B: Backend> {
     pub norm: LayerNorm<B>,
     pub avgpool: AdaptiveAvgPool1d,
     pub head: Linear<B>,
+}
+
+impl<B: Backend> SwinTransformerV2<B> {
+    /// Applies the model to the input image tensor and returns the patch features.
+    ///
+    /// This method computes the spatial features from the input image tensor.
+    ///
+    /// # Arguments
+    ///
+    /// * `input`: A 4D tensor representing the input image with shape `[B, C, H, W]`,
+    ///
+    /// # Returnso
+    ///
+    /// A 3D tensor of shape `[B, L, C]` representing the spatial features extracted from the input image.
+    pub fn patch_features(
+        &self,
+        input: Tensor<B, 4>,
+    ) -> Tensor<B, 3> {
+        let mut x = self.patch_embed.forward(input);
+
+        x = if self.ape.is_some() {
+            let ape = self.ape.as_ref().unwrap();
+            x + ape.val()
+        } else {
+            x
+        };
+
+        x = self.pos_drop.forward(x);
+
+        for layer in &self.layers {
+            x = layer.forward(x);
+        }
+        // B L C
+
+        x = self.norm.forward(x);
+        // B L C
+
+        x
+    }
+
+    /// Applies the model without the final classification head.
+    ///
+    /// This method computes the features from the input image tensor.
+    ///
+    /// # Arguments
+    ///
+    /// * `input`: A 4D tensor representing the input image with shape `[B, C, H, W]`,
+    ///
+    /// # Returns
+    ///
+    /// A 2D tensor of shape `[B, C]` representing the features extracted from the input image.
+    pub fn forward_features(
+        &self,
+        input: Tensor<B, 4>,
+    ) -> Tensor<B, 2> {
+        let x = self.patch_features(input);
+        // B L C
+
+        let x = x.swap_dims(1, 2);
+        // B C L
+
+        let x = self.avgpool.forward(x);
+        // B C 1
+
+        x.flatten::<2>(1, 2)
+        // B C
+    }
+
+    /// Applies the model to the input image tensor and returns the classification logits.
+    ///
+    /// # Arguments
+    ///
+    /// * `input`: A 4D tensor representing the input image with shape `[B, C, H, W]`,
+    ///
+    /// # Returns
+    ///
+    /// A 2D tensor of shape `[B, num_classes]` representing the classification logits.
+    pub fn forward(
+        &self,
+        input: Tensor<B, 4>,
+    ) -> Tensor<B, 2> {
+        let features = self.forward_features(input);
+        self.head.forward(features)
+    }
 }
