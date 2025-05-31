@@ -241,6 +241,9 @@ pub trait PatchEmbedMeta {
         self.input_resolution()[1]
     }
 
+    /// Input feature dimension size.
+    fn d_input(&self) -> usize;
+
     /// The size of each patch.
     fn patch_size(&self) -> usize;
 
@@ -248,12 +251,6 @@ pub trait PatchEmbedMeta {
     fn patches_resolution(&self) -> [usize; 2] {
         let [h, w] = self.input_resolution();
         [h / self.patch_size(), w / self.patch_size()]
-    }
-
-    /// Total number of patches.
-    fn num_patches(&self) -> usize {
-        let [h, w] = self.patches_resolution();
-        h * w
     }
 
     /// Height of the image, measured in patches.
@@ -266,8 +263,11 @@ pub trait PatchEmbedMeta {
         self.patches_resolution()[1]
     }
 
-    /// Input feature dimension size.
-    fn d_input(&self) -> usize;
+    /// Total number of patches.
+    fn num_patches(&self) -> usize {
+        let [h, w] = self.patches_resolution();
+        h * w
+    }
 
     /// Output feature dimension size.
     fn d_output(&self) -> usize {

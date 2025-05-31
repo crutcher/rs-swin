@@ -238,8 +238,11 @@ impl SwinTransformerV2Config {
             .map(|layer_i| {
                 let layer_p = 2usize.pow(layer_i as u32); // Power of 2 for each layer
 
-                let layer_resolution =
-                    [self.input_height() / layer_p, self.input_width() / layer_p];
+                let layer_resolution = [
+                    patch_embed.patches_height() / layer_p,
+                    patch_embed.patches_width() / layer_p,
+                ];
+                println!("{layer_i}: {:?}", layer_resolution);
 
                 let config = BasicLayerConfig::new(
                     // Double the embedding size for each layer
@@ -440,12 +443,14 @@ mod tests {
     #[allow(unused_variables)]
     fn test_forward() {
         let b = 2;
-        let patch_size = 4;
-        let window_size = 3;
-
-        let h = patch_size * window_size * 3;
-        let w = patch_size * window_size * 4;
         let d_input = 3;
+
+        let patch_size = 4;
+        let window_size = 7;
+        let last_h = window_size * 2;
+        let last_w = window_size * 2;
+        let h = last_h * 2usize.pow(3) * patch_size;
+        let w = last_w * 2usize.pow(3) * patch_size;
 
         let num_classes = 12;
 

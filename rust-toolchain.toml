@@ -3,5 +3,4 @@ channel = "stable"
 components = [
     "rustfmt",
     "clippy",
-    "cargo-make",
 ]

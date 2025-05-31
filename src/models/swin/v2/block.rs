@@ -209,8 +209,9 @@ impl TransformerBlockConfig {
         let [h, w] = self.input_resolution;
         assert!(
             h % self.window_size == 0 && w % self.window_size == 0,
-            "Input resolution must be divisible by window size: {:?}",
-            self.input_resolution
+            "Input resolution {:?} must be divisible by window size: {:?}",
+            self.input_resolution,
+            self.window_size
         );
 
         let hidden_dim = (self.d_input as f64 * self.mlp_ratio) as usize;
