@@ -1,6 +1,8 @@
 use crate::models::swin::v2::dpr::DropPathRateDepthTable;
-use crate::models::swin::v2::layer::{BasicLayer, BasicLayerConfig};
-use crate::models::swin::v2::patch::{PatchEmbed, PatchEmbedConfig, PatchEmbedMeta};
+use crate::models::swin::v2::layer::{BasicLayer, BasicLayerConfig, BasicLayerMeta};
+use crate::models::swin::v2::patch::{
+    PatchEmbed, PatchEmbedConfig, PatchEmbedMeta, PatchMerging, PatchMergingConfig,
+};
 use burn::config::Config;
 use burn::module::{Module, Param};
 use burn::nn::pool::{AdaptiveAvgPool1d, AdaptiveAvgPool1dConfig};
@@ -29,11 +31,11 @@ pub trait SwinTransformerV2Meta {
         self.input_resolution()[1]
     }
 
-    /// The patch size of the input image.
-    fn patch_size(&self) -> usize;
-
     /// The number of input channels.
     fn d_input(&self) -> usize;
+
+    /// The patch size of the input image.
+    fn patch_size(&self) -> usize;
 
     /// Number of classes.
     fn num_classes(&self) -> usize;
@@ -232,7 +234,7 @@ impl SwinTransformerV2Config {
         let avgpool = AdaptiveAvgPool1dConfig::new(1).init();
         let head: Linear<B> = LinearConfig::new(self.d_embed, self.num_classes).init(device);
 
-        let layers: Vec<BasicLayer<B>> = (0..self.layer_configs.len())
+        let basic_layers: Vec<BasicLayer<B>> = (0..self.layer_configs.len())
             .map(|layer_i| {
                 let layer_p = 2usize.pow(layer_i as u32); // Power of 2 for each layer
 
@@ -251,18 +253,25 @@ impl SwinTransformerV2Config {
                 .with_enable_qkv_bias(self.enable_qkv_bias)
                 .with_drop_path_rates(Some(dpr_layer_rates[layer_i].clone()));
 
-                // TODO: downsample
-
                 config.init::<B>(device)
             })
             .collect();
 
-        /// TODO: verify that the incremental layers chain correctly.
+        let merge_layers: Vec<PatchMerging<B>> = (0..self.layer_configs.len() - 1)
+            .map(|layer_i| {
+                let basic_layer = &basic_layers[layer_i];
+
+                PatchMergingConfig::new(basic_layer.input_resolution(), basic_layer.d_input())
+                    .init(device)
+            })
+            .collect();
+
         SwinTransformerV2 {
             patch_embed,
             ape,
             pos_drop,
-            layers,
+            basic_layers,
+            merge_layers,
             norm,
             avgpool,
             head,
@@ -275,7 +284,8 @@ pub struct SwinTransformerV2<B: Backend> {
     pub patch_embed: PatchEmbed<B>,
     pub ape: Option<Param<Tensor<B, 3>>>,
     pub pos_drop: Dropout,
-    pub layers: Vec<BasicLayer<B>>,
+    pub basic_layers: Vec<BasicLayer<B>>,
+    pub merge_layers: Vec<PatchMerging<B>>,
     pub norm: LayerNorm<B>,
     pub avgpool: AdaptiveAvgPool1d,
     pub head: Linear<B>,
@@ -308,7 +318,15 @@ impl<B: Backend> SwinTransformerV2<B> {
 
         x = self.pos_drop.forward(x);
 
-        for layer in &self.layers {
+        for layer_i in 0..self.basic_layers.len() {
+            if layer_i > 0 {
+                x = self.merge_layers[layer_i - 1].forward(x);
+            }
+
+            x = self.basic_layers[layer_i].forward(x);
+        }
+
+        for layer in &self.basic_layers {
             x = layer.forward(x);
         }
         // B L C
@@ -362,5 +380,98 @@ impl<B: Backend> SwinTransformerV2<B> {
     ) -> Tensor<B, 2> {
         let features = self.forward_features(input);
         self.head.forward(features)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use burn::backend::NdArray;
+    use burn::tensor::Distribution;
+
+    #[test]
+    fn test_swin_transformer_v2_config() {
+        let config = SwinTransformerV2Config {
+            input_resolution: [224, 224],
+            patch_size: 4,
+            d_input: 3,
+            num_classes: 1000,
+            d_embed: 96,
+            layer_configs: vec![
+                LayerConfig {
+                    depth: 2,
+                    num_heads: 3,
+                },
+                LayerConfig {
+                    depth: 2,
+                    num_heads: 6,
+                },
+                LayerConfig {
+                    depth: 18,
+                    num_heads: 12,
+                },
+            ],
+            window_size: 7,
+            mlp_ratio: 4.0,
+            enable_qkv_bias: true,
+            drop_rate: 0.0,
+            attn_drop_rate: 0.0,
+            drop_path_rate: 0.1,
+            enable_ape: true,
+            enable_patch_norm: true,
+        };
+
+        assert_eq!(config.input_resolution, [224, 224]);
+        assert_eq!(config.patch_size, 4);
+        assert_eq!(config.d_input, 3);
+        assert_eq!(config.num_classes, 1000);
+        assert_eq!(config.d_embed, 96);
+        assert_eq!(config.window_size, 7);
+        assert_eq!(config.mlp_ratio, 4.0);
+        assert!(config.enable_qkv_bias);
+        assert_eq!(config.drop_rate, 0.0);
+        assert_eq!(config.attn_drop_rate, 0.0);
+        assert_eq!(config.drop_path_rate, 0.1);
+        assert!(config.enable_ape);
+        assert!(config.enable_patch_norm);
+    }
+
+    #[test]
+    #[allow(unused_variables)]
+    fn test_forward() {
+        let b = 2;
+        let patch_size = 4;
+        let window_size = 3;
+
+        let h = patch_size * window_size * 3;
+        let w = patch_size * window_size * 4;
+        let d_input = 3;
+
+        let num_classes = 12;
+
+        let d_embed = (d_input * patch_size * patch_size) / 2;
+
+        let config = SwinTransformerV2Config::new(
+            [h, w],
+            patch_size,
+            d_input,
+            num_classes,
+            d_embed,
+            vec![
+                LayerConfig::new(2, 3),
+                LayerConfig::new(2, 6),
+                LayerConfig::new(6, 12),
+                LayerConfig::new(2, 24),
+            ],
+        )
+        .with_window_size(window_size);
+
+        let device = Default::default();
+        let model: SwinTransformerV2<NdArray> = config.init(&device);
+
+        let distribution = Distribution::Normal(0.0, 0.02);
+        let input = Tensor::<NdArray, 4>::random([b, d_input, h, w], distribution, &device);
+
+        let output = model.forward(input);
     }
 }

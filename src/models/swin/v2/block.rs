@@ -63,11 +63,6 @@ pub trait TransformerBlockMeta {
     /// Get the input dimension size.
     fn d_input(&self) -> usize;
 
-    /// Get the output dimension size.
-    fn d_output(&self) -> usize {
-        self.d_input()
-    }
-
     /// Get the input resolution.
     fn input_resolution(&self) -> [usize; 2];
 
@@ -79,6 +74,26 @@ pub trait TransformerBlockMeta {
     /// Get the input width.
     fn input_width(&self) -> usize {
         self.input_resolution()[1]
+    }
+
+    /// Get the output dimension size.
+    fn d_output(&self) -> usize {
+        self.d_input()
+    }
+
+    /// Get the output resolution.
+    fn output_resolution(&self) -> [usize; 2] {
+        self.input_resolution()
+    }
+
+    /// Get the output height.
+    fn output_height(&self) -> usize {
+        self.input_height()
+    }
+
+    /// Get the output width.
+    fn output_width(&self) -> usize {
+        self.input_width()
     }
 
     /// Get the number of attention heads.
@@ -342,7 +357,17 @@ impl<B: Backend> TransformerBlock<B> {
         });
         // b, h * w, c
 
-        self.with_skip(x, |x| self.norm2.forward(self.block_mlp.forward(x)))
+        let x = self.with_skip(x, |x| self.norm2.forward(self.block_mlp.forward(x)));
+
+        assert_eq!(
+            l,
+            h * w,
+            "Expected input shape (B, H ({}) * W ({}), D), but got {:?}",
+            h,
+            w,
+            x.dims()
+        );
+        x
     }
 
     /// Applies an inner function under conditional stochastic residual/depth-skip connection.
