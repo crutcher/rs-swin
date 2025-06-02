@@ -249,24 +249,22 @@ pub trait PatchEmbedMeta {
 
     /// Image resolution, measured in patches.
     fn patches_resolution(&self) -> [usize; 2] {
-        let [h, w] = self.input_resolution();
-        [h / self.patch_size(), w / self.patch_size()]
+        [self.patches_height(), self.patches_width()]
     }
 
     /// Height of the image, measured in patches.
     fn patches_height(&self) -> usize {
-        self.patches_resolution()[0]
+        self.input_height() / self.patch_size()
     }
 
     /// Width of the image, measured in patches.
     fn patches_width(&self) -> usize {
-        self.patches_resolution()[1]
+        self.input_width() / self.patch_size()
     }
 
     /// Total number of patches.
     fn num_patches(&self) -> usize {
-        let [h, w] = self.patches_resolution();
-        h * w
+        self.patches_height() * self.patches_width()
     }
 
     /// Output feature dimension size.
