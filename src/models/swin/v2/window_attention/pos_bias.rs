@@ -1,4 +1,4 @@
-use crate::models::swin::v2::attention::{
+use crate::models::swin::v2::window_attention::{
     window_attention_relative_position_index, window_log1p_relative_offset_grid,
 };
 use burn::config::Config;
@@ -233,7 +233,7 @@ impl<B: Backend> ContinuousPositionBiasMlp<B> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::swin::v2::attention::{
+    use crate::models::swin::v2::window_attention::{
         window_attention_relative_position_index, window_log1p_relative_offset_grid,
     };
     use burn::backend::NdArray;

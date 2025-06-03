@@ -1,11 +1,10 @@
-mod grid;
-mod mask;
-mod rpb;
-pub mod swmsa;
+mod attention_mask;
+mod pos_bias;
+mod pos_grid;
 
-pub use grid::*;
-pub use mask::*;
-pub use rpb::*;
+pub use attention_mask::*;
+pub use pos_bias::*;
+pub use pos_grid::*;
 
 use crate::compat::linalg::l2_normalize;
 use burn::config::Config;

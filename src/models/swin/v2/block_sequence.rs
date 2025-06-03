@@ -1,12 +1,13 @@
-use crate::models::swin::v2::block::{
-    SwinTransformerBlock, SwinTransformerBlockConfig, SwinTransformerBlockMeta,
+use crate::models::swin::v2::swin_block::{
+    ShiftedWindowTransformerBlock, ShiftedWindowTransformerBlockConfig,
+    ShiftedWindowTransformerBlockMeta,
 };
 use burn::config::Config;
 use burn::module::Module;
 use burn::prelude::{Backend, Tensor};
 
 /// Common introspection train for BasicLayer.
-pub trait SwinBlockSequenceMeta {
+pub trait StochasticDepthTransformerBlockSequenceMeta {
     /// Returns the number of input channels for the layer.`
     fn d_input(&self) -> usize;
 
@@ -54,7 +55,7 @@ pub trait SwinBlockSequenceMeta {
 
 /// Config for BasicLayer.
 #[derive(Config, Debug)]
-pub struct SwinBlockSequenceConfig {
+pub struct StochasticDepthTransformerBlockSequenceConfig {
     /// Number of input channels.
     pub d_input: usize,
 
@@ -93,7 +94,7 @@ pub struct SwinBlockSequenceConfig {
     pub drop_path_rates: Option<Vec<f64>>,
 }
 
-impl SwinBlockSequenceMeta for SwinBlockSequenceConfig {
+impl StochasticDepthTransformerBlockSequenceMeta for StochasticDepthTransformerBlockSequenceConfig {
     fn d_input(&self) -> usize {
         self.d_input
     }
@@ -141,21 +142,25 @@ impl SwinBlockSequenceMeta for SwinBlockSequenceConfig {
     }
 }
 
-impl SwinBlockSequenceConfig {
+impl StochasticDepthTransformerBlockSequenceConfig {
     /// Creates a common block configuration for the sequence.
     #[must_use]
-    pub fn common_block_config(&self) -> SwinTransformerBlockConfig {
-        SwinTransformerBlockConfig::new(self.d_input, self.input_resolution, self.num_heads)
-            .with_window_size(self.window_size)
-            .with_mlp_ratio(self.mlp_ratio)
-            .with_enable_qkv_bias(self.enable_qkv_bias)
-            .with_drop_rate(self.drop_rate)
-            .with_attn_drop_rate(self.attn_drop_rate)
+    pub fn common_block_config(&self) -> ShiftedWindowTransformerBlockConfig {
+        ShiftedWindowTransformerBlockConfig::new(
+            self.d_input,
+            self.input_resolution,
+            self.num_heads,
+        )
+        .with_window_size(self.window_size)
+        .with_mlp_ratio(self.mlp_ratio)
+        .with_enable_qkv_bias(self.enable_qkv_bias)
+        .with_drop_rate(self.drop_rate)
+        .with_attn_drop_rate(self.attn_drop_rate)
     }
 
     /// Returns the block configs for each child.
     #[must_use]
-    pub fn block_configs(&self) -> Vec<SwinTransformerBlockConfig> {
+    pub fn block_configs(&self) -> Vec<ShiftedWindowTransformerBlockConfig> {
         let drop_path_rates = self.drop_path_rates();
         assert_eq!(drop_path_rates.len(), self.depth);
 
@@ -185,8 +190,8 @@ impl SwinBlockSequenceConfig {
     pub fn init<B: Backend>(
         &self,
         device: &B::Device,
-    ) -> SwinBlockSequence<B> {
-        SwinBlockSequence {
+    ) -> StochasticDepthTransformerBlockSequence<B> {
+        StochasticDepthTransformerBlockSequence {
             blocks: self
                 .block_configs()
                 .into_iter()
@@ -202,11 +207,13 @@ impl SwinBlockSequenceConfig {
 ///
 /// Applies a sequence of shift-window-alternating ``SwinTransformerBlock`` modules.
 #[derive(Module, Debug)]
-pub struct SwinBlockSequence<B: Backend> {
-    blocks: Vec<SwinTransformerBlock<B>>,
+pub struct StochasticDepthTransformerBlockSequence<B: Backend> {
+    blocks: Vec<ShiftedWindowTransformerBlock<B>>,
 }
 
-impl<B: Backend> SwinBlockSequenceMeta for SwinBlockSequence<B> {
+impl<B: Backend> StochasticDepthTransformerBlockSequenceMeta
+    for StochasticDepthTransformerBlockSequence<B>
+{
     fn d_input(&self) -> usize {
         self.blocks[0].d_input()
     }
@@ -248,7 +255,7 @@ impl<B: Backend> SwinBlockSequenceMeta for SwinBlockSequence<B> {
     }
 }
 
-impl<B: Backend> SwinBlockSequence<B> {
+impl<B: Backend> StochasticDepthTransformerBlockSequence<B> {
     /// Applies the layer to the input tensor.
     ///
     /// # Arguments

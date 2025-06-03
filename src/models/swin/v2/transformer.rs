@@ -1,10 +1,10 @@
-use crate::models::swin::v2::dpr::DropPathRateDepthTable;
-use crate::models::swin::v2::layer::{
-    SwinBlockSequence, SwinBlockSequenceConfig, SwinBlockSequenceMeta,
+use crate::models::swin::v2::block_sequence::{
+    StochasticDepthTransformerBlockSequence, StochasticDepthTransformerBlockSequenceConfig,
+    StochasticDepthTransformerBlockSequenceMeta,
 };
-use crate::models::swin::v2::patch::{
-    PatchEmbed, PatchEmbedConfig, PatchEmbedMeta, PatchMerging, PatchMergingConfig,
-};
+use crate::models::swin::v2::drop_path_rate_table::DropPathRateDepthTable;
+use crate::models::swin::v2::patch_embed::{PatchEmbed, PatchEmbedConfig, PatchEmbedMeta};
+use crate::models::swin::v2::patch_merge::{PatchMerging, PatchMergingConfig};
 use burn::config::Config;
 use burn::module::{Module, Param};
 use burn::nn::pool::{AdaptiveAvgPool1d, AdaptiveAvgPool1dConfig};
@@ -191,7 +191,7 @@ pub struct SwinTransformerV2Plan {
     pub layer_resolutions: Vec<[usize; 2]>,
     pub layer_dims: Vec<usize>,
 
-    pub block_configs: Vec<SwinBlockSequenceConfig>,
+    pub block_configs: Vec<StochasticDepthTransformerBlockSequenceConfig>,
 }
 
 impl SwinTransformerV2Config {
@@ -262,26 +262,27 @@ impl SwinTransformerV2Config {
                 .collect::<Vec<usize>>(),
         );
 
-        let block_configs: Vec<SwinBlockSequenceConfig> = (0..self.layer_configs.len())
-            .map(|layer_i| {
-                let cfg = &self.layer_configs[layer_i];
+        let block_configs: Vec<StochasticDepthTransformerBlockSequenceConfig> =
+            (0..self.layer_configs.len())
+                .map(|layer_i| {
+                    let cfg = &self.layer_configs[layer_i];
 
-                let layer_resolution = layer_resolutions[layer_i];
-                let layer_dim = layer_dims[layer_i];
+                    let layer_resolution = layer_resolutions[layer_i];
+                    let layer_dim = layer_dims[layer_i];
 
-                SwinBlockSequenceConfig::new(
-                    // Double the embedding size for each layer
-                    layer_dim,
-                    layer_resolution,
-                    cfg.depth,
-                    cfg.num_heads,
-                    self.window_size,
-                )
-                .with_mlp_ratio(self.mlp_ratio)
-                .with_enable_qkv_bias(self.enable_qkv_bias)
-                .with_drop_path_rates(Some(dpr_layer_rates[layer_i].clone()))
-            })
-            .collect();
+                    StochasticDepthTransformerBlockSequenceConfig::new(
+                        // Double the embedding size for each layer
+                        layer_dim,
+                        layer_resolution,
+                        cfg.depth,
+                        cfg.num_heads,
+                        self.window_size,
+                    )
+                    .with_mlp_ratio(self.mlp_ratio)
+                    .with_enable_qkv_bias(self.enable_qkv_bias)
+                    .with_drop_path_rates(Some(dpr_layer_rates[layer_i].clone()))
+                })
+                .collect();
 
         Ok(SwinTransformerV2Plan {
             patch_config,
@@ -316,15 +317,16 @@ impl SwinTransformerV2Config {
             None
         };
 
-        let grid_swin_layers: Vec<SwinBlockSequence<B>> = plan
-            .block_configs
-            .iter()
-            .map(|config| config.init::<B>(device))
-            .collect();
+        let grid_transformer_block_sequences: Vec<StochasticDepthTransformerBlockSequence<B>> =
+            plan.block_configs
+                .iter()
+                .map(|config| config.init::<B>(device))
+                .collect();
 
-        let grid_merge_layers: Vec<PatchMerging<B>> = (0..grid_swin_layers.len() - 1)
+        let grid_merge_layers: Vec<PatchMerging<B>> = (0..grid_transformer_block_sequences.len()
+            - 1)
             .map(|layer_i| {
-                let block = &grid_swin_layers[layer_i];
+                let block = &grid_transformer_block_sequences[layer_i];
                 PatchMergingConfig::new(block.input_resolution(), block.d_input()).init(device)
             })
             .collect();
@@ -335,7 +337,7 @@ impl SwinTransformerV2Config {
             patch_embed,
             patch_ape,
             grid_input_dropout: DropoutConfig::new(self.drop_rate).init(),
-            grid_swin_layers,
+            grid_transformer_block_sequences,
             grid_merge_layers,
             grid_output_norm: LayerNormConfig::new(grid_output_features).init(device),
             grid_output_features,
@@ -350,7 +352,7 @@ pub struct SwinTransformerV2<B: Backend> {
     pub patch_embed: PatchEmbed<B>,
     pub patch_ape: Option<Param<Tensor<B, 3>>>,
     pub grid_input_dropout: Dropout,
-    pub grid_swin_layers: Vec<SwinBlockSequence<B>>,
+    pub grid_transformer_block_sequences: Vec<StochasticDepthTransformerBlockSequence<B>>,
     pub grid_merge_layers: Vec<PatchMerging<B>>,
     pub grid_output_norm: LayerNorm<B>,
     pub grid_output_features: usize,
@@ -383,12 +385,12 @@ impl<B: Backend> SwinTransformerV2<B> {
     ) -> Tensor<B, 3> {
         let mut x = self.grid_input_dropout.forward(input);
 
-        for layer_i in 0..self.grid_swin_layers.len() {
+        for layer_i in 0..self.grid_transformer_block_sequences.len() {
             if layer_i > 0 {
                 x = self.grid_merge_layers[layer_i - 1].forward(x);
             }
 
-            x = self.grid_swin_layers[layer_i].forward(x);
+            x = self.grid_transformer_block_sequences[layer_i].forward(x);
         }
         // B L C
 
