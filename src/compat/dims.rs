@@ -14,6 +14,7 @@
 ///
 /// * If `wrap_scalar` is false and the tensor has no dimensions.
 /// * If the dimension index is out of range.
+#[must_use]
 pub fn canonicalize_dim(
     idx: isize,
     rank: usize,
@@ -56,6 +57,7 @@ pub fn canonicalize_dim(
 /// ## Returns
 ///
 /// The positive wrapped dimension index.
+#[must_use]
 pub fn wrap_idx(
     idx: isize,
     size: usize,
@@ -102,6 +104,7 @@ pub fn canonicalize_dims(
 /// ## Returns
 ///
 /// True if the permutation is valid, false otherwise.
+#[must_use]
 pub fn is_valid_permutation(
     perm: &[usize],
     rank: usize,
@@ -134,6 +137,7 @@ pub fn is_valid_permutation(
 /// ## Panics
 ///
 /// * If the permutation is invalid.
+#[must_use]
 pub fn canonicalize_permutation(
     perm: &[isize],
     rank: usize,
@@ -182,18 +186,18 @@ mod tests {
     #[test]
     #[should_panic = "Dimension specified as 0 but tensor has no dimensions"]
     fn test_canonicalize_error_no_dims() {
-        canonicalize_dim(0, 0, false);
+        let _d = canonicalize_dim(0, 0, false);
     }
 
     #[test]
     #[should_panic = "Dimension out of range (expected to be in range of [-3, 2], but got 3)"]
     fn test_canonicalize_error_too_big() {
-        canonicalize_dim(3, 3, false);
+        let _d = canonicalize_dim(3, 3, false);
     }
     #[test]
     #[should_panic = "Dimension out of range (expected to be in range of [-3, 2], but got -4)"]
     fn test_canonicalize_error_too_small() {
-        canonicalize_dim(-4, 3, false);
+        let _d = canonicalize_dim(-4, 3, false);
     }
 
     #[test]
@@ -219,7 +223,7 @@ mod tests {
     fn test_canonicalize_permutation_error_too_short() {
         let rank = 3;
         let perm = vec![0, 1];
-        canonicalize_permutation(&perm, rank);
+        let _p = canonicalize_permutation(&perm, rank);
     }
 
     #[test]
@@ -227,7 +231,7 @@ mod tests {
     fn test_canonicalize_permutation_error_too_long() {
         let rank = 3;
         let perm = vec![0, 1, 2, 3];
-        canonicalize_permutation(&perm, rank);
+        let _p = canonicalize_permutation(&perm, rank);
     }
 
     #[test]
@@ -235,7 +239,7 @@ mod tests {
     fn test_canonicalize_permutation_error_duplicate() {
         let rank = 3;
         let perm = vec![0, 1, 1];
-        canonicalize_permutation(&perm, rank);
+        let _p = canonicalize_permutation(&perm, rank);
     }
 
     #[test]

@@ -14,6 +14,7 @@ use std::f64;
 /// ## Returns
 ///
 /// A new tensor with the specified dimension rolled by the given shift amount.
+#[must_use]
 pub fn roll_dim<B: Backend, const D: usize, K>(
     x: Tensor<B, D, K>,
     shift: isize,
@@ -44,6 +45,7 @@ where
 /// ## Panics
 ///
 /// Panics if the contract conditions are not met.
+#[inline(always)]
 fn _unchecked_roll_dim_contract(
     shift: usize,
     dim: usize,
@@ -75,6 +77,7 @@ fn _unchecked_roll_dim_contract(
 ///
 /// A new tensor with the specified dimension rolled by the given shift amount.
 #[inline(always)]
+#[must_use]
 fn _unchecked_roll_dim<B: Backend, const D: usize, K>(
     x: Tensor<B, D, K>,
     shift: usize,
@@ -109,6 +112,7 @@ where
 /// ## Returns
 ///
 /// A new tensor with the specified dimensions rolled by the given shifts.
+#[must_use]
 pub fn roll<B: Backend, const D: usize, K>(
     x: Tensor<B, D, K>,
     shifts: &[isize],
@@ -183,6 +187,7 @@ where
 /// ## Panics
 ///
 /// Panics if the shifts and dimensions do not align, or if dimensions contain repeats.
+#[inline(always)]
 fn _unchecked_roll_contract(
     shifts: &[usize],
     dims: &[usize],
@@ -222,6 +227,7 @@ fn _unchecked_roll_contract(
 ///
 /// A new tensor with the specified dimensions rolled by the given shifts.
 #[inline(always)]
+#[must_use]
 fn _unchecked_roll<B: Backend, const D: usize, K>(
     x: Tensor<B, D, K>,
     shifts: &[usize],
@@ -245,6 +251,20 @@ where
     _unchecked_roll(x, &shifts[1..], &dims[1..])
 }
 
+/// Create a vector with evenly spaced floating point values.
+///
+/// This function generates a vector starting from `start`, ending at `end`, and incrementing by `step`.
+///
+/// # Parameters
+///
+/// - `start`: The starting value of the range.
+/// - `end`: The end value of the range (exclusive).
+/// - `step`: An optional step value. If not provided, defaults to `1.0` if `start < end`, or `-1.0` if `start > end`.
+///
+/// # Returns
+///
+/// A vector containing the generated floating point values.
+#[must_use]
 pub fn float_vec_arange(
     start: f64,
     end: f64,
@@ -277,6 +297,20 @@ pub fn float_vec_arange(
     values
 }
 
+/// Create a vector with evenly spaced floating point values.
+///
+/// This function generates a vector with `num` values starting from `start`, ending at `end`, and evenly spaced.
+///
+/// # Parameters
+///
+/// - `start`: The starting value of the range.
+/// - `end`: The end value of the range (inclusive).
+/// - `num`: The number of points to generate in the range.
+///
+/// # Returns
+///
+/// A vector containing the generated floating point values.
+#[must_use]
 pub fn float_vec_linspace(
     start: f64,
     end: f64,
@@ -312,6 +346,7 @@ pub fn float_vec_linspace(
 /// # Returns
 ///
 /// A 1D tensor containing the generated floating point values.
+#[must_use]
 pub fn float_arange<B: Backend>(
     start: f64,
     end: f64,
@@ -335,6 +370,7 @@ pub fn float_arange<B: Backend>(
 /// # Returns
 ///
 /// A 1D tensor containing the generated floating point values.
+#[must_use]
 pub fn float_linspace<B: Backend>(
     start: f64,
     end: f64,

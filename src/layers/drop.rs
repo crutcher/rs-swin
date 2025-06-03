@@ -12,6 +12,8 @@ use burn::module::Module;
 use burn::prelude::{Backend, Tensor};
 use burn::tensor::Distribution;
 
+/// Checks if the given probability is within the valid range [0, 1].
+#[inline(always)]
 fn check_probability(prob: f64) -> f64 {
     if !(0.0..=1.0).contains(&prob) {
         panic!("Probability should be between 0 and 1, but got {}", prob);
@@ -126,6 +128,7 @@ impl DropPathMeta for DropPathConfig {
 
 impl DropPathConfig {
     /// Initializes a new DropPath module.
+    #[inline(always)]
     #[must_use]
     pub fn init(&self) -> DropPath {
         DropPath {
@@ -184,8 +187,8 @@ impl DropPath {
     /// ## Returns
     ///
     /// The result of the function application, with a stochastic skip connection applied.
-    #[must_use]
     #[inline]
+    #[must_use]
     pub fn with_skip<B: Backend, const D: usize, F>(
         &self,
         x: Tensor<B, D>,
