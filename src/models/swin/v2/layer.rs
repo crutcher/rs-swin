@@ -142,6 +142,32 @@ impl SwinBlockSequenceMeta for SwinBlockSequenceConfig {
 }
 
 impl SwinBlockSequenceConfig {
+    /// Validates the configuration and returns a vector of `SwinTransformerBlockConfig`.
+    pub fn validate(&self) -> Result<Vec<SwinTransformerBlockConfig>, String> {
+        let drop_path_rates = self.drop_path_rates();
+        assert_eq!(drop_path_rates.len(), self.depth);
+
+        let shift = self.window_size / 2;
+
+        Ok(drop_path_rates
+            .iter()
+            .enumerate()
+            .map(|(i, &drop_path)| {
+                SwinTransformerBlockConfig::new(self.d_input, self.input_resolution, self.num_heads)
+                    .with_window_size(self.window_size)
+                    .with_shift_size(
+                        // SW-SWA step?
+                        if i % 2 == 0 { 0 } else { shift },
+                    )
+                    .with_mlp_ratio(self.mlp_ratio)
+                    .with_enable_qkv_bias(self.enable_qkv_bias)
+                    .with_drop_rate(self.drop_rate)
+                    .with_attn_drop_rate(self.attn_drop_rate)
+                    .with_drop_path_rate(drop_path)
+            })
+            .collect())
+    }
+
     /// Creates a new `BasicLayerConfig` with the specified parameters.
     ///
     /// # Arguments
@@ -152,32 +178,14 @@ impl SwinBlockSequenceConfig {
         &self,
         device: &B::Device,
     ) -> SwinBlockSequence<B> {
-        let mut blocks: Vec<SwinTransformerBlock<B>> = Vec::with_capacity(self.depth);
-        let drop_path_rates = self.drop_path_rates();
-        assert_eq!(drop_path_rates.len(), self.depth);
-
-        for (i, &drop_path) in drop_path_rates.iter().enumerate() {
-            // SW-SWA step?
-            let shift_size = if i % 2 == 0 { 0 } else { self.window_size / 2 };
-
-            let block = SwinTransformerBlockConfig::new(
-                self.d_input,
-                self.input_resolution,
-                self.num_heads,
-            )
-            .with_window_size(self.window_size)
-            .with_shift_size(shift_size)
-            .with_mlp_ratio(self.mlp_ratio)
-            .with_enable_qkv_bias(self.enable_qkv_bias)
-            .with_drop_rate(self.drop_rate)
-            .with_attn_drop_rate(self.attn_drop_rate)
-            .with_drop_path_rate(drop_path)
-            .init(device);
-
-            blocks.push(block);
+        SwinBlockSequence {
+            blocks: self
+                .validate()
+                .unwrap()
+                .iter()
+                .map(|c| c.init(device))
+                .collect(),
         }
-
-        SwinBlockSequence { blocks }
     }
 }
 
