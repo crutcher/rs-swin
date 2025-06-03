@@ -1,8 +1,7 @@
 use crate::models::swin::v2::dpr::DropPathRateDepthTable;
-use crate::models::swin::v2::layer::{BasicLayer, BasicLayerConfig, BasicLayerMeta};
+use crate::models::swin::v2::layer::{SwinLayerBlock, SwinLayerBlockConfig, SwinLayerBlockMeta};
 use crate::models::swin::v2::patch::{
     PatchEmbed, PatchEmbedConfig, PatchEmbedMeta, PatchMerging, PatchMergingConfig,
-    PatchMergingMeta,
 };
 use burn::config::Config;
 use burn::module::{Module, Param};
@@ -189,6 +188,8 @@ pub struct SwinTransformerV2Plan {
 
     pub layer_resolutions: Vec<[usize; 2]>,
     pub layer_dims: Vec<usize>,
+
+    pub block_configs: Vec<SwinLayerBlockConfig>,
 }
 
 impl SwinTransformerV2Config {
@@ -216,7 +217,8 @@ impl SwinTransformerV2Config {
         let mut layer_dims: Vec<usize> = Vec::with_capacity(self.layer_configs.len());
 
         for layer_i in 0..self.layer_configs.len() {
-            let layer_p = 2usize.pow(layer_i as u32); // Power of 2 for each layer
+            let layer_p = 2_usize.pow(layer_i as u32); // Power of 2 for each layer
+
             layer_resolutions.push([
                 patch_config.patches_height() / layer_p,
                 patch_config.patches_width() / layer_p,
@@ -224,10 +226,66 @@ impl SwinTransformerV2Config {
             layer_dims.push(patch_config.d_output() * layer_p);
         }
 
+        let output_resolution = *layer_resolutions.last().unwrap();
+        let [last_h, last_w] = output_resolution;
+        assert!(
+            last_h > 0 && last_w > 0,
+            "Output resolution must be non-zero: {:?}",
+            output_resolution
+        );
+        assert!(
+            last_h % self.window_size == 0 && last_w % self.window_size == 0,
+            "Output resolution must be divisible by window size: {:?} / {:?}",
+            output_resolution,
+            self.window_size
+        );
+        let expansion_scale = 2_usize.pow((self.layer_configs.len() - 1) as u32) * self.patch_size;
+        assert_eq!(
+            patch_config.input_resolution(),
+            [last_h * expansion_scale, last_w * expansion_scale],
+            "Input resolution must match [<c> * <window_size:{:?}> * 2^(<layers:{:?}>-1) * <patch_size:{:?}, ...]:\n{:?}",
+            self.window_size,
+            self.layer_configs.len(),
+            self.patch_size,
+            patch_config.input_resolution(),
+        );
+
+        // Stochastic depth delay rule
+        let dpr_layer_rates = DropPathRateDepthTable::dpr_layer_rates(
+            self.drop_path_rate,
+            &self
+                .layer_configs
+                .iter()
+                .map(|c| c.depth)
+                .collect::<Vec<usize>>(),
+        );
+
+        let block_configs: Vec<SwinLayerBlockConfig> = (0..self.layer_configs.len())
+            .map(|layer_i| {
+                let cfg = &self.layer_configs[layer_i];
+
+                let layer_resolution = layer_resolutions[layer_i];
+                let layer_dim = layer_dims[layer_i];
+
+                SwinLayerBlockConfig::new(
+                    // Double the embedding size for each layer
+                    layer_dim,
+                    layer_resolution,
+                    cfg.depth,
+                    cfg.num_heads,
+                    self.window_size,
+                )
+                .with_mlp_ratio(self.mlp_ratio)
+                .with_enable_qkv_bias(self.enable_qkv_bias)
+                .with_drop_path_rates(Some(dpr_layer_rates[layer_i].clone()))
+            })
+            .collect();
+
         Ok(SwinTransformerV2Plan {
             patch_config,
             layer_resolutions,
             layer_dims,
+            block_configs,
         })
     }
 
@@ -237,112 +295,49 @@ impl SwinTransformerV2Config {
         device: &B::Device,
     ) -> SwinTransformerV2<B> {
         let plan = self.validate().unwrap();
-        println!("plan: {:#?}", plan);
+        // println!("plan: {:#?}", plan);
 
         let patch_embed: PatchEmbed<B> = plan.patch_config.init(device);
 
-        let num_patches = patch_embed.num_patches();
-
         // ape: trunc_normal: ([1, num_patches, d_embed], std=0.02)
         // defaults: (mean=0.0, a=-2.0, b=2.0)
-        let ape: Option<Param<Tensor<B, 3>>> = if self.enable_ape {
+        let patch_ape: Option<Param<Tensor<B, 3>>> = if self.enable_ape {
             Some(
                 Initializer::Normal {
                     mean: 0.0,
                     std: 0.02,
                 }
-                .init([1_usize, num_patches, self.d_embed], device),
+                .init([1_usize, patch_embed.num_patches(), self.d_embed], device),
             )
         } else {
             None
         };
 
-        let pos_drop = DropoutConfig::new(self.drop_rate).init();
-
-        let depths = self
-            .layer_configs
+        let grid_block_layers: Vec<SwinLayerBlock<B>> = plan
+            .block_configs
             .iter()
-            .map(|c| c.depth)
-            .collect::<Vec<usize>>();
-        let num_heads = self
-            .layer_configs
-            .iter()
-            .map(|c| c.num_heads)
-            .collect::<Vec<usize>>();
+            .map(|config| config.init::<B>(device))
+            .collect();
 
-        // Stochastic depth delay rule
-        let dpr_layer_rates = DropPathRateDepthTable::dpr_layer_rates(self.drop_path_rate, &depths);
-
-        let layer_stack_blocks: Vec<BasicLayer<B>> = (0..self.layer_configs.len())
+        let grid_merge_layers: Vec<PatchMerging<B>> = (0..grid_block_layers.len() - 1)
             .map(|layer_i| {
-                let layer_resolution = plan.layer_resolutions[layer_i];
-                let layer_dim = plan.layer_dims[layer_i];
-
-                let config = BasicLayerConfig::new(
-                    // Double the embedding size for each layer
-                    layer_dim,
-                    layer_resolution,
-                    depths[layer_i],
-                    num_heads[layer_i],
-                    self.window_size,
-                )
-                .with_mlp_ratio(self.mlp_ratio)
-                .with_enable_qkv_bias(self.enable_qkv_bias)
-                .with_drop_path_rates(Some(dpr_layer_rates[layer_i].clone()));
-
-                config.init::<B>(device)
+                let block = &grid_block_layers[layer_i];
+                PatchMergingConfig::new(block.input_resolution(), block.d_input()).init(device)
             })
             .collect();
 
-        let layer_stack_downsamples: Vec<PatchMerging<B>> = (0..self.layer_configs.len() - 1)
-            .map(|layer_i| {
-                let basic_layer = &layer_stack_blocks[layer_i];
-
-                PatchMergingConfig::new(basic_layer.input_resolution(), basic_layer.d_input())
-                    .init(device)
-            })
-            .collect();
-
-        let layer_stack_output_features = *plan.layer_dims.last().unwrap();
-
-        let layer_stack_norm: LayerNorm<B> =
-            LayerNormConfig::new(layer_stack_output_features).init(device);
-
-        let avgpool = AdaptiveAvgPool1dConfig::new(1).init();
-        let head: Linear<B> =
-            LinearConfig::new(layer_stack_output_features, self.num_classes).init(device);
-
-        println!();
-        println!("input_resolution: {:?}", self.input_resolution);
-        println!("patch_size: {:?}", self.patch_size);
-        println!("embed_resolution: {:?}", patch_embed.input_resolution());
-        println!("window_size: {:?}", self.window_size);
-        for (i, cfg) in self.layer_configs.iter().enumerate() {
-            println!("Layer {i}: {:?}", cfg);
-
-            println!("block: {:?}", layer_stack_blocks[i].input_resolution());
-
-            if i < self.layer_configs.len() - 1 {
-                println!(
-                    "merge\n - I: {:?}",
-                    layer_stack_downsamples[i].input_resolution()
-                );
-                println!(
-                    "merge\n - O: {:?}",
-                    layer_stack_downsamples[i].output_resolution()
-                );
-            }
-        }
+        let grid_output_features = *plan.layer_dims.last().unwrap();
 
         SwinTransformerV2 {
             patch_embed,
-            ape,
-            pos_drop,
-            layer_stack_blocks,
-            layer_stack_downsamples,
-            layer_stack_norm,
-            avgpool,
-            head,
+            patch_ape,
+            grid_input_dropout: DropoutConfig::new(self.drop_rate).init(),
+            grid_block_layers,
+            grid_merge_layers,
+            grid_output_norm: LayerNormConfig::new(grid_output_features).init(device),
+            grid_output_features,
+            head_avgpool: AdaptiveAvgPool1dConfig::new(1).init(),
+            head: LinearConfig::new(grid_output_features, self.num_classes).init(device),
         }
     }
 }
@@ -350,83 +345,77 @@ impl SwinTransformerV2Config {
 #[derive(Module, Debug)]
 pub struct SwinTransformerV2<B: Backend> {
     pub patch_embed: PatchEmbed<B>,
-    pub ape: Option<Param<Tensor<B, 3>>>,
-    pub pos_drop: Dropout,
-    pub layer_stack_blocks: Vec<BasicLayer<B>>,
-    pub layer_stack_downsamples: Vec<PatchMerging<B>>,
-    pub layer_stack_norm: LayerNorm<B>,
-    pub avgpool: AdaptiveAvgPool1d,
+    pub patch_ape: Option<Param<Tensor<B, 3>>>,
+    pub grid_input_dropout: Dropout,
+    pub grid_block_layers: Vec<SwinLayerBlock<B>>,
+    pub grid_merge_layers: Vec<PatchMerging<B>>,
+    pub grid_output_norm: LayerNorm<B>,
+    pub grid_output_features: usize,
+    pub head_avgpool: AdaptiveAvgPool1d,
     pub head: Linear<B>,
 }
 
 impl<B: Backend> SwinTransformerV2<B> {
-    /// Applies the model to the input image tensor and returns the patch features.
-    ///
-    /// This method computes the spatial features from the input image tensor.
-    ///
-    /// # Arguments
-    ///
-    /// * `input`: A 4D tensor representing the input image with shape `[B, C, H, W]`,
-    ///
-    /// # Returnso
-    ///
-    /// A 3D tensor of shape `[B, L, C]` representing the spatial features extracted from the input image.
-    pub fn patch_features(
+    /// Apply patch embedding and absolute positional encoding (APE) to the input image tensor.
+    #[inline(always)]
+    #[must_use]
+    fn apply_patching(
         &self,
         input: Tensor<B, 4>,
     ) -> Tensor<B, 3> {
-        let mut x = self.patch_embed.forward(input);
+        let x = self.patch_embed.forward(input);
 
-        x = if self.ape.is_some() {
-            let ape = self.ape.as_ref().unwrap();
-            x + ape.val()
-        } else {
-            x
-        };
+        match self.patch_ape {
+            Some(ref ape) => x + ape.val(),
+            None => x,
+        }
+    }
 
-        x = self.pos_drop.forward(x);
+    /// Applies the layer stack to a patch tensor.
+    #[inline(always)]
+    #[must_use]
+    fn apply_stack(
+        &self,
+        input: Tensor<B, 3>,
+    ) -> Tensor<B, 3> {
+        let mut x = self.grid_input_dropout.forward(input);
 
-        for layer_i in 0..self.layer_stack_blocks.len() {
+        for layer_i in 0..self.grid_block_layers.len() {
             if layer_i > 0 {
-                x = self.layer_stack_downsamples[layer_i - 1].forward(x);
+                x = self.grid_merge_layers[layer_i - 1].forward(x);
             }
 
-            x = self.layer_stack_blocks[layer_i].forward(x);
+            x = self.grid_block_layers[layer_i].forward(x);
         }
         // B L C
 
-        x = self.layer_stack_norm.forward(x);
+        self.grid_output_norm.forward(x)
         // B L C
-
-        x
     }
 
-    /// Applies the model without the final classification head.
-    ///
-    /// This method computes the features from the input image tensor.
-    ///
-    /// # Arguments
-    ///
-    /// * `input`: A 4D tensor representing the input image with shape `[B, C, H, W]`,
-    ///
-    /// # Returns
-    ///
-    /// A 2D tensor of shape `[B, C]` representing the features extracted from the input image.
-    pub fn forward_features(
+    /// Aggregates the grid into a single vector per batch.
+    #[inline(always)]
+    #[must_use]
+    fn aggregate_grid(
         &self,
-        input: Tensor<B, 4>,
+        input: Tensor<B, 3>,
     ) -> Tensor<B, 2> {
-        let x = self.patch_features(input);
-        // B L C
-
-        let x = x.swap_dims(1, 2);
-        // B C L
-
-        let x = self.avgpool.forward(x);
+        // input: B L C
+        let x = input.swap_dims(1, 2);
+        let x = self.head_avgpool.forward(x);
         // B C 1
-
-        x.flatten::<2>(1, 2)
+        x.squeeze(2)
         // B C
+    }
+
+    /// Applies the final classification head to the transformed output.
+    #[inline(always)]
+    #[must_use]
+    fn apply_head(
+        &self,
+        input: Tensor<B, 2>,
+    ) -> Tensor<B, 2> {
+        self.head.forward(input)
     }
 
     /// Applies the model to the input image tensor and returns the classification logits.
@@ -442,8 +431,10 @@ impl<B: Backend> SwinTransformerV2<B> {
         &self,
         input: Tensor<B, 4>,
     ) -> Tensor<B, 2> {
-        let features = self.forward_features(input);
-        self.head.forward(features)
+        let x = self.apply_patching(input);
+        let x = self.apply_stack(x);
+        let x = self.aggregate_grid(x);
+        self.apply_head(x)
     }
 }
 
@@ -501,8 +492,12 @@ mod tests {
     }
 
     #[test]
-    #[allow(unused_variables)]
-    fn test_forward() {
+    fn test_smoke_test() {
+        smoke_test_impl::<NdArray>();
+    }
+    fn smoke_test_impl<B: Backend>() {
+        let device = Default::default();
+
         let b = 2;
         let d_input = 3;
 
@@ -515,34 +510,26 @@ mod tests {
                 depth: 2,
                 num_heads: 6,
             },
-            LayerConfig {
-                depth: 6,
-                num_heads: 12,
-            },
-            LayerConfig {
-                depth: 2,
-                num_heads: 24,
-            },
         ];
-        let k = layer_configs.len() - 1;
 
         let patch_size = 4;
-        let window_size = 7;
+        let window_size = 3;
 
         let last_wh = 2;
         let last_ww = 2;
         let last_h = last_wh * window_size;
         let last_w = last_ww * window_size;
-        let h = last_h * 2usize.pow(k as u32) * patch_size;
-        let w = last_w * 2usize.pow(k as u32) * patch_size;
 
-        // h: 3 * 7(w) * 2(m) * 2(m) * 2(m) * 4(patch)
+        let merge_steps = (layer_configs.len() - 1) as u32;
+        let expansion_scale = 2_usize.pow(merge_steps);
+        let h = last_h * expansion_scale * patch_size;
+        let w = last_w * expansion_scale * patch_size;
 
         let num_classes = 12;
 
         let d_embed = (d_input * patch_size * patch_size) / 2;
 
-        let config = SwinTransformerV2Config::new(
+        let model = SwinTransformerV2Config::new(
             [h, w],
             patch_size,
             d_input,
@@ -550,16 +537,39 @@ mod tests {
             d_embed,
             layer_configs,
         )
-        .with_window_size(window_size);
-
-        let device = Default::default();
-        let model: SwinTransformerV2<NdArray> = config.init(&device);
-
-        // assert!(false);
+        .with_window_size(window_size)
+        .init(&device);
 
         let distribution = Distribution::Normal(0.0, 0.02);
-        let input = Tensor::<NdArray, 4>::random([b, d_input, h, w], distribution, &device);
+        let input = Tensor::<B, 4>::random([b, d_input, h, w], distribution, &device);
 
-        let output = model.forward(input);
+        let output = model.forward(input.clone());
+        assert_eq!(output.dims(), [b, num_classes]);
+
+        output.to_data().assert_eq(
+            &{
+                let patched = model.apply_patching(input.clone());
+                assert_eq!(
+                    patched.dims(),
+                    [b, h * w / (patch_size * patch_size), d_embed]
+                );
+
+                let stacked = model.apply_stack(patched);
+                assert_eq!(
+                    stacked.dims(),
+                    [b, last_h * last_w, model.grid_output_features]
+                );
+
+                let aggregated = model.aggregate_grid(stacked);
+                assert_eq!(aggregated.dims(), [b, model.grid_output_features]);
+
+                let classed = model.apply_head(aggregated);
+                assert_eq!(classed.dims(), [b, num_classes]);
+
+                classed
+            }
+            .to_data(),
+            true,
+        );
     }
 }

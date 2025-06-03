@@ -6,14 +6,14 @@ license = "MIT"
 repository = "https://github.com/crutcher/bimm"
 
 [dependencies]
-burn = { version = "^0.17.0" }
+burn = { version = "^0.17.1" }
 burn-contracts = { version = "^0.3.1" }
 
 [dev-dependencies]
 num-traits = "^0.2.19"
 hamcrest = "^0.1.5"
 # anyhow = { version = "^1.0.98" }
-burn = { version = "^0.17.0", features = ["ndarray"] }
+burn = { version = "^0.17.1", features = ["ndarray"] }
 burn-contracts = { version = "^0.3.1", features = ["testing"] }
 
 [features]

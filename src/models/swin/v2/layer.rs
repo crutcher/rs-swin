@@ -6,7 +6,7 @@ use burn::module::Module;
 use burn::prelude::{Backend, Tensor};
 
 /// Common introspection train for BasicLayer.
-pub trait BasicLayerMeta {
+pub trait SwinLayerBlockMeta {
     /// Returns the number of input channels for the layer.`
     fn d_input(&self) -> usize;
 
@@ -52,7 +52,7 @@ pub trait BasicLayerMeta {
 
 /// Config for BasicLayer.
 #[derive(Config, Debug)]
-pub struct BasicLayerConfig {
+pub struct SwinLayerBlockConfig {
     /// Number of input channels.
     pub d_input: usize,
 
@@ -91,7 +91,7 @@ pub struct BasicLayerConfig {
     pub drop_path_rates: Option<Vec<f64>>,
 }
 
-impl BasicLayerMeta for BasicLayerConfig {
+impl SwinLayerBlockMeta for SwinLayerBlockConfig {
     fn d_input(&self) -> usize {
         self.d_input
     }
@@ -139,7 +139,7 @@ impl BasicLayerMeta for BasicLayerConfig {
     }
 }
 
-impl BasicLayerConfig {
+impl SwinLayerBlockConfig {
     /// Creates a new `BasicLayerConfig` with the specified parameters.
     ///
     /// # Arguments
@@ -148,7 +148,7 @@ impl BasicLayerConfig {
     pub fn init<B: Backend>(
         &self,
         device: &B::Device,
-    ) -> BasicLayer<B> {
+    ) -> SwinLayerBlock<B> {
         let mut blocks: Vec<TransformerBlock<B>> = Vec::with_capacity(self.depth);
         let drop_path_rates = self.drop_path_rates();
         assert_eq!(drop_path_rates.len(), self.depth);
@@ -171,17 +171,17 @@ impl BasicLayerConfig {
             blocks.push(block);
         }
 
-        BasicLayer { blocks }
+        SwinLayerBlock { blocks }
     }
 }
 
 /// SWIN-Transformer Basic Layer.
 #[derive(Module, Debug)]
-pub struct BasicLayer<B: Backend> {
+pub struct SwinLayerBlock<B: Backend> {
     blocks: Vec<TransformerBlock<B>>,
 }
 
-impl<B: Backend> BasicLayerMeta for BasicLayer<B> {
+impl<B: Backend> SwinLayerBlockMeta for SwinLayerBlock<B> {
     fn d_input(&self) -> usize {
         self.blocks[0].d_input()
     }
@@ -223,7 +223,7 @@ impl<B: Backend> BasicLayerMeta for BasicLayer<B> {
     }
 }
 
-impl<B: Backend> BasicLayer<B> {
+impl<B: Backend> SwinLayerBlock<B> {
     /// Applies the layer to the input tensor.
     ///
     /// # Arguments
