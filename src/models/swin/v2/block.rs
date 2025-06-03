@@ -59,7 +59,7 @@ where
 }
 
 /// Common introspection interface for TransformerBlock.
-pub trait TransformerBlockMeta {
+pub trait SwinTransformerBlockMeta {
     /// Get the input dimension size.
     fn d_input(&self) -> usize;
 
@@ -128,7 +128,7 @@ pub trait TransformerBlockMeta {
 
 /// Configuration for TransformerBlock.
 #[derive(Config, Debug)]
-pub struct TransformerBlockConfig {
+pub struct SwinTransformerBlockConfig {
     pub d_input: usize,
 
     pub input_resolution: [usize; 2],
@@ -158,7 +158,7 @@ pub struct TransformerBlockConfig {
     // TODO: act_layer, norm_layer
 }
 
-impl TransformerBlockMeta for TransformerBlockConfig {
+impl SwinTransformerBlockMeta for SwinTransformerBlockConfig {
     fn d_input(&self) -> usize {
         self.d_input
     }
@@ -200,12 +200,21 @@ impl TransformerBlockMeta for TransformerBlockConfig {
     }
 }
 
-impl TransformerBlockConfig {
+impl SwinTransformerBlockConfig {
+    /// Initializes a new `SwinTransformerBlock`.
+    ///
+    /// # Parameters
+    ///
+    /// * `device` - The device on which the block will be created.
+    ///
+    /// # Returns
+    ///
+    /// A new `SwinTransformerBlock` instance configured with the specified parameters.
     #[must_use]
     pub fn init<B: Backend>(
         &self,
         device: &B::Device,
-    ) -> TransformerBlock<B> {
+    ) -> SwinTransformerBlock<B> {
         let [h, w] = self.input_resolution;
         assert!(
             h % self.window_size == 0 && w % self.window_size == 0,
@@ -245,7 +254,7 @@ impl TransformerBlockConfig {
             )
         };
 
-        TransformerBlock {
+        SwinTransformerBlock {
             input_resolution: self.input_resolution,
             window_size: self.window_size,
             shift_size: self.shift_size,
@@ -261,8 +270,13 @@ impl TransformerBlockConfig {
     }
 }
 
+/// Basic Swin Transformer Block.
+///
+/// Equivalent to the ``SwinTransformerBlock`` in the python source.
+///
+/// Applies one layer of Swin Transformer block with window attention and MLP.
 #[derive(Module, Debug)]
-pub struct TransformerBlock<B: Backend> {
+pub struct SwinTransformerBlock<B: Backend> {
     pub input_resolution: [usize; 2],
     pub window_size: usize,
 
@@ -277,7 +291,7 @@ pub struct TransformerBlock<B: Backend> {
     pub block_mlp: BlockMlp<B>,
 }
 
-impl<B: Backend> TransformerBlockMeta for TransformerBlock<B> {
+impl<B: Backend> SwinTransformerBlockMeta for SwinTransformerBlock<B> {
     fn d_input(&self) -> usize {
         self.win_attn.d_input()
     }
@@ -319,7 +333,7 @@ impl<B: Backend> TransformerBlockMeta for TransformerBlock<B> {
     }
 }
 
-impl<B: Backend> TransformerBlock<B> {
+impl<B: Backend> SwinTransformerBlock<B> {
     /// Applies the forward pass on the input tensor.
     ///
     /// H and W are the height and width of the input resolution, and D is the input dimension.
@@ -470,7 +484,7 @@ mod tests {
         let num_heads = 4;
         let input_resolution = [32, 32];
 
-        let config = TransformerBlockConfig::new(d_input, input_resolution, num_heads);
+        let config = SwinTransformerBlockConfig::new(d_input, input_resolution, num_heads);
 
         assert_eq!(config.d_input, d_input);
         assert_eq!(config.input_resolution, input_resolution);
@@ -494,7 +508,7 @@ mod tests {
         let w = 3 * window_size;
         let input_resolution = [h, w];
 
-        let config = TransformerBlockConfig::new(d_input, input_resolution, num_heads)
+        let config = SwinTransformerBlockConfig::new(d_input, input_resolution, num_heads)
             .with_window_size(window_size);
 
         let device = Default::default();

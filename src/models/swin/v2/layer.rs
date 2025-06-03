@@ -1,12 +1,12 @@
 use crate::models::swin::v2::block::{
-    TransformerBlock, TransformerBlockConfig, TransformerBlockMeta,
+    SwinTransformerBlock, SwinTransformerBlockConfig, SwinTransformerBlockMeta,
 };
 use burn::config::Config;
 use burn::module::Module;
 use burn::prelude::{Backend, Tensor};
 
 /// Common introspection train for BasicLayer.
-pub trait SwinLayerBlockMeta {
+pub trait SwinBlockSequenceMeta {
     /// Returns the number of input channels for the layer.`
     fn d_input(&self) -> usize;
 
@@ -47,12 +47,14 @@ pub trait SwinLayerBlockMeta {
     /// Returns the per-depth drop path rates.
     fn drop_path_rates(&self) -> Vec<f64>;
 
-    // TODO: downsample, norm_layer config, use_checkpoint, pretrained_window_size.
+    // NOTE: downsample lifted to above this module.
+
+    // TODO: norm_layer config, use_checkpoint, pretrained_window_size.
 }
 
 /// Config for BasicLayer.
 #[derive(Config, Debug)]
-pub struct SwinLayerBlockConfig {
+pub struct SwinBlockSequenceConfig {
     /// Number of input channels.
     pub d_input: usize,
 
@@ -91,7 +93,7 @@ pub struct SwinLayerBlockConfig {
     pub drop_path_rates: Option<Vec<f64>>,
 }
 
-impl SwinLayerBlockMeta for SwinLayerBlockConfig {
+impl SwinBlockSequenceMeta for SwinBlockSequenceConfig {
     fn d_input(&self) -> usize {
         self.d_input
     }
@@ -139,7 +141,7 @@ impl SwinLayerBlockMeta for SwinLayerBlockConfig {
     }
 }
 
-impl SwinLayerBlockConfig {
+impl SwinBlockSequenceConfig {
     /// Creates a new `BasicLayerConfig` with the specified parameters.
     ///
     /// # Arguments
@@ -149,8 +151,8 @@ impl SwinLayerBlockConfig {
     pub fn init<B: Backend>(
         &self,
         device: &B::Device,
-    ) -> SwinLayerBlock<B> {
-        let mut blocks: Vec<TransformerBlock<B>> = Vec::with_capacity(self.depth);
+    ) -> SwinBlockSequence<B> {
+        let mut blocks: Vec<SwinTransformerBlock<B>> = Vec::with_capacity(self.depth);
         let drop_path_rates = self.drop_path_rates();
         assert_eq!(drop_path_rates.len(), self.depth);
 
@@ -158,31 +160,38 @@ impl SwinLayerBlockConfig {
             // SW-SWA step?
             let shift_size = if i % 2 == 0 { 0 } else { self.window_size / 2 };
 
-            let block =
-                TransformerBlockConfig::new(self.d_input, self.input_resolution, self.num_heads)
-                    .with_window_size(self.window_size)
-                    .with_shift_size(shift_size)
-                    .with_mlp_ratio(self.mlp_ratio)
-                    .with_enable_qkv_bias(self.enable_qkv_bias)
-                    .with_drop_rate(self.drop_rate)
-                    .with_attn_drop_rate(self.attn_drop_rate)
-                    .with_drop_path_rate(drop_path)
-                    .init(device);
+            let block = SwinTransformerBlockConfig::new(
+                self.d_input,
+                self.input_resolution,
+                self.num_heads,
+            )
+            .with_window_size(self.window_size)
+            .with_shift_size(shift_size)
+            .with_mlp_ratio(self.mlp_ratio)
+            .with_enable_qkv_bias(self.enable_qkv_bias)
+            .with_drop_rate(self.drop_rate)
+            .with_attn_drop_rate(self.attn_drop_rate)
+            .with_drop_path_rate(drop_path)
+            .init(device);
 
             blocks.push(block);
         }
 
-        SwinLayerBlock { blocks }
+        SwinBlockSequence { blocks }
     }
 }
 
-/// SWIN-Transformer Basic Layer.
+/// SWIN-Transformer Transformer Block stack.
+///
+/// Equivalent to ``BasicLayer`` in the original SWIN-Transformer source.
+///
+/// Applies a sequence of shift-window-alternating ``SwinTransformerBlock`` modules.
 #[derive(Module, Debug)]
-pub struct SwinLayerBlock<B: Backend> {
-    blocks: Vec<TransformerBlock<B>>,
+pub struct SwinBlockSequence<B: Backend> {
+    blocks: Vec<SwinTransformerBlock<B>>,
 }
 
-impl<B: Backend> SwinLayerBlockMeta for SwinLayerBlock<B> {
+impl<B: Backend> SwinBlockSequenceMeta for SwinBlockSequence<B> {
     fn d_input(&self) -> usize {
         self.blocks[0].d_input()
     }
@@ -224,7 +233,7 @@ impl<B: Backend> SwinLayerBlockMeta for SwinLayerBlock<B> {
     }
 }
 
-impl<B: Backend> SwinLayerBlock<B> {
+impl<B: Backend> SwinBlockSequence<B> {
     /// Applies the layer to the input tensor.
     ///
     /// # Arguments
