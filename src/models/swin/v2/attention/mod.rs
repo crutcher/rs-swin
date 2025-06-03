@@ -139,6 +139,7 @@ impl<B: Backend> WindowAttention<B> {
     /// ## Returns
     ///
     /// - Output tensor of shape (B*num_windows, N=ws*ws, C).
+    #[must_use]
     pub fn forward(
         &self,
         x: Tensor<B, 3>,
@@ -187,6 +188,7 @@ impl<B: Backend> WindowAttention<B> {
     /// ## Returns
     ///
     /// - Output attention tensor of shape (b_nw, num_heads, ws*ws, ws*ws).
+    #[must_use]
     fn attention(
         &self,
         b_nw: usize,
@@ -224,6 +226,7 @@ impl<B: Backend> WindowAttention<B> {
     /// ## Returns
     ///
     /// - Output tensor of shape (num_heads, 1, 1).
+    #[must_use]
     fn logit_scale(&self) -> Tensor<B, 3> {
         // TODO(crutcher): I suspect this is a bug in the original code.
         // I *think* the authors thought this was log_10; and not log_e;
@@ -236,6 +239,8 @@ impl<B: Backend> WindowAttention<B> {
     /// ## Returns
     ///
     /// - Output tensor of shape (num_heads, Wh*Ww, Wh*Ww).
+    #[inline(always)]
+    #[must_use]
     fn relative_pos_bias(&self) -> Tensor<B, 3> {
         self.rpb_module.forward()
     }
@@ -249,6 +254,8 @@ impl<B: Backend> WindowAttention<B> {
     /// ## Returns
     ///
     /// - Output tensor of shape (b_nw, num_heads, Wh*Ww, Wh*Ww).
+    #[inline(always)]
+    #[must_use]
     fn encode_attention(
         &self,
         attn: Tensor<B, 4>,

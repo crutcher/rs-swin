@@ -328,6 +328,7 @@ impl PatchEmbedConfig {
     /// ## Returns
     ///
     /// * A `PatchEmbed` module configured with the specified parameters.
+    #[must_use]
     pub fn init<B: Backend>(
         &self,
         device: &B::Device,
@@ -396,6 +397,7 @@ impl<B: Backend> PatchEmbed<B> {
     /// ## Returns
     ///
     /// * Output tensor of shape ``(B, H/patch_size * W/patch_size, d_output)``.
+    #[must_use]
     pub fn forward(
         &self,
         x: Tensor<B, 4>,

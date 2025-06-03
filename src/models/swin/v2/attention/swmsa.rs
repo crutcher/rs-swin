@@ -20,6 +20,7 @@ use burn::prelude::{Backend, Bool, Int, Tensor};
 /// ## Returns
 ///
 /// A tensor representing the shifted window image mask.
+#[must_use]
 fn sw_img_mask<B: Backend>(
     input_shape: [usize; 2],
     window_size: usize,
@@ -76,6 +77,7 @@ fn sw_img_mask<B: Backend>(
 /// ## Returns
 ///
 /// A tensor representing the shifted window attention mask.
+#[must_use]
 pub fn sw_attn_mask<B: Backend>(
     input_shape: [usize; 2],
     window_size: usize,

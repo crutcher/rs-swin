@@ -11,6 +11,8 @@ use burn_contracts::assert_tensor;
 ///
 /// ## Returns
 ///   - Output tensor of shape (B * h_windows * w_windows, window_size, window_size, C).
+#[inline]
+#[must_use]
 pub fn window_partition<B: Backend, K>(
     tensor: Tensor<B, 4, K>,
     window_size: usize,
@@ -42,6 +44,8 @@ where
 ///
 /// ## Returns
 /// - Output tensor of shape (B, H, W, C).
+#[inline]
+#[must_use]
 pub fn window_reverse<B: Backend, K>(
     windows: Tensor<B, 4, K>,
     window_size: usize,

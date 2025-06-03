@@ -145,6 +145,7 @@ impl SwinLayerBlockConfig {
     /// # Arguments
     ///
     /// * `device`: Backend device.
+    #[must_use]
     pub fn init<B: Backend>(
         &self,
         device: &B::Device,
@@ -233,6 +234,7 @@ impl<B: Backend> SwinLayerBlock<B> {
     /// # Returns
     ///
     /// Output tensor of shape (B, H * W, C).
+    #[must_use]
     pub fn forward(
         &self,
         x: Tensor<B, 3>,

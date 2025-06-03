@@ -4,7 +4,7 @@ use crate::models::swin::v2::attention::swmsa::sw_attn_mask;
 use crate::models::swin::v2::attention::{
     WindowAttention, WindowAttentionConfig, WindowAttentionMeta,
 };
-use crate::models::swin::v2::mlp::{BlockMlp, MlpConfig, MlpMeta};
+use crate::models::swin::v2::mlp::{BlockMlp, BlockMlpConfig, BlockMlpMeta};
 use crate::models::swin::v2::windowing::{window_partition, window_reverse};
 use burn::config::Config;
 use burn::module::Module;
@@ -215,7 +215,7 @@ impl TransformerBlockConfig {
         );
 
         let hidden_dim = (self.d_input as f64 * self.mlp_ratio) as usize;
-        let block_mlp = MlpConfig::new(self.d_input)
+        let block_mlp = BlockMlpConfig::new(self.d_input)
             .with_d_hidden(Some(hidden_dim))
             .with_drop(self.drop_rate)
             .init(device);

@@ -290,6 +290,7 @@ impl SwinTransformerV2Config {
     }
 
     /// Initialize a new [SwinTransformerV2](SwinTransformerV2) model.
+    #[must_use]
     pub fn init<B: Backend>(
         self,
         device: &B::Device,
@@ -427,6 +428,7 @@ impl<B: Backend> SwinTransformerV2<B> {
     /// # Returns
     ///
     /// A 2D tensor of shape `[B, num_classes]` representing the classification logits.
+    #[must_use]
     pub fn forward(
         &self,
         input: Tensor<B, 4>,

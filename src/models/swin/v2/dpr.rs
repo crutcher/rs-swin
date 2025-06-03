@@ -12,6 +12,8 @@ use crate::compat::ops::float_vec_linspace;
 /// # Returns
 ///
 /// A vector of drop path rates, one for each layer, starting from 0.0 and ending at `drop_path_rate`.
+#[inline(always)]
+#[must_use]
 pub fn progressive_dpr(
     drop_path_rate: f64,
     depth: usize,
@@ -41,6 +43,7 @@ impl DropPathRateDepthTable {
     /// # Returns
     ///
     /// A new `DropPathRateDepthTable` instance containing the progressive drop path rates for each layer.
+    #[must_use]
     pub fn new(
         drop_path_rate: f64,
         layer_depths: &[usize],
@@ -64,6 +67,7 @@ impl DropPathRateDepthTable {
     }
 
     /// Returns the total number of layers.
+    #[must_use]
     pub fn num_layers(&self) -> usize {
         self.layer_depths.len()
     }
@@ -80,6 +84,7 @@ impl DropPathRateDepthTable {
     /// # Panics
     ///
     /// If the layer index is out of bounds, it will panic with a message indicating the issue.
+    #[must_use]
     pub fn layer_dprs(
         &self,
         layer_i: usize,
@@ -100,6 +105,8 @@ impl DropPathRateDepthTable {
     }
 
     /// Returns the `layer_dprs` for all layers as a vector of vectors.
+    #[inline(always)]
+    #[must_use]
     pub fn layer_rates(&self) -> Vec<Vec<f64>> {
         (0..self.num_layers()).map(|i| self.layer_dprs(i)).collect()
     }
@@ -116,6 +123,7 @@ impl DropPathRateDepthTable {
     /// # Returns
     ///
     /// A vector of vectors, where each inner vector contains the progressive drop path rates for a specific layer.
+    #[must_use]
     pub fn dpr_layer_rates(
         drop_path_rate: f64,
         layer_depths: &[usize],

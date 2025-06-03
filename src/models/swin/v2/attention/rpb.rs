@@ -58,6 +58,8 @@ impl RelativePositionBiasConfig {
     /// ## Returns
     ///
     /// An `OffsetGridRelativePositionBias` module.
+    #[inline(always)]
+    #[must_use]
     pub fn init_offset_grid_rpb<B: Backend>(
         &self,
         device: &B::Device,
@@ -118,6 +120,7 @@ impl<B: Backend> OffsetGridRelativePositionBias<B> {
     /// A 3D tensor of shape (num_heads, height * width, height * width)
     /// containing the relative position bias for each head and position
     /// pair.
+    #[must_use]
     pub fn forward(&self) -> Tensor<B, 3> {
         let [h, w] = self.window_shape;
         let hw = h * w;
@@ -215,6 +218,7 @@ impl<B: Backend> ContinuousPositionBiasMlp<B> {
     /// ## Returns
     ///
     /// A tensor of ``(..., num_heads)`` of the learned bias table.
+    #[must_use]
     pub fn forward<const D: usize>(
         &self,
         x: Tensor<B, D>,

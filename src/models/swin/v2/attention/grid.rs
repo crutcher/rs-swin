@@ -14,6 +14,8 @@ use burn::prelude::{Backend, Int, Tensor};
 ///
 /// The first dimension represents the height offsets, the second dimension represents the width offsets,
 /// and the third dimension contains the respective indices.
+#[inline(always)]
+#[must_use]
 pub fn window_index_offset_grid<B: Backend>(
     window_shape: [usize; 2],
     device: &B::Device,
@@ -46,6 +48,8 @@ pub fn window_index_offset_grid<B: Backend>(
 /// ## Returns
 ///
 /// A 3D tensor of shape (2*height-1, 2*width-1, 2) containing the relative offsets.
+#[inline(always)]
+#[must_use]
 pub fn window_relative_offset_grid<B: Backend>(
     window_shape: [usize; 2],
     device: &B::Device,
@@ -71,6 +75,8 @@ pub fn window_relative_offset_grid<B: Backend>(
 /// ## Returns
 ///
 /// A 3D tensor of shape (2*height-1, 2*width-1, 2) containing the log-scaled relative offsets.
+#[inline(always)]
+#[must_use]
 pub fn window_log1p_relative_offset_grid<B: Backend>(
     window_shape: [usize; 2],
     base: f64,
@@ -115,6 +121,8 @@ pub fn window_log1p_relative_offset_grid<B: Backend>(
 ///   [14, 13, 12, 9, 8, 7],
 /// ]
 /// ```
+#[inline(always)]
+#[must_use]
 pub fn window_attention_relative_position_index<B: Backend>(
     window_shape: [usize; 2],
     device: &B::Device,

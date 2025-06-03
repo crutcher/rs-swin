@@ -4,7 +4,7 @@ use burn::nn::{Dropout, DropoutConfig, Gelu, Linear, LinearConfig};
 use burn::prelude::{Backend, Tensor};
 use burn_contracts::assert_tensor;
 
-pub trait MlpMeta {
+pub trait BlockMlpMeta {
     fn d_input(&self) -> usize;
 
     fn d_hidden(&self) -> usize;
@@ -15,7 +15,7 @@ pub trait MlpMeta {
 }
 
 #[derive(Config, Debug)]
-pub struct MlpConfig {
+pub struct BlockMlpConfig {
     d_input: usize,
 
     #[config(default = "None")]
@@ -28,7 +28,7 @@ pub struct MlpConfig {
     drop: f64,
 }
 
-impl MlpMeta for MlpConfig {
+impl BlockMlpMeta for BlockMlpConfig {
     fn d_input(&self) -> usize {
         self.d_input
     }
@@ -46,7 +46,7 @@ impl MlpMeta for MlpConfig {
     }
 }
 
-impl MlpConfig {
+impl BlockMlpConfig {
     pub fn init<B: Backend>(
         &self,
         device: &B::Device,
@@ -73,7 +73,7 @@ pub struct BlockMlp<B: Backend> {
     drop: Dropout,
 }
 
-impl<B: Backend> MlpMeta for BlockMlp<B> {
+impl<B: Backend> BlockMlpMeta for BlockMlp<B> {
     fn d_input(&self) -> usize {
         self.fc1.weight.dims()[0]
     }
@@ -92,6 +92,8 @@ impl<B: Backend> MlpMeta for BlockMlp<B> {
 }
 
 impl<B: Backend> BlockMlp<B> {
+    /// Apply the MLP to the input tensor.
+    #[must_use]
     pub fn forward<const D: usize>(
         &self,
         x: Tensor<B, D>,
@@ -132,7 +134,7 @@ mod tests {
     fn test_mlpconfig() {
         {
             let d_input = 4;
-            let config = MlpConfig::new(d_input);
+            let config = BlockMlpConfig::new(d_input);
 
             assert_eq!(config.d_input(), d_input);
             assert_eq!(config.d_hidden(), d_input);
@@ -146,7 +148,7 @@ mod tests {
             let d_output = 6;
             let drop = 0.1;
 
-            let config = MlpConfig::new(d_input)
+            let config = BlockMlpConfig::new(d_input)
                 .with_d_hidden(Some(d_hidden))
                 .with_d_output(Some(d_output))
                 .with_drop(drop);
@@ -173,7 +175,7 @@ mod tests {
         let d_output = 6;
         let drop = 0.1;
 
-        let config = MlpConfig::new(d_input)
+        let config = BlockMlpConfig::new(d_input)
             .with_d_hidden(Some(d_hidden))
             .with_d_output(Some(d_output))
             .with_drop(drop);

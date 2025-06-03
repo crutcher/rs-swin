@@ -13,6 +13,8 @@ use burn::prelude::{Backend, Tensor};
 /// ## Returns
 ///
 /// - Output tensor of shape (b_nw, num_heads, Wh*Ww, Wh*Ww).
+#[inline(always)]
+#[must_use]
 pub fn apply_attention_mask<B: Backend>(
     b_nw: usize,
     n: usize,
