@@ -142,30 +142,38 @@ impl SwinBlockSequenceMeta for SwinBlockSequenceConfig {
 }
 
 impl SwinBlockSequenceConfig {
-    /// Validates the configuration and returns a vector of `SwinTransformerBlockConfig`.
-    pub fn validate(&self) -> Result<Vec<SwinTransformerBlockConfig>, String> {
+    /// Creates a common block configuration for the sequence.
+    #[must_use]
+    pub fn common_block_config(&self) -> SwinTransformerBlockConfig {
+        SwinTransformerBlockConfig::new(self.d_input, self.input_resolution, self.num_heads)
+            .with_window_size(self.window_size)
+            .with_mlp_ratio(self.mlp_ratio)
+            .with_enable_qkv_bias(self.enable_qkv_bias)
+            .with_drop_rate(self.drop_rate)
+            .with_attn_drop_rate(self.attn_drop_rate)
+    }
+
+    /// Returns the block configs for each child.
+    #[must_use]
+    pub fn block_configs(&self) -> Vec<SwinTransformerBlockConfig> {
         let drop_path_rates = self.drop_path_rates();
         assert_eq!(drop_path_rates.len(), self.depth);
 
         let shift = self.window_size / 2;
 
-        Ok(drop_path_rates
-            .iter()
-            .enumerate()
-            .map(|(i, &drop_path)| {
-                SwinTransformerBlockConfig::new(self.d_input, self.input_resolution, self.num_heads)
-                    .with_window_size(self.window_size)
+        let common_config = self.common_block_config();
+
+        (0..self.depth)
+            .map(|i| {
+                common_config
+                    .clone()
                     .with_shift_size(
                         // SW-SWA step?
                         if i % 2 == 0 { 0 } else { shift },
                     )
-                    .with_mlp_ratio(self.mlp_ratio)
-                    .with_enable_qkv_bias(self.enable_qkv_bias)
-                    .with_drop_rate(self.drop_rate)
-                    .with_attn_drop_rate(self.attn_drop_rate)
-                    .with_drop_path_rate(drop_path)
+                    .with_drop_path_rate(drop_path_rates[i])
             })
-            .collect())
+            .collect()
     }
 
     /// Creates a new `BasicLayerConfig` with the specified parameters.
@@ -180,10 +188,9 @@ impl SwinBlockSequenceConfig {
     ) -> SwinBlockSequence<B> {
         SwinBlockSequence {
             blocks: self
-                .validate()
-                .unwrap()
-                .iter()
-                .map(|c| c.init(device))
+                .block_configs()
+                .into_iter()
+                .map(|config| config.init(device))
                 .collect(),
         }
     }
