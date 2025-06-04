@@ -46,7 +46,7 @@ pub fn apply_attention_mask<B: Backend>(
 ///
 /// ## Parameters
 ///
-/// - `input_shape`: The shape of the input tensor.
+/// - `input_shape`: The shape of the input tensor; must be divisible by the window size.
 /// - `window_size`: The size of the window.
 /// - `shift_size`: The size of the shift.
 /// - `device`: The device on which the tensor will be created.
@@ -70,6 +70,21 @@ fn sw_img_mask<B: Backend>(
 
     let window_size = window_size as i32;
     let shift_size = shift_size as i32;
+
+    assert_eq!(
+        h % window_size,
+        0,
+        "Height {} is not divisible by window size {}",
+        h,
+        window_size
+    );
+    assert_eq!(
+        w % window_size,
+        0,
+        "Width {} is not divisible by window size {}",
+        w,
+        window_size
+    );
 
     let h_slices = [
         0..(h - window_size) as usize,
