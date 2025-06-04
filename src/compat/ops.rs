@@ -1,6 +1,6 @@
 use crate::compat::dims::{canonicalize_dim, wrap_idx};
-use burn::prelude::{Backend, Tensor};
-use burn::tensor::BasicOps;
+use burn::prelude::{Backend, ElementConversion, Tensor};
+use burn::tensor::{BasicOps, RangesArg};
 use std::f64;
 
 /// Roll operation along a specific dimension.
@@ -379,6 +379,40 @@ pub fn float_linspace<B: Backend>(
 ) -> Tensor<B, 1> {
     let values = float_vec_linspace(start, end, num);
     Tensor::from_data(values.as_slice(), device)
+}
+
+/// Fill a slice of a tensor with a specified value.
+///
+/// Compat function for burn 0.18.0 ``slice_fill``.
+#[cfg(not(feature = "burn_0_18_0"))]
+pub fn slice_fill<B: Backend, const D: usize, R: RangesArg<D>, K, E: ElementConversion>(
+    tensor: Tensor<B, D, K>,
+    ranges: R,
+    value: E,
+) -> Tensor<B, D, K>
+where
+    K: BasicOps<B>,
+{
+    let ranges = ranges.into_ranges(tensor.shape());
+
+    let slice_shape = tensor.clone().slice(ranges.clone()).dims();
+
+    let val: Tensor<B, 1, K> = Tensor::from_data([value.elem::<K::Elem>()], &tensor.device());
+    let val = val.unsqueeze::<D>().expand(slice_shape);
+
+    tensor.slice_assign(ranges, val)
+}
+
+#[cfg(feature = "burn_0_18_0")]
+pub fn slice_fill<B: Backend, const D: usize, R: RangesArg<D>, K, E: ElementConversion>(
+    tensor: Tensor<B, D, K>,
+    ranges: R,
+    value: E,
+) -> Tensor<B, D, K>
+where
+    K: BasicOps<B>,
+{
+    tensor.slice_fill(ranges, value)
 }
 
 #[cfg(test)]
