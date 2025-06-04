@@ -1,4 +1,3 @@
-use crate::compat::ops::slice_fill;
 use crate::models::swin::v2::windowing::window_partition;
 use burn::prelude::{Backend, Bool, Int, Tensor};
 
@@ -100,7 +99,11 @@ fn sw_img_mask<B: Backend>(
     let mut cnt = 0;
     for h in h_slices.iter() {
         for w in w_slices.iter() {
-            img_mask = slice_fill(img_mask, [h.clone(), w.clone()], cnt);
+            let slice_shape = img_mask.clone().slice([h.clone(), w.clone()]).dims();
+            let val: Tensor<B, 1, Int> = Tensor::from_data([cnt], device);
+            let val = val.unsqueeze::<2>().expand(slice_shape);
+
+            img_mask = img_mask.slice_assign([h.clone(), w.clone()], val);
             cnt += 1;
         }
     }

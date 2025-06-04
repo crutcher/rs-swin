@@ -119,6 +119,7 @@ impl<B: Backend> PatchMerging<B> {
         &self,
         x: Tensor<B, 3>,
     ) -> Tensor<B, 3> {
+        #[allow(unused_variables)]
         let [b, h, w] = assert_tensor(&x)
             .unpacks_shape(
                 ["b", "h", "w"],
@@ -126,10 +127,6 @@ impl<B: Backend> PatchMerging<B> {
                 &[("h", self.input_height()), ("w", self.input_width())],
             )
             .unwrap();
-
-        let h2 = h / 2;
-        let w2 = w / 2;
-        let h2w2 = h2 * w2;
 
         let x = collate_patches(x, h, w);
 
@@ -140,7 +137,7 @@ impl<B: Backend> PatchMerging<B> {
         #[cfg(debug_assertions)]
         assert_tensor(&x).has_named_dims([
             ("B", b),
-            ("(H/2)*(W/2)", h2w2),
+            ("(H/2)*(W/2)", (h / 2) * (w / 2)),
             ("d_out", self.d_output()),
         ]);
 

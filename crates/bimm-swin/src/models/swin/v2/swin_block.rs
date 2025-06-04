@@ -10,6 +10,8 @@ use burn::module::Module;
 use burn::nn::{Dropout, DropoutConfig, Gelu, LayerNorm, LayerNormConfig, Linear, LinearConfig};
 use burn::prelude::{Backend, Tensor};
 use burn::tensor::BasicOps;
+
+#[cfg(debug_assertions)]
 use burn_contracts::assert_tensor;
 
 pub trait BlockMlpMeta {

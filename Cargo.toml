@@ -1,21 +1,34 @@
-[package]
-name = "bimm"
+[workspace]
+# Try
+# require version 2 to avoid "feature" additiveness for dev-dependencies
+# https://doc.rust-lang.org/cargo/reference/resolver.html#feature-resolver-version-2
+resolver = "2"
+
+members = [
+  "crates/*",
+  "examples/*",
+]
+
+[workspace.package]
 edition = "2024"
 version = "0.1.0"
 license = "MIT"
 repository = "https://github.com/crutcher/bimm"
 
-[dependencies]
+[workspace.lints.clippy]
+
+[workspace.dependencies]
 burn = { version = "^0.17.1" }
+
 burn-contracts = { version = "^0.3.1" }
 
-[dev-dependencies]
-num-traits = "^0.2.19"
-hamcrest = "^0.1.5"
-# anyhow = { version = "^1.0.98" }
-burn = { version = "^0.17.1", features = ["ndarray"] }
-burn-contracts = { version = "^0.3.1", features = ["testing"] }
+# Test and dev dependencies
+num-traits = { version = "^0.2.19" }
+hamcrest = { version = "^0.1.5" }
 
-[features]
-burn_0_18_0 = []
+# Example Dependencies
+rs-cinic-10-index = { version = "^0.1.10" }
+rs-cinic-10-burn = { version = "^0.1.10" }
+strum = {  version = "^0.27.1" }
 
+enum-ordinalize = { version = "^4.3.0" }
