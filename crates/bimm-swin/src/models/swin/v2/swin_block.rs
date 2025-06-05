@@ -322,6 +322,36 @@ impl ShiftedWindowTransformerBlockMeta for ShiftedWindowTransformerBlockConfig {
 }
 
 impl ShiftedWindowTransformerBlockConfig {
+    #[inline(always)]
+    fn check(&self) {
+        let [h, w] = self.input_resolution;
+        assert!(
+            h > 0 && w > 0,
+            "input_resolution must be greater than zero: {:#?}",
+            self
+        );
+        assert!(
+            self.d_input > 0,
+            "d_input must be greater than zero: {:#?}",
+            self
+        );
+        assert!(
+            self.num_heads > 0,
+            "num_heads must be greater than zero: {:#?}",
+            self
+        );
+        assert!(
+            self.window_size > 0,
+            "window_size must be greater than zero: {:#?}",
+            self
+        );
+        assert!(
+            h % self.window_size == 0 && w % self.window_size == 0,
+            "input_resolution must be divisible by window size: {:#?}",
+            self,
+        );
+    }
+
     /// Initializes a new `SwinTransformerBlock`.
     ///
     /// # Parameters
@@ -336,13 +366,7 @@ impl ShiftedWindowTransformerBlockConfig {
         &self,
         device: &B::Device,
     ) -> ShiftedWindowTransformerBlock<B> {
-        let [h, w] = self.input_resolution;
-        assert!(
-            h % self.window_size == 0 && w % self.window_size == 0,
-            "Input resolution {:?} must be divisible by window size: {:?}",
-            self.input_resolution,
-            self.window_size
-        );
+        self.check();
 
         let hidden_dim = (self.d_input as f64 * self.mlp_ratio) as usize;
         let block_mlp = BlockMlpConfig::new(self.d_input)

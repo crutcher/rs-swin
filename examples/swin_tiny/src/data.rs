@@ -3,10 +3,10 @@ use burn::data::dataloader::batcher::Batcher;
 use burn::prelude::{Backend, Int, Tensor};
 use enum_ordinalize::Ordinalize;
 use rs_cinic_10_burn::load_hwc_u8_tensor_image;
-use rs_cinic_10_index::index::{DatasetIndex, DatasetItem};
+use rs_cinic_10_index::index::DatasetItem;
 
 pub struct CinicDataset {
-    pub index: DatasetIndex,
+    pub items: Vec<DatasetItem>,
 }
 
 impl Dataset<DatasetItem> for CinicDataset {
@@ -14,11 +14,11 @@ impl Dataset<DatasetItem> for CinicDataset {
         &self,
         index: usize,
     ) -> Option<DatasetItem> {
-        self.index.get(index)
+        Some(self.items[index].clone())
     }
 
     fn len(&self) -> usize {
-        self.index.len()
+        self.items.len()
     }
 }
 

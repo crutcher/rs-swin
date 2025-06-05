@@ -1,0 +1,23 @@
+[package]
+name = "bimm-swin"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+burn = { workspace = true }
+burn-contracts = { workspace = true }
+
+[dev-dependencies]
+burn = { workspace = true, features = ["ndarray"] }
+burn-contracts = { workspace = true, features = ["testing"] }
+
+num-traits = { workspace = true }
+hamcrest = { workspace = true }
+
+[features]
+burn_0_18_0 = []
+

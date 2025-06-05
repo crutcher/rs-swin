@@ -164,7 +164,12 @@ impl StochasticDepthTransformerBlockSequenceConfig {
         let drop_path_rates = self.drop_path_rates();
         assert_eq!(drop_path_rates.len(), self.depth);
 
-        let shift = self.window_size / 2;
+        let shift =
+            if self.input_height() == self.window_size || self.input_width() == self.window_size {
+                0
+            } else {
+                self.window_size / 2
+            };
 
         let common_config = self.common_block_config();
 

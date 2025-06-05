@@ -4285,6 +4285,7 @@ dependencies = [
  "bimm-swin",
  "burn",
  "enum-ordinalize",
+ "rand 0.9.1",
  "rs-cinic-10-burn",
  "rs-cinic-10-index",
  "strum 0.27.1",
