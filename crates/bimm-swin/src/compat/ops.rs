@@ -1,4 +1,4 @@
-use crate::compat::dims::{canonicalize_dim, wrap_idx};
+use crate::compat::dims::{ReflectableIndex, canonicalize_dim, wrap_idx};
 use burn::prelude::{Backend, Tensor};
 use burn::tensor::BasicOps;
 use std::f64;
@@ -15,13 +15,14 @@ use std::f64;
 ///
 /// A new tensor with the specified dimension rolled by the given shift amount.
 #[must_use]
-pub fn roll_dim<B: Backend, const D: usize, K>(
+pub fn roll_dim<B: Backend, const D: usize, K, I>(
     x: Tensor<B, D, K>,
-    shift: isize,
-    dim: isize,
+    shift: I,
+    dim: I,
 ) -> Tensor<B, D, K>
 where
     K: BasicOps<B>,
+    I: ReflectableIndex,
 {
     let dim = canonicalize_dim(dim, D, false);
     let size = x.shape().dims[dim];
@@ -113,13 +114,14 @@ where
 ///
 /// A new tensor with the specified dimensions rolled by the given shifts.
 #[must_use]
-pub fn roll<B: Backend, const D: usize, K>(
+pub fn roll<B: Backend, const D: usize, K, I>(
     x: Tensor<B, D, K>,
-    shifts: &[isize],
-    dims: &[isize],
+    shifts: &[I],
+    dims: &[I],
 ) -> Tensor<B, D, K>
 where
     K: BasicOps<B>,
+    I: ReflectableIndex,
 {
     assert_eq!(
         dims.len(),
@@ -143,7 +145,7 @@ where
     let mut shift_accum: Vec<isize> = vec![0; shape.len()];
     for i in 0..item_count {
         let dim = canonicalize_dim(dims[i], D, false);
-        shift_accum[dim] += shifts[i];
+        shift_accum[dim] += shifts[i].as_isize();
     }
 
     // Do this after we've checked the validity of `dims` and `shifts`.

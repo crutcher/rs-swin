@@ -17,7 +17,7 @@ use burn::tensor::backend::AutodiffBackend;
 use burn::train::metric::{AccuracyMetric, LossMetric};
 use burn::train::{ClassificationOutput, LearnerBuilder};
 use burn::train::{TrainOutput, TrainStep, ValidStep};
-use rand::{rng};
+use rand::rng;
 use rand::seq::SliceRandom;
 use rs_cinic_10_index::Cinic10Index;
 use rs_cinic_10_index::index::ObjectClass;
@@ -133,27 +133,25 @@ pub fn train<B: AutodiffBackend>(
             .batch_size(config.batch_size)
             .shuffle(config.seed)
             .num_workers(config.num_workers)
-            .build(CinicDataset {
-                items
-            })
+            .build(CinicDataset { items })
     };
 
     let dataloader_test = {
         // TODO: something less dumb, using PartialDataset and ShuffledDataset, or a wrapper.
-            let mut rg = rng();
+        let mut rg = rng();
 
-            let mut items = index.valid.items.clone();
-            items.shuffle(&mut rg);
+        let mut items = index.valid.items.clone();
+        items.shuffle(&mut rg);
 
-            let take = items.len() / 10;
+        let take = items.len() / 10;
 
-            let items = items.into_iter().take(take).collect::<Vec<_>>();
+        let items = items.into_iter().take(take).collect::<Vec<_>>();
 
         DataLoaderBuilder::new(batcher.clone())
             .batch_size(config.batch_size * 2)
             .shuffle(config.seed)
             .num_workers(config.num_workers)
-            .build(CinicDataset { items})
+            .build(CinicDataset { items })
     };
 
     let learner = LearnerBuilder::new(artifact_dir)
@@ -207,8 +205,7 @@ fn main() {
 
     let training_config = TrainingConfig::new(
         ModelConfig { swin: config },
-        AdamWConfig::new()
-            .with_grad_clipping(Some(GradientClippingConfig::Norm(1.0)))
+        AdamWConfig::new().with_grad_clipping(Some(GradientClippingConfig::Norm(1.0))),
     )
     .with_num_epochs(90)
     .with_batch_size(128)

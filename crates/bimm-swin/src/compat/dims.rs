@@ -1,3 +1,31 @@
+pub trait ReflectableIndex: Copy {
+    fn as_isize(&self) -> isize;
+}
+
+impl ReflectableIndex for isize {
+    fn as_isize(&self) -> isize {
+        *self
+    }
+}
+
+impl ReflectableIndex for usize {
+    fn as_isize(&self) -> isize {
+        *self as isize
+    }
+}
+
+impl ReflectableIndex for i32 {
+    fn as_isize(&self) -> isize {
+        *self as isize
+    }
+}
+
+impl ReflectableIndex for u32 {
+    fn as_isize(&self) -> isize {
+        *self as isize
+    }
+}
+
 /// Canonicalizes and bounds checks a dimension index.
 ///
 /// ## Arguments
@@ -15,11 +43,16 @@
 /// * If `wrap_scalar` is false and the tensor has no dimensions.
 /// * If the dimension index is out of range.
 #[must_use]
-pub fn canonicalize_dim(
-    idx: isize,
+pub fn canonicalize_dim<I>(
+    idx: I,
     rank: usize,
     wrap_scalar: bool,
-) -> usize {
+) -> usize
+where
+    I: ReflectableIndex,
+{
+    let idx = idx.as_isize();
+
     let rank = if rank > 0 {
         rank
     } else {
@@ -58,14 +91,17 @@ pub fn canonicalize_dim(
 ///
 /// The positive wrapped dimension index.
 #[must_use]
-pub fn wrap_idx(
-    idx: isize,
+pub fn wrap_idx<I>(
+    idx: I,
     size: usize,
-) -> usize {
+) -> usize
+where
+    I: ReflectableIndex,
+{
     if size == 0 {
         return 0; // Avoid modulo by zero
     }
-    let wrapped = idx.rem_euclid(size as isize);
+    let wrapped = idx.as_isize().rem_euclid(size as isize);
     if wrapped < 0 {
         (wrapped + size as isize) as usize
     } else {
