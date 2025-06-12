@@ -205,10 +205,13 @@ fn main() {
 
     let training_config = TrainingConfig::new(
         ModelConfig { swin: config },
-        AdamWConfig::new().with_grad_clipping(Some(GradientClippingConfig::Norm(1.0))),
+        AdamWConfig::new()
+            .with_weight_decay(0.05)
+            .with_grad_clipping(Some(GradientClippingConfig::Norm(1.0))),
     )
-    .with_num_epochs(90)
-    .with_batch_size(128)
+    // .with_learning_rate(1.0e-3)
+    .with_num_epochs(300)
+    .with_batch_size(512)
     .with_num_workers(1);
 
     let device = Default::default();

@@ -144,8 +144,9 @@ where
     // Accumulate the effective shifts for each dimension.
     let mut shift_accum: Vec<isize> = vec![0; shape.len()];
     for i in 0..item_count {
-        let dim = canonicalize_dim(dims[i], D, false);
-        shift_accum[dim] += shifts[i].as_isize();
+        let self1 = &dims[i];
+        let dim = canonicalize_dim(*self1, D, false);
+        shift_accum[dim] += shifts[i].as_isize_index();
     }
 
     // Do this after we've checked the validity of `dims` and `shifts`.
@@ -160,7 +161,9 @@ where
     let mut _dims: Vec<usize> = Vec::with_capacity(item_count);
     let mut _shifts: Vec<usize> = Vec::with_capacity(item_count);
     for dim in 0..item_count {
-        let shift = wrap_idx(shift_accum[dim], sizes[dim]);
+        let self1 = &shift_accum[dim];
+        let size = sizes[dim];
+        let shift = wrap_idx(*self1, size);
         if shift != 0 {
             _shifts.push(shift);
             _dims.push(dim);

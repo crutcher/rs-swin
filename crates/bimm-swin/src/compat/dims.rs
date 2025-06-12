@@ -1,27 +1,27 @@
-pub trait ReflectableIndex: Copy {
-    fn as_isize(&self) -> isize;
+pub trait ReflectableIndex: Copy + Sized {
+    fn as_isize_index(&self) -> isize;
 }
 
 impl ReflectableIndex for isize {
-    fn as_isize(&self) -> isize {
+    fn as_isize_index(&self) -> isize {
         *self
     }
 }
 
 impl ReflectableIndex for usize {
-    fn as_isize(&self) -> isize {
+    fn as_isize_index(&self) -> isize {
         *self as isize
     }
 }
 
 impl ReflectableIndex for i32 {
-    fn as_isize(&self) -> isize {
+    fn as_isize_index(&self) -> isize {
         *self as isize
     }
 }
 
 impl ReflectableIndex for u32 {
-    fn as_isize(&self) -> isize {
+    fn as_isize_index(&self) -> isize {
         *self as isize
     }
 }
@@ -51,7 +51,7 @@ pub fn canonicalize_dim<I>(
 where
     I: ReflectableIndex,
 {
-    let idx = idx.as_isize();
+    let idx = idx.as_isize_index();
 
     let rank = if rank > 0 {
         rank
@@ -101,7 +101,7 @@ where
     if size == 0 {
         return 0; // Avoid modulo by zero
     }
-    let wrapped = idx.as_isize().rem_euclid(size as isize);
+    let wrapped = idx.as_isize_index().rem_euclid(size as isize);
     if wrapped < 0 {
         (wrapped + size as isize) as usize
     } else {
