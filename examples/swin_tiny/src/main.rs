@@ -1,3 +1,4 @@
+#![recursion_limit = "256"]
 mod data;
 
 use crate::data::{CinicBatch, CinicBatcher, CinicDataset};
@@ -8,14 +9,18 @@ use burn::backend::{Autodiff, Cuda};
 use burn::config::Config;
 use burn::data::dataloader::DataLoaderBuilder;
 use burn::grad_clipping::GradientClippingConfig;
+use burn::lr_scheduler::cosine::CosineAnnealingLrSchedulerConfig;
 use burn::module::Module;
 use burn::nn::loss::CrossEntropyLossConfig;
 use burn::optim::AdamWConfig;
 use burn::prelude::{Backend, Int, Tensor};
 use burn::record::CompactRecorder;
 use burn::tensor::backend::AutodiffBackend;
-use burn::train::metric::{AccuracyMetric, LossMetric};
-use burn::train::{ClassificationOutput, LearnerBuilder};
+use burn::train::metric::store::{Aggregate, Direction, Split};
+use burn::train::metric::{AccuracyMetric, LearningRateMetric, LossMetric};
+use burn::train::{
+    ClassificationOutput, LearnerBuilder, MetricEarlyStoppingStrategy, StoppingCondition,
+};
 use burn::train::{TrainOutput, TrainStep, ValidStep};
 use rand::rng;
 use rand::seq::SliceRandom;
@@ -111,7 +116,7 @@ fn create_artifact_dir(artifact_dir: &str) {
 pub fn train<B: AutodiffBackend>(
     artifact_dir: &str,
     config: TrainingConfig,
-    device: &B::Device,
+    devices: Vec<B::Device>,
 ) {
     create_artifact_dir(artifact_dir);
 
@@ -148,25 +153,45 @@ pub fn train<B: AutodiffBackend>(
         let items = items.into_iter().take(take).collect::<Vec<_>>();
 
         DataLoaderBuilder::new(batcher.clone())
-            .batch_size(config.batch_size * 2)
+            .batch_size(config.batch_size)
             .shuffle(config.seed)
             .num_workers(config.num_workers)
             .build(CinicDataset { items })
     };
 
+    let num_batches = dataloader_train.num_items() / config.batch_size;
+
+    let device = devices.first().expect("At least one device is required");
+
+    let lr_scheduler = CosineAnnealingLrSchedulerConfig::new(
+        config.learning_rate,
+        num_batches * config.num_epochs,
+    )
+    .with_min_lr(config.learning_rate * 0.01)
+    .init()
+    .unwrap();
+
     let learner = LearnerBuilder::new(artifact_dir)
-        .metric_train_numeric(AccuracyMetric::new())
-        .metric_valid_numeric(AccuracyMetric::new())
         .metric_train_numeric(LossMetric::new())
         .metric_valid_numeric(LossMetric::new())
+        .metric_train_numeric(AccuracyMetric::new())
+        .metric_valid_numeric(AccuracyMetric::new())
+        .metric_train_numeric(LearningRateMetric::new())
         .with_file_checkpointer(CompactRecorder::new())
-        .devices(vec![device.clone()])
+        .early_stopping(MetricEarlyStoppingStrategy::new(
+            &LossMetric::<B>::new(),
+            Aggregate::Mean,
+            Direction::Lowest,
+            Split::Valid,
+            StoppingCondition::NoImprovementSince { n_epochs: 3 },
+        ))
+        .devices(devices.clone())
         .num_epochs(config.num_epochs)
         .summary()
         .build(
             config.model.init::<B>(device),
             config.optimizer.init(),
-            config.learning_rate,
+            lr_scheduler,
         );
 
     let model_trained = learner.fit(dataloader_train, dataloader_test);
@@ -181,9 +206,10 @@ fn main() {
 
     let h = 32;
     let w = 32;
+    let channels = 3;
+
     let img_res = [h, w];
     let patch_size = 2;
-    let channels = 3;
     let window_size = 4;
     let embed_dim = 2 * channels * patch_size * patch_size;
     let num_classes = ObjectClass::COUNT;
@@ -195,9 +221,9 @@ fn main() {
         num_classes,
         embed_dim,
         vec![
-            LayerConfig::new(2, 3),
-            LayerConfig::new(6, 6),
-            LayerConfig::new(2, 12),
+            LayerConfig::new(8, 6),
+            LayerConfig::new(8, 8),
+            LayerConfig::new(6, 12),
         ],
     )
     .with_window_size(window_size)
@@ -207,14 +233,14 @@ fn main() {
         ModelConfig { swin: config },
         AdamWConfig::new()
             .with_weight_decay(0.05)
-            .with_grad_clipping(Some(GradientClippingConfig::Norm(1.0))),
+            .with_grad_clipping(Some(GradientClippingConfig::Norm(0.25))),
     )
-    // .with_learning_rate(1.0e-3)
-    .with_num_epochs(300)
+    .with_learning_rate(1.0e-3)
+    .with_num_epochs(100)
     .with_batch_size(512)
     .with_num_workers(1);
 
-    let device = Default::default();
+    let devices = vec![Default::default()];
 
-    train::<B>("/tmp/swin_tiny_cinic10", training_config, &device);
+    train::<B>("/tmp/swin_tiny_cinic10", training_config, devices);
 }

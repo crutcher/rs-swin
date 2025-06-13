@@ -47,6 +47,10 @@ impl<B: Backend> Batcher<B, DatasetItem, CinicBatch<B>> for CinicBatcher {
 
         let images = images.div_scalar(255.0);
 
+        // Fixed normalization for Cinic-10 dataset
+        let images = images.sub_scalar(0.4);
+        let images = images.div_scalar(0.2);
+
         let ordinals: Vec<i32> = items
             .iter()
             .map(|item| item.class.ordinal() as i32)
