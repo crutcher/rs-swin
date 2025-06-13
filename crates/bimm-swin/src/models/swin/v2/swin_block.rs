@@ -164,7 +164,7 @@ where
 
     // Cyclic shift for shifted window attention.
     let x = if shift != 0 {
-        roll(x, &[-shift, -shift], &dims)
+        roll(x, &dims, &[-shift, -shift])
     } else {
         x
     };
@@ -173,7 +173,7 @@ where
 
     // Reverse cyclic shift.
     if shift != 0 {
-        roll(x, &[shift, shift], &dims)
+        roll(x, &dims, &[shift, shift])
     } else {
         x
     }
@@ -680,9 +680,9 @@ mod tests {
             .assert_eq(
                 &({
                     let x = input.clone();
-                    let x = roll(x, &[-1, -1], &[1, 2]);
+                    let x = roll(x, &[1, 2], &[-1, -1]);
                     let x = x + idx.clone();
-                    roll(x, &[1, 1], &[1, 2])
+                    roll(x, &[1, 2], &[1, 1])
                 })
                 .to_data(),
                 true,

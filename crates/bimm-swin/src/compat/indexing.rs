@@ -1,27 +1,29 @@
-pub trait ReflectableIndex: Copy + Sized {
-    fn as_isize_index(&self) -> isize;
+use std::fmt::Debug;
+
+pub trait AsIndex: Debug + Copy + Sized {
+    fn index(&self) -> isize;
 }
 
-impl ReflectableIndex for isize {
-    fn as_isize_index(&self) -> isize {
+impl AsIndex for isize {
+    fn index(&self) -> isize {
         *self
     }
 }
 
-impl ReflectableIndex for usize {
-    fn as_isize_index(&self) -> isize {
+impl AsIndex for usize {
+    fn index(&self) -> isize {
         *self as isize
     }
 }
 
-impl ReflectableIndex for i32 {
-    fn as_isize_index(&self) -> isize {
+impl AsIndex for i32 {
+    fn index(&self) -> isize {
         *self as isize
     }
 }
 
-impl ReflectableIndex for u32 {
-    fn as_isize_index(&self) -> isize {
+impl AsIndex for u32 {
+    fn index(&self) -> isize {
         *self as isize
     }
 }
@@ -49,9 +51,9 @@ pub fn canonicalize_dim<I>(
     wrap_scalar: bool,
 ) -> usize
 where
-    I: ReflectableIndex,
+    I: AsIndex,
 {
-    let idx = idx.as_isize_index();
+    let idx = idx.index();
 
     let rank = if rank > 0 {
         rank
@@ -96,12 +98,12 @@ pub fn wrap_idx<I>(
     size: usize,
 ) -> usize
 where
-    I: ReflectableIndex,
+    I: AsIndex,
 {
     if size == 0 {
         return 0; // Avoid modulo by zero
     }
-    let wrapped = idx.as_isize_index().rem_euclid(size as isize);
+    let wrapped = idx.index().rem_euclid(size as isize);
     if wrapped < 0 {
         (wrapped + size as isize) as usize
     } else {

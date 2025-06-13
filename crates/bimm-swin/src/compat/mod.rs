@@ -7,7 +7,7 @@
 pub mod grid;
 
 /// Dimension / Indexing utilities.
-pub mod dims;
+pub mod indexing;
 
 /// The linear algebra module.
 pub mod linalg;
