@@ -12,3 +12,4 @@ pub(crate) mod testing;
 
 pub mod layers;
 pub mod models;
+mod contracts;
