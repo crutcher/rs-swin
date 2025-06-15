@@ -25,15 +25,15 @@ where
     K: BasicOps<B>,
     I: AsIndex,
 {
-        let dim = canonicalize_dim(dim, D, false);
-        let size = x.shape().dims[dim];
-        let shift = wrap_idx(shift, size);
+    let dim = canonicalize_dim(dim, D, false);
+    let size = x.shape().dims[dim];
+    let shift = wrap_idx(shift, size);
 
-        if size == 0 || shift == 0 {
-            return x;
-        }
+    if size == 0 || shift == 0 {
+        return x;
+    }
 
-        _unchecked_roll_dim(x, dim, shift)
+    _unchecked_roll_dim(x, dim, shift)
 }
 #[must_use]
 #[cfg(feature = "burn_0_18_0")]

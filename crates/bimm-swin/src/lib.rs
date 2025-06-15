@@ -10,6 +10,6 @@ pub(crate) mod compat;
 #[allow(dead_code)]
 pub(crate) mod testing;
 
+mod contracts;
 pub mod layers;
 pub mod models;
-mod contracts;
