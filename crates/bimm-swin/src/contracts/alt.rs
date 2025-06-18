@@ -1,55 +1,56 @@
 use std::collections::HashMap;
 
-#[derive(Debug, Clone)]
-pub enum Expr<'a> {
-    Fixed(i32),
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SizeExpr<'a> {
+    Fixed(isize),
     Param(&'a str),
-    Neg(Box<Expr<'a>>),
-    Pow(Box<Expr<'a>>, i32),
-    Sum(Vec<Expr<'a>>),
-    Prod(Vec<Expr<'a>>),
+    Neg(Box<SizeExpr<'a>>),
+    Pow(Box<SizeExpr<'a>>, usize),
+    Sum(Vec<SizeExpr<'a>>),
+    Prod(Vec<SizeExpr<'a>>),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum MatchResult<'a> {
-    Success,            // All params bound and expression equals target
-    Failure,            // Multiple unbound params or other failure
-    Solve(&'a str, i32), // Single unbound param and its required value
+    Success,               // All params bound and expression equals target
+    Failure,               // Multiple unbound params or other failure
+    Solve(&'a str, isize), // Single unbound param and its required value
 }
 
-impl<'a> Expr<'a> {
-    fn fixed(value: i32) -> Self {
-        Expr::Fixed(value)
+impl<'a> SizeExpr<'a> {
+    fn fixed(value: isize) -> Self {
+        SizeExpr::Fixed(value)
     }
-    
+
     fn param(name: &'a str) -> Self {
-        Expr::Param(name)
+        SizeExpr::Param(name)
     }
-    
-    fn neg(expr: Expr<'a>) -> Self {
-        Expr::Neg(Box::new(expr))
+
+    fn neg(expr: SizeExpr<'a>) -> Self {
+        SizeExpr::Neg(Box::new(expr))
     }
-    
-    fn pow(base: Expr<'a>, exp: i32) -> Self {
-        if exp <= 0 {
-            panic!("Exponents must be > 0: {exp}");
-        }
-        Expr::Pow(Box::new(base), exp)
+
+    fn pow(
+        base: SizeExpr<'a>,
+        exp: usize,
+    ) -> Self {
+        assert!(exp > 0, "Exponents must be > 0: {exp}");
+        SizeExpr::Pow(Box::new(base), exp)
     }
-    
-    fn sum(exprs: Vec<Expr<'a>>) -> Self {
-        Expr::Sum(exprs)
+
+    fn sum(exprs: Vec<SizeExpr<'a>>) -> Self {
+        SizeExpr::Sum(exprs)
     }
-    
-    fn prod(exprs: Vec<Expr<'a>>) -> Self {
-        Expr::Prod(exprs)
+
+    fn prod(exprs: Vec<SizeExpr<'a>>) -> Self {
+        SizeExpr::Prod(exprs)
     }
-    
+
     /// Match this expression against a target value with given bindings
     pub fn match_target(
         &self,
-        target: i32,
-        env: &HashMap<&'a str, i32>,
+        target: isize,
+        env: &HashMap<&'a str, usize>,
     ) -> MatchResult {
         match self.binding_state(env) {
             BindingState::FullyBound => {
@@ -61,7 +62,7 @@ impl<'a> Expr<'a> {
             }
             BindingState::MultipleUnbound => MatchResult::Failure,
             BindingState::SingleUnbound(param_name) => {
-                match self.solve_for_target(&param_name, target, env) {
+                match self.solve_for_target(param_name, target, env) {
                     Some(value) => MatchResult::Solve(param_name, value),
                     None => MatchResult::Failure,
                 }
@@ -71,9 +72,9 @@ impl<'a> Expr<'a> {
 
     /// Compute integer power (exponent must be non-negative)
     fn integer_pow(
-        base: i32,
-        exp: i32,
-    ) -> Option<i32> {
+        base: isize,
+        exp: usize,
+    ) -> Option<isize> {
         if exp < 0 {
             None // We only support non-negative exponents
         } else {
@@ -83,9 +84,9 @@ impl<'a> Expr<'a> {
 
     /// Find exact integer nth root if it exists (no search needed)
     fn exact_nth_root(
-        value: i32,
-        n: u32,
-    ) -> Option<i32> {
+        value: isize,
+        n: usize,
+    ) -> Option<isize> {
         if n == 0 {
             return None; // Invalid exponent
         }
@@ -102,8 +103,9 @@ impl<'a> Expr<'a> {
 
                 // Check candidates around the approximation
                 for candidate in (approx.saturating_sub(1))..=(approx + 1) {
+                    let candidate = candidate as isize;
                     if candidate >= 0 {
-                        if let Some(power) = candidate.checked_pow(n) {
+                        if let Some(power) = candidate.checked_pow(n as u32) {
                             if power == value {
                                 return Some(candidate);
                             }
@@ -127,20 +129,20 @@ impl<'a> Expr<'a> {
     /// Determine the binding state of this expression
     fn binding_state(
         &self,
-        env: &HashMap<&'a str, i32>,
+        env: &HashMap<&'a str, usize>,
     ) -> BindingState {
         match self {
-            Expr::Param(name) => {
+            SizeExpr::Param(name) => {
                 if env.contains_key(name) {
                     BindingState::FullyBound
                 } else {
                     BindingState::SingleUnbound(name.clone())
                 }
             }
-            Expr::Fixed(_) => BindingState::FullyBound,
-            Expr::Neg(expr) => expr.binding_state(env),
-            Expr::Pow(base, exp) => base.binding_state(env),
-            Expr::Sum(exprs) | Expr::Prod(exprs) => {
+            SizeExpr::Fixed(_) => BindingState::FullyBound,
+            SizeExpr::Neg(expr) => expr.binding_state(env),
+            SizeExpr::Pow(base, exp) => base.binding_state(env),
+            SizeExpr::Sum(exprs) | SizeExpr::Prod(exprs) => {
                 let mut unbound_params = Vec::new();
 
                 for expr in exprs {
@@ -157,7 +159,7 @@ impl<'a> Expr<'a> {
 
                 match unbound_params.len() {
                     0 => BindingState::FullyBound,
-                    1 => BindingState::SingleUnbound(unbound_params[0].clone()),
+                    1 => BindingState::SingleUnbound(unbound_params[0]),
                     _ => BindingState::MultipleUnbound,
                 }
             }
@@ -168,11 +170,11 @@ impl<'a> Expr<'a> {
     fn solve_for_target(
         &self,
         target_param: &str,
-        target: i32,
-        env: &HashMap<&'a str, i32>,
-    ) -> Option<i32> {
+        target: isize,
+        env: &HashMap<&'a str, usize>,
+    ) -> Option<isize> {
         match self {
-            Expr::Param(name) => {
+            SizeExpr::Param(name) => {
                 if *name == target_param {
                     Some(target)
                 } else {
@@ -180,7 +182,7 @@ impl<'a> Expr<'a> {
                     None
                 }
             }
-            Expr::Fixed(value) => {
+            SizeExpr::Fixed(value) => {
                 // Fixed value should equal target
                 if *value == target {
                     Some(target) // This case shouldn't actually happen in practice
@@ -188,11 +190,11 @@ impl<'a> Expr<'a> {
                     None
                 }
             }
-            Expr::Neg(expr) => {
+            SizeExpr::Neg(expr) => {
                 // neg(expr) = target  =>  expr = -target
                 expr.solve_for_target(target_param, -target, env)
             }
-            Expr::Pow(base, exp) => {
+            SizeExpr::Pow(base, exp) => {
                 // Exponent must be fixed and positive
                 let exp = *exp;
                 if exp <= 0 {
@@ -201,14 +203,14 @@ impl<'a> Expr<'a> {
 
                 // base^exp = target, solve for base
                 // base = target^(1/exp)
-                let root = Self::exact_nth_root(target, exp as u32)?;
+                let root = Self::exact_nth_root(target, exp)?;
                 base.solve_for_target(target_param, root, env)
             }
-            Expr::Sum(exprs) => {
+            SizeExpr::Sum(exprs) => {
                 // sum(exprs) = target
                 // Find the one unbound expr, evaluate all others, subtract from target
                 let mut unbound_expr = None;
-                let mut bound_sum = 0;
+                let mut bound_sum: isize = 0;
 
                 for expr in exprs {
                     match expr.binding_state(env) {
@@ -232,7 +234,7 @@ impl<'a> Expr<'a> {
                     None
                 }
             }
-            Expr::Prod(exprs) => {
+            SizeExpr::Prod(exprs) => {
                 // prod(exprs) = target
                 // Find the one unbound expr, evaluate all others, divide target by their product
                 let mut unbound_expr = None;
@@ -286,25 +288,25 @@ impl<'a> Expr<'a> {
     /// Evaluate expression with given bindings (assumes all params are bound)
     fn evaluate(
         &self,
-        env: &HashMap<&'a str, i32>,
-    ) -> Option<i32> {
+        env: &HashMap<&'a str, usize>,
+    ) -> Option<isize> {
         match self {
-            Expr::Param(name) => env.get(name).copied(),
-            Expr::Fixed(value) => Some(*value),
-            Expr::Neg(expr) => expr.evaluate(env).map(|x| -x),
-            Expr::Pow(base, exp) => {
+            SizeExpr::Param(name) => env.get(name).map(|v| *v as isize),
+            SizeExpr::Fixed(value) => Some(*value),
+            SizeExpr::Neg(expr) => expr.evaluate(env).map(|x| -x),
+            SizeExpr::Pow(base, exp) => {
                 let base_val = base.evaluate(env)?;
                 let exp = *exp;
                 Self::integer_pow(base_val, exp)
             }
-            Expr::Sum(exprs) => {
+            SizeExpr::Sum(exprs) => {
                 let mut sum = 0;
                 for expr in exprs {
                     sum += expr.evaluate(env)?;
                 }
                 Some(sum)
             }
-            Expr::Prod(exprs) => {
+            SizeExpr::Prod(exprs) => {
                 let mut prod = 1;
                 for expr in exprs {
                     prod *= expr.evaluate(env)?;
@@ -329,25 +331,22 @@ mod tests {
     #[test]
     fn test_simple_sum() {
         // x + 5, target = 8, should solve x = 3
-        let expr = Expr::sum(vec![Expr::param("x"), Expr::fixed(5)]);
+        let expr = SizeExpr::sum(vec![
+            SizeExpr::param("x"),
+            SizeExpr::neg(SizeExpr::fixed(5)),
+        ]);
         let env = HashMap::new();
 
-        assert_eq!(
-            expr.match_target(8, &env),
-            MatchResult::Solve("x", 3)
-        );
+        assert_eq!(expr.match_target(8, &env), MatchResult::Solve("x", 13));
     }
 
     #[test]
     fn test_simple_product() {
         // 2 * x, target = 6, should solve x = 3
-        let expr = Expr::prod(vec![Expr::fixed(2), Expr::param("x")]);
+        let expr = SizeExpr::prod(vec![SizeExpr::fixed(2), SizeExpr::param("x")]);
         let env = HashMap::new();
 
-        assert_eq!(
-            expr.match_target(6, &env),
-            MatchResult::Solve("x", 3)
-        );
+        assert_eq!(expr.match_target(6, &env), MatchResult::Solve("x", 3));
     }
 
     #[test]
@@ -355,10 +354,7 @@ mod tests {
         // p * p, target = 9
         // This becomes: p * p = 9, so we solve the first p for 9/p
         // But since both factors are the same unbound param, this should work
-        let expr = Expr::prod(vec![
-            Expr::param("p"),
-            Expr::param("p"),
-        ]);
+        let expr = SizeExpr::prod(vec![SizeExpr::param("p"), SizeExpr::param("p")]);
         let env = HashMap::new();
 
         // This should solve: first p gets target/second_p, but second_p is unbound too
@@ -371,17 +367,14 @@ mod tests {
         // w * p * h * p + c * z
         // With w=2, h=3, c=1, z=4, and p unbound, target=25
         // This should fail because p appears twice in the product
-        let expr = Expr::sum(vec![
-            Expr::prod(vec![
-                Expr::param("w"),
-                Expr::param("p"),
-                Expr::param("h"),
-                Expr::param("p"),
+        let expr = SizeExpr::sum(vec![
+            SizeExpr::prod(vec![
+                SizeExpr::param("w"),
+                SizeExpr::param("p"),
+                SizeExpr::param("h"),
+                SizeExpr::param("p"),
             ]),
-            Expr::prod(vec![
-                Expr::param("c"),
-                Expr::param("z"),
-            ]),
+            SizeExpr::prod(vec![SizeExpr::param("c"), SizeExpr::param("z")]),
         ]);
 
         let mut env = HashMap::new();
@@ -401,25 +394,22 @@ mod tests {
         //              2 * (x + 3) = 10
         //              x + 3 = 5
         //              x = 2
-        let expr = Expr::sum(vec![
-            Expr::prod(vec![
-                Expr::fixed(2),
-                Expr::sum(vec![Expr::param("x"), Expr::fixed(3)]),
+        let expr = SizeExpr::sum(vec![
+            SizeExpr::prod(vec![
+                SizeExpr::fixed(2),
+                SizeExpr::sum(vec![SizeExpr::param("x"), SizeExpr::fixed(3)]),
             ]),
-            Expr::fixed(-1),
+            SizeExpr::fixed(-1),
         ]);
         let env = HashMap::new();
 
-        assert_eq!(
-            expr.match_target(9, &env),
-            MatchResult::Solve("x", 2)
-        );
+        assert_eq!(expr.match_target(9, &env), MatchResult::Solve("x", 2));
     }
 
     #[test]
     fn test_all_bound_success() {
         // x + 5 with x = 3, target = 8
-        let expr = Expr::sum(vec![Expr::param("x"), Expr::fixed(5)]);
+        let expr = SizeExpr::sum(vec![SizeExpr::param("x"), SizeExpr::fixed(5)]);
         let mut env = HashMap::new();
         env.insert("x", 3);
 
@@ -429,10 +419,7 @@ mod tests {
     #[test]
     fn test_multiple_unbound() {
         // x + y, multiple unbound params
-        let expr = Expr::sum(vec![
-            Expr::param("x"),
-            Expr::param("y"),
-        ]);
+        let expr = SizeExpr::sum(vec![SizeExpr::param("x"), SizeExpr::param("y")]);
         let env = HashMap::new();
 
         assert_eq!(expr.match_target(5, &env), MatchResult::Failure);
@@ -441,7 +428,7 @@ mod tests {
     #[test]
     fn test_no_integer_solution() {
         // 2 * x, target = 3 (no integer solution)
-        let expr = Expr::prod(vec![Expr::fixed(2), Expr::param("x")]);
+        let expr = SizeExpr::prod(vec![SizeExpr::fixed(2), SizeExpr::param("x")]);
         let env = HashMap::new();
 
         assert_eq!(expr.match_target(3, &env), MatchResult::Failure);
@@ -450,19 +437,16 @@ mod tests {
     #[test]
     fn test_power_solve_base() {
         // x^3 = 8, should solve x = 2
-        let expr = Expr::pow(Expr::param("x"), 3);
+        let expr = SizeExpr::pow(SizeExpr::param("x"), 3);
         let env = HashMap::new();
 
-        assert_eq!(
-            expr.match_target(8, &env),
-            MatchResult::Solve("x", 2)
-        );
+        assert_eq!(expr.match_target(8, &env), MatchResult::Solve("x", 2));
     }
 
     #[test]
     fn test_power_no_solution() {
         // 2^3 = x where x != 8 (no solution when fully bound and doesn't match)
-        let expr = Expr::pow(Expr::fixed(2), 3);
+        let expr = SizeExpr::pow(SizeExpr::fixed(2), 3);
         let env = HashMap::new();
 
         // 2^3 = 8, so target 5 should fail
@@ -472,46 +456,37 @@ mod tests {
     #[test]
     fn test_power_in_sum() {
         // x^2 + 1 = 10, should solve x = 3 (since 3^2 + 1 = 10)
-        let expr = Expr::sum(vec![
-            Expr::pow(Expr::param("x"), 2),
-            Expr::fixed(1),
+        let expr = SizeExpr::sum(vec![
+            SizeExpr::pow(SizeExpr::param("x"), 2),
+            SizeExpr::fixed(1),
         ]);
         let env = HashMap::new();
 
-        assert_eq!(
-            expr.match_target(10, &env),
-            MatchResult::Solve("x", 3)
-        );
+        assert_eq!(expr.match_target(10, &env), MatchResult::Solve("x", 3));
     }
 
     #[test]
     fn test_power_cube_root() {
         // x^3 = 27, should solve x = 3
-        let expr = Expr::pow(Expr::param("x"), 3);
+        let expr = SizeExpr::pow(SizeExpr::param("x"), 3);
         let env = HashMap::new();
 
-        assert_eq!(
-            expr.match_target(27, &env),
-            MatchResult::Solve("x", 3)
-        );
+        assert_eq!(expr.match_target(27, &env), MatchResult::Solve("x", 3));
     }
 
     #[test]
     fn test_power_negative_base_odd_exp() {
         // x^3 = -8, should solve x = -2 (since (-2)^3 = -8)
-        let expr = Expr::pow(Expr::param("x"), 3);
+        let expr = SizeExpr::pow(SizeExpr::param("x"), 3);
         let env = HashMap::new();
 
-        assert_eq!(
-            expr.match_target(-8, &env),
-            MatchResult::Solve("x", -2)
-        );
+        assert_eq!(expr.match_target(-8, &env), MatchResult::Solve("x", -2));
     }
 
     #[test]
     fn test_power_negative_base_even_exp() {
         // x^2 = -4 (no real solution for even exponent and negative target)
-        let expr = Expr::pow(Expr::param("x"), 2);
+        let expr = SizeExpr::pow(SizeExpr::param("x"), 2);
         let env = HashMap::new();
 
         assert_eq!(expr.match_target(-4, &env), MatchResult::Failure);
