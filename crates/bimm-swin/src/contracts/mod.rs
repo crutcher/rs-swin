@@ -1,92 +1,129 @@
+mod alt;
+
+#[allow(dead_code)]
+#[allow(unused)]
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Atom<'a> {
-    Value(usize),
-    Bound(&'a str),
-}
-
-impl<'a> Atom<'a> {
-    fn value(value: usize) -> Self {
-        Atom::Value(value)
-    }
-    
-    fn bound(name: &'a str) -> Self {
-        Atom::Bound(name)
-    }
+    Fixed(usize),
+    Param(&'a str),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Term<'a> {
     Atom(Atom<'a>),
-    Prod(&'a [Term<'a>]),
+    Neg(Box<Term<'a>>),
+    Prod(Vec<Term<'a>>),
+    Sum(Vec<Term<'a>>),
 }
 
-impl <'a> Term<'a> {
-    fn atom(value: usize) -> Self {
-        Term::Atom(Atom::value(value))
+#[derive(Debug, Clone, PartialEq)]
+pub enum EvalResult {
+    Value(isize),
+    UnboundCount(usize),
+}
+
+impl<'a> Term<'a> {
+    pub fn fixed(value: usize) -> Self {
+        Term::Atom(Atom::Fixed(value))
     }
-    
-    fn bound(name: &'a str) -> Self {
-        Term::Atom(Atom::bound(name))
+
+    pub fn param(name: &'a str) -> Self {
+        Term::Atom(Atom::Param(name))
     }
-    
-    fn prod(terms: &'a [Term<'a>]) -> Self {
+
+    pub fn neg(term: Term<'a>) -> Self {
+        Term::Neg(Box::new(term))
+    }
+
+    pub fn prod(terms: Vec<Term<'a>>) -> Self {
         Term::Prod(terms)
+    }
+
+    pub fn sum(terms: Vec<Term<'a>>) -> Self {
+        Term::Sum(terms)
+    }
+
+    fn eval<const D: usize>(
+        &self,
+        env: &Env<'a, D>,
+    ) -> EvalResult {
+        match self {
+            Term::Atom(atom) => match atom {
+                Atom::Fixed(val) => EvalResult::Value(*val as isize),
+                Atom::Param(name) => match env.lookup(name) {
+                    Some(value) => EvalResult::Value(value as isize),
+                    None => EvalResult::UnboundCount(1),
+                },
+            },
+            Term::Neg(term) => match term.eval(env) {
+                EvalResult::Value(val) => EvalResult::Value(0 - val),
+                EvalResult::UnboundCount(count) => EvalResult::UnboundCount(count),
+            },
+            Term::Prod(terms) => {
+                let mut product = 1;
+                let mut unbound_count = 0;
+                for term in terms {
+                    match term.eval(env) {
+                        EvalResult::Value(val) => product *= val,
+                        EvalResult::UnboundCount(count) => unbound_count += count,
+                    }
+                }
+
+                if unbound_count > 0 {
+                    EvalResult::UnboundCount(unbound_count)
+                } else {
+                    EvalResult::Value(product)
+                }
+            }
+            Term::Sum(terms) => {
+                let mut sum = 0;
+                let mut unbound_count = 0;
+                for term in terms {
+                    match term.eval(env) {
+                        EvalResult::Value(val) => sum += val,
+                        EvalResult::UnboundCount(count) => unbound_count += count,
+                    }
+                }
+
+                if unbound_count > 0 {
+                    EvalResult::UnboundCount(unbound_count)
+                } else {
+                    EvalResult::Value(sum)
+                }
+            }
+        }
+    }
+    
+    fn match_target<const D: usize>(
+        &self,
+        target: usize,
+        env: &mut Env<'a, D>,
+    ) -> Result<(), String> {
+        let target = target as isize;
+        
+        match self.eval(env) {
+            EvalResult::Value(val) => {
+                if val == target {
+                    return Ok(());
+                } else {
+                    return Err(format!("Expected {}, got {}", target, val));
+                }
+            }
+            EvalResult::UnboundCount(count) => {
+                return Err(format!("Expected {}, got {}", target, count));
+            }
+        }
+        
+        unimplemented!()
     }
 }
 
 pub enum Pattern<'a> {
     Any,
     Ellipsis,
-    Term(Term<'a>),
-}
-
-impl<'a> Pattern<'a> {
-    pub fn any() -> Self {
-        Pattern::Any
-    }
-
-    pub fn ellipsis() -> Self {
-        Pattern::Ellipsis
-    }
-    
-    pub fn bound(name: &'a str) -> Self {
-        Pattern::Term(Term::bound(name))
-    }
-    
-    pub fn value(value: usize) -> Self {
-        Pattern::Term(Term::atom(value))
-    }
-
-    pub fn prod(terms: &'a [Term<'a>]) -> Self {
-        Pattern::Term(Term::prod(terms))
-    }
-}
-
-#[derive(Debug)]
-pub enum DimTerm<'a> {
-    Named(&'a str),
-    Const(usize),
-    Prod(&'a [DimTerm<'a>]),
-}
-
-impl<'a> From<&'a str> for DimTerm<'a> {
-    fn from(val: &'a str) -> Self {
-        DimTerm::Named(val)
-    }
-}
-
-impl<'a> From<&'a usize> for DimTerm<'a> {
-    fn from(val: &'a usize) -> Self {
-        DimTerm::Const(*val)
-    }
-}
-
-impl<'a> From<&'a [DimTerm<'a>]> for DimTerm<'a> {
-    fn from(val: &'a [DimTerm<'a>]) -> Self {
-        DimTerm::Prod(val)
-    }
+    Expr(Term<'a>),
 }
 
 type Bindings<'a, const D: usize> = &'a [(&'a str, usize); D];
@@ -149,45 +186,10 @@ impl<'a, const B: usize> Env<'a, B> {
     }
 }
 
-trait DimPattern<'a, const D: usize> {
-    fn unpack_shape<const K: usize, const B: usize>(
-        &self,
-        shape: &[usize],
-        keys: &[&str; K],
-        bindings: Bindings<B>,
-    ) -> [usize; K];
-}
-
-impl<'a, const D: usize> DimPattern<'a, D> for [DimTerm<'a>; D] {
-    fn unpack_shape<const K: usize, const B: usize>(
-        &self,
-        shape: &[usize],
-        keys: &[&str; K],
-        bindings: Bindings<B>,
-    ) -> [usize; K] {
-        // TODO: modeling `...` and `*` patterns;
-        // probably need to not use the const D parameter.
-        if shape.len() != D {
-            panic!("Shape length mismatch: expected {}, got {}", D, shape.len());
-        }
-
-        let env = Env::new(bindings);
-
-        let mut values = [0; K];
-        for i in 0..K {
-            let key = keys[i];
-            values[i] = match env.lookup(key) {
-                Some(value) => value,
-                None => panic!("No value for key \"{}\"", key),
-            };
-        }
-        values
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn test_scratch() {
         let _b = 2;
@@ -199,10 +201,62 @@ mod tests {
         let shape = [_b, _h * _p, _w * _p, _c];
 
         let _pattern = [
-            Pattern::bound("b"),
-            Pattern::prod(&[Term::bound("h"), Term::bound("p")]),
-            Pattern::prod(&[Term::bound("w"), Term::bound("p")]),
-            Pattern::bound("c"),
+            Pattern::Expr(Term::param("b")),
+            Pattern::Expr(Term::prod(vec![Term::param("h"), Term::param("p")])),
+            Pattern::Expr(Term::prod(vec![Term::param("w"), Term::param("p")])),
+            Pattern::Expr(Term::param("c")),
         ];
+    }
+
+    #[test]
+    fn test_eval() {
+        let bindings = [("a", 2), ("b", 3)];
+        let mut env = Env::new(&bindings);
+        env.insert("c", 4);
+
+        assert_eq!(Term::fixed(42).eval(&env), EvalResult::Value(42));
+        assert_eq!(
+            Term::neg(Term::fixed(42)).eval(&env),
+            EvalResult::Value(-42)
+        );
+
+        assert_eq!(Term::param("a").eval(&env), EvalResult::Value(2));
+        assert_eq!(Term::param("c").eval(&env), EvalResult::Value(4));
+        assert_eq!(Term::param("x").eval(&env), EvalResult::UnboundCount(1));
+
+        assert_eq!(
+            Term::neg(Term::param("c")).eval(&env),
+            EvalResult::Value(-4)
+        );
+        assert_eq!(
+            Term::neg(Term::param("x")).eval(&env),
+            EvalResult::UnboundCount(1)
+        );
+
+        assert_eq!(
+            Term::prod(vec![Term::param("a"), Term::param("b")]).eval(&env),
+            EvalResult::Value(6)
+        );
+        assert_eq!(
+            Term::prod(vec![Term::param("a"), Term::neg(Term::param("b"))]).eval(&env),
+            EvalResult::Value(-6)
+        );
+        assert_eq!(
+            Term::prod(vec![Term::param("a"), Term::param("x"), Term::param("y")]).eval(&env),
+            EvalResult::UnboundCount(2)
+        );
+
+        assert_eq!(
+            Term::sum(vec![Term::param("a"), Term::param("b")]).eval(&env),
+            EvalResult::Value(5)
+        );
+        assert_eq!(
+            Term::sum(vec![Term::param("a"), Term::neg(Term::param("b"))]).eval(&env),
+            EvalResult::Value(-1)
+        );
+        assert_eq!(
+            Term::sum(vec![Term::param("a"), Term::param("x"), Term::param("y")]).eval(&env),
+            EvalResult::UnboundCount(2)
+        );
     }
 }
