@@ -1,4 +1,4 @@
-mod alt;
+pub mod alt;
 
 #[allow(dead_code)]
 #[allow(unused)]
@@ -95,14 +95,14 @@ impl<'a> Term<'a> {
             }
         }
     }
-    
+
     fn match_target<const D: usize>(
         &self,
         target: usize,
         env: &mut Env<'a, D>,
     ) -> Result<(), String> {
         let target = target as isize;
-        
+
         match self.eval(env) {
             EvalResult::Value(val) => {
                 if val == target {
@@ -115,7 +115,7 @@ impl<'a> Term<'a> {
                 return Err(format!("Expected {}, got {}", target, count));
             }
         }
-        
+
         unimplemented!()
     }
 }
