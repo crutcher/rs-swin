@@ -18,6 +18,8 @@ repository = "https://github.com/crutcher/bimm"
 [workspace.lints.clippy]
 
 [workspace.dependencies]
+bimm-contracts-shapes = { version = "0.1.0", path = "crates/bimm-contracts-shapes" }
+
 burn = { version = "^0.17.1" }
 
 burn-contracts = { version = "^0.3.1" }

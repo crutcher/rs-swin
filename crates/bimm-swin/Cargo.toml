@@ -8,6 +8,7 @@ license.workspace = true
 workspace = true
 
 [dependencies]
+bimm-contracts-shapes = { workspace = true }
 burn = { workspace = true }
 burn-contracts = { workspace = true }
 
