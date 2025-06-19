@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::ops::{AddAssign, MulAssign};
 
 pub trait StaticBindings {
     fn lookup(
@@ -137,12 +138,105 @@ impl<'a> SizeExpr<'a> {
         SizeExpr::Prod(exprs)
     }
 
+    // TODO(crutcher): Consider Result<<volue>, <unbound_count>> ?
+
+    /// Evaluate expression with given bindings (assumes all params are bound)
+    pub fn evaluate(
+        &self,
+        env: &Env<'a>,
+    ) -> Option<isize> {
+        match self {
+            SizeExpr::Fixed(value) => Some(*value),
+            SizeExpr::Param(name) => env.lookup(name).map(|v| v as isize),
+            SizeExpr::Negate(expr) => expr.evaluate(env).map(|x| -x),
+            SizeExpr::Pow(base, exp) => {
+                let base_val = base.evaluate(env)?;
+                let exp = *exp;
+                base_val.checked_pow(exp as u32)
+            }
+            SizeExpr::Sum(exprs) => {
+                let mut sum = 0;
+                for expr in exprs {
+                    sum += expr.evaluate(env)?;
+                }
+                Some(sum)
+            }
+            SizeExpr::Prod(exprs) => {
+                let mut prod = 1;
+                for expr in exprs {
+                    prod *= expr.evaluate(env)?;
+                }
+                Some(prod)
+            }
+        }
+    }
+
+    pub fn value_or_count(
+        &self,
+        env: &Env<'a>,
+    ) -> Result<isize, usize> {
+        match self {
+            SizeExpr::Fixed(value) => Ok(*value),
+            SizeExpr::Param(name) => {
+                if let Some(value) = env.lookup(name) {
+                    Ok(value as isize)
+                } else {
+                    Err(1) // Single unbound param
+                }
+            }
+            SizeExpr::Negate(expr) => expr.value_or_count(env).map(|x| -x),
+            SizeExpr::Pow(base, exp) => {
+                let base_val = base.value_or_count(env)?;
+                if *exp == 0 {
+                    Ok(1) // Any number to the power of 0 is 1
+                } else {
+                    base_val.checked_pow(*exp as u32).ok_or(1)
+                }
+            }
+            SizeExpr::Sum(exprs) => {
+                let mut sum = 0;
+                let mut unbound_count = 0;
+
+                for expr in exprs {
+                    match expr.value_or_count(env) {
+                        Ok(value) => sum += value,
+                        Err(count) => unbound_count += count,
+                    }
+                }
+
+                if unbound_count > 0 {
+                    Err(unbound_count)
+                } else {
+                    Ok(sum)
+                }
+            }
+            SizeExpr::Prod(exprs) => {
+                let mut prod = 1;
+                let mut unbound_count = 0;
+
+                for expr in exprs {
+                    match expr.value_or_count(env) {
+                        Ok(value) => prod *= value,
+                        Err(count) => unbound_count += count,
+                    }
+                }
+
+                if unbound_count > 0 {
+                    Err(unbound_count)
+                } else {
+                    Ok(prod)
+                }
+            }
+        }
+    }
+
     /// Match this expression against a target value with given bindings
     pub fn match_target(
         &self,
         target: isize,
         env: &Env<'a>,
     ) -> MatchResult {
+        // TODO(crutcher): Result<?, ?> type; remove binding_state.
         match self.binding_state(env) {
             BindingState::FullyBound => {
                 if self.evaluate(env).unwrap() == target {
@@ -245,13 +339,75 @@ impl<'a> SizeExpr<'a> {
         }
     }
 
+    fn count_unbound_params(
+        &self,
+        env: &Env<'a>,
+    ) -> usize {
+        match self {
+            SizeExpr::Param(name) => {
+                if env.contains_key(name) {
+                    0 // Fully bound
+                } else {
+                    1 // Single unbound param
+                }
+            }
+            SizeExpr::Fixed(_) => 0, // Fixed values are always bound
+            SizeExpr::Negate(expr) => expr.count_unbound_params(env),
+            SizeExpr::Pow(base, _) => base.count_unbound_params(env),
+            SizeExpr::Sum(exprs) | SizeExpr::Prod(exprs) => exprs
+                .iter()
+                .map(|expr| expr.count_unbound_params(env))
+                .sum(),
+        }
+    }
+
     /// Solve for a parameter by unpeeling the expression structure
     fn solve_for_target(
         &self,
+        // TODO: remove the need for this parameter.
         target_param: &str,
         target: isize,
         env: &Env<'a>,
     ) -> Result<isize, String> {
+        if self.count_unbound_params(env) > 1 {
+            return Err("Multiple unbound parameters, cannot solve".to_string());
+        }
+
+        #[inline(always)]
+        fn partially_evaluate_children<'a>(
+            exprs: &'a [SizeExpr<'a>],
+            env: &Env,
+            init: isize,
+            op: fn(&mut isize, isize),
+        ) -> Result<(&'a SizeExpr<'a>, isize), String> {
+            let mut unbound_expr = None;
+            let mut accumulator: isize = init;
+
+            // TODO(crutcher): sum, prod should handle children in a common way.
+
+            for expr in exprs {
+                match expr.evaluate(env) {
+                    Some(value) => {
+                        op(&mut accumulator, value);
+                    }
+                    None => {
+                        if unbound_expr.is_some() {
+                            // More than one unbound expression, cannot solve
+                            return Err("Multiple unbound expressions in sum".to_string());
+                        } else {
+                            // Found the unbound expression
+                            unbound_expr = Some(expr);
+                        }
+                    }
+                }
+            }
+            if let Some(expr) = unbound_expr {
+                Ok((expr, accumulator))
+            } else {
+                Err("No unbound expression found".to_string())
+            }
+        }
+
         // TODO: Crutcher; migrate to Result<isize, String> for better error handling.
         match self {
             SizeExpr::Param(name) => {
@@ -297,131 +453,28 @@ impl<'a> SizeExpr<'a> {
             }
             SizeExpr::Sum(exprs) => {
                 // sum(exprs) = target
-                // Find the one unbound expr, evaluate all others, subtract from target
-                let mut unbound_expr = None;
-                let mut bound_sum: isize = 0;
-
-                // TODO(crutcher): sum, prod should handle children in a common way.
-
-                for expr in exprs {
-                    match expr.binding_state(env) {
-                        BindingState::FullyBound => {
-                            bound_sum += expr.evaluate(env).unwrap();
-                        }
-                        BindingState::SingleUnbound(param) if param == target_param => {
-                            if unbound_expr.is_some() {
-                                // Multiple unbound expressions
-                                return Err("Multiple unbound expressions".to_string());
-                            }
-                            unbound_expr = Some(expr);
-                        }
-                        // Wrong param or multiple unbound
-                        _ => {
-                            return Err(
-                                "Wrong parameter or multiple unbound expressions".to_string()
-                            );
-                        }
-                    }
-                }
-
-                if let Some(expr) = unbound_expr {
-                    // unbound_expr + bound_sum = target  =>  unbound_expr = target - bound_sum
-                    expr.solve_for_target(target_param, target - bound_sum, env)
-                } else {
-                    Err("No unbound expression found".to_string())
-                }
+                partially_evaluate_children(exprs, env, 0, |acc, value| acc.add_assign(value))
+                    .and_then(|(unbound_expr, bound_sum)| {
+                        // unbound_expr + bound_sum = target  =>  unbound_expr = target - bound_sum
+                        unbound_expr.solve_for_target(target_param, target - bound_sum, env)
+                    })
             }
             SizeExpr::Prod(exprs) => {
                 // prod(exprs) = target
-                // Find the one unbound expr, evaluate all others, divide target by their product
-                let mut unbound_expr = None;
-                let mut bound_product = 1;
-
-                for expr in exprs {
-                    match expr.binding_state(env) {
-                        BindingState::FullyBound => {
-                            let value = expr.evaluate(env).unwrap();
-                            if value == 0 {
-                                // Product is zero, but we need non-zero target
-                                if target != 0 {
-                                    return Err(
-                                        "Product is zero, but target is non-zero".to_string()
-                                    );
-                                }
-                                // If target is also 0, the unbound param can be anything
-                                // We'll return 0 as "closest to zero"
-                                return Ok(0);
-                            }
-                            bound_product *= value;
+                partially_evaluate_children(exprs, env, 1, |acc, value| acc.mul_assign(value))
+                    .and_then(|(unbound_expr, bound_product)| {
+                        // unbound_expr * bound_product = target  =>  unbound_expr = target / bound_product
+                        if bound_product == 0 {
+                            return Err("Product of bound expressions is zero".to_string());
                         }
-                        BindingState::SingleUnbound(param) if param == target_param => {
-                            if unbound_expr.is_some() {
-                                // Multiple unbound expressions
-                                return Err("Multiple unbound expressions".to_string());
-                            }
-                            unbound_expr = Some(expr);
+
+                        if target % bound_product != 0 {
+                            return Err("Target is not divisible by product of bound expressions"
+                                .to_string());
                         }
-                        // Wrong param or multiple unbound
-                        _ => {
-                            return Err(
-                                "Wrong parameter or multiple unbound expressions".to_string()
-                            );
-                        }
-                    }
-                }
 
-                if let Some(expr) = unbound_expr {
-                    // unbound_expr * bound_product = target  =>  unbound_expr = target / bound_product
-                    if bound_product == 0 {
-                        // This shouldn't happen given our check above
-                        return Err(
-                            "Product of bound expressions is zero, but unbound expression exists"
-                                .to_string(),
-                        );
-                    }
-
-                    if target % bound_product != 0 {
-                        // No integer solution
-                        return Err(
-                            "Target is not divisible by product of bound expressions".to_string()
-                        );
-                    }
-
-                    expr.solve_for_target(target_param, target / bound_product, env)
-                } else {
-                    Err("No unbound expression found".to_string())
-                }
-            }
-        }
-    }
-
-    /// Evaluate expression with given bindings (assumes all params are bound)
-    fn evaluate(
-        &self,
-        env: &Env<'a>,
-    ) -> Option<isize> {
-        match self {
-            SizeExpr::Param(name) => env.lookup(name).map(|v| v as isize),
-            SizeExpr::Fixed(value) => Some(*value),
-            SizeExpr::Negate(expr) => expr.evaluate(env).map(|x| -x),
-            SizeExpr::Pow(base, exp) => {
-                let base_val = base.evaluate(env)?;
-                let exp = *exp;
-                base_val.checked_pow(exp as u32)
-            }
-            SizeExpr::Sum(exprs) => {
-                let mut sum = 0;
-                for expr in exprs {
-                    sum += expr.evaluate(env)?;
-                }
-                Some(sum)
-            }
-            SizeExpr::Prod(exprs) => {
-                let mut prod = 1;
-                for expr in exprs {
-                    prod *= expr.evaluate(env)?;
-                }
-                Some(prod)
+                        unbound_expr.solve_for_target(target_param, target / bound_product, env)
+                    })
             }
         }
     }
