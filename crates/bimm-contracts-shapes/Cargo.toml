@@ -5,8 +5,7 @@ version.workspace = true
 license.workspace = true
 repository.workspace = true
 
-[lints]
-workspace = true
-
 [dependencies]
 
+[lints]
+workspace = true

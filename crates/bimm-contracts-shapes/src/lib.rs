@@ -1,22 +1,44 @@
 use std::collections::HashMap;
 
-pub type Bindings<'a, const D: usize> = &'a [(&'a str, usize); D];
+pub trait StaticBindings {
+    fn lookup(
+        &self,
+        key: &str,
+    ) -> Option<usize>;
 
-fn lookup_binding<'a, const D: usize>(
-    bindings: Bindings<'a, D>,
-    key: &str,
-) -> Option<usize> {
-    bindings
-        .iter()
-        .find_map(|(k, v)| if k == &key { Some(*v) } else { None })
+    fn contains_key(
+        &self,
+        key: &str,
+    ) -> bool {
+        self.lookup(key).is_some()
+    }
 }
 
-struct Env<'a, const B: usize> {
+pub type Bindings<'a> = &'a [(&'a str, usize)];
+
+impl<'a> StaticBindings for Bindings<'a> {
+    fn lookup(
+        &self,
+        key: &str,
+    ) -> Option<usize> {
+        self.iter()
+            .find_map(|(k, v)| if k == &key { Some(*v) } else { None })
+    }
+
+    fn contains_key(
+        &self,
+        key: &str,
+    ) -> bool {
+        self.iter().any(|(k, _)| k == &key)
+    }
+}
+
+pub struct Env<'a> {
     local: HashMap<&'a str, usize>,
-    bindings: Bindings<'a, B>,
+    bindings: Bindings<'a>,
 }
 
-impl<'a, const B: usize> Env<'a, B> {
+impl<'a> StaticBindings for Env<'a> {
     fn lookup(
         &self,
         key: &str,
@@ -24,17 +46,19 @@ impl<'a, const B: usize> Env<'a, B> {
         self.local
             .get(key)
             .cloned()
-            .or_else(|| lookup_binding(self.bindings, key))
+            .or_else(|| self.bindings.lookup(key))
     }
 
     fn contains_key(
         &self,
         key: &str,
     ) -> bool {
-        self.local.contains_key(key) || self.bindings.iter().any(|(k, _)| k == &key)
+        self.local.contains_key(key) || self.bindings.contains_key(key)
     }
+}
 
-    fn insert(
+impl<'a> Env<'a> {
+    pub fn insert(
         &mut self,
         key: &'a str,
         value: usize,
@@ -43,8 +67,8 @@ impl<'a, const B: usize> Env<'a, B> {
     }
 }
 
-impl<'a, const B: usize> Env<'a, B> {
-    fn new(bindings: Bindings<'a, B>) -> Self {
+impl<'a> Env<'a> {
+    fn new(bindings: Bindings<'a>) -> Self {
         Env {
             local: HashMap::new(),
             bindings,
@@ -71,7 +95,7 @@ impl<'a, const B: usize> Env<'a, B> {
 pub enum SizeExpr<'a> {
     Fixed(isize),
     Param(&'a str),
-    Neg(Box<SizeExpr<'a>>),
+    Negate(Box<SizeExpr<'a>>),
     Pow(Box<SizeExpr<'a>>, usize),
     Sum(Vec<SizeExpr<'a>>),
     Prod(Vec<SizeExpr<'a>>),
@@ -93,8 +117,8 @@ impl<'a> SizeExpr<'a> {
         SizeExpr::Param(name)
     }
 
-    pub fn neg(expr: SizeExpr<'a>) -> Self {
-        SizeExpr::Neg(Box::new(expr))
+    pub fn negate(expr: SizeExpr<'a>) -> Self {
+        SizeExpr::Negate(Box::new(expr))
     }
 
     pub fn pow(
@@ -114,10 +138,10 @@ impl<'a> SizeExpr<'a> {
     }
 
     /// Match this expression against a target value with given bindings
-    pub fn match_target<const B: usize>(
+    pub fn match_target(
         &self,
         target: isize,
-        env: &Env<'a, B>,
+        env: &Env<'a>,
     ) -> MatchResult {
         match self.binding_state(env) {
             BindingState::FullyBound => {
@@ -134,18 +158,6 @@ impl<'a> SizeExpr<'a> {
                     None => MatchResult::Failure,
                 }
             }
-        }
-    }
-
-    /// Compute integer power (exponent must be non-negative)
-    fn integer_pow(
-        base: isize,
-        exp: usize,
-    ) -> Option<isize> {
-        if exp < 0 {
-            None // We only support non-negative exponents
-        } else {
-            base.checked_pow(exp as u32)
         }
     }
 
@@ -194,21 +206,21 @@ impl<'a> SizeExpr<'a> {
     }
 
     /// Determine the binding state of this expression
-    fn binding_state<const B: usize>(
+    fn binding_state(
         &self,
-        env: &Env<'a, B>,
+        env: &Env<'a>,
     ) -> BindingState {
         match self {
             SizeExpr::Param(name) => {
                 if env.contains_key(name) {
                     BindingState::FullyBound
                 } else {
-                    BindingState::SingleUnbound(name.clone())
+                    BindingState::SingleUnbound(name)
                 }
             }
             SizeExpr::Fixed(_) => BindingState::FullyBound,
-            SizeExpr::Neg(expr) => expr.binding_state(env),
-            SizeExpr::Pow(base, exp) => base.binding_state(env),
+            SizeExpr::Negate(expr) => expr.binding_state(env),
+            SizeExpr::Pow(base, _) => base.binding_state(env),
             SizeExpr::Sum(exprs) | SizeExpr::Prod(exprs) => {
                 let mut unbound_params = Vec::new();
 
@@ -234,12 +246,13 @@ impl<'a> SizeExpr<'a> {
     }
 
     /// Solve for a parameter by unpeeling the expression structure
-    fn solve_for_target<const B: usize>(
+    fn solve_for_target(
         &self,
         target_param: &str,
         target: isize,
-        env: &Env<'a, B>,
+        env: &Env<'a>,
     ) -> Option<isize> {
+        // TODO: Crutcher; migrate to Result<isize, String> for better error handling.
         match self {
             SizeExpr::Param(name) => {
                 if *name == target_param {
@@ -252,20 +265,22 @@ impl<'a> SizeExpr<'a> {
             SizeExpr::Fixed(value) => {
                 // Fixed value should equal target
                 if *value == target {
-                    Some(target) // This case shouldn't actually happen in practice
+                    Some(target)
                 } else {
                     None
                 }
             }
-            SizeExpr::Neg(expr) => {
+            SizeExpr::Negate(expr) => {
                 // neg(expr) = target  =>  expr = -target
                 expr.solve_for_target(target_param, -target, env)
             }
             SizeExpr::Pow(base, exp) => {
                 // Exponent must be fixed and positive
                 let exp = *exp;
-                if exp <= 0 {
-                    return None; // Invalid exponent
+
+                if exp == 0 {
+                    // Invalid exponent
+                    return None;
                 }
 
                 // base^exp = target, solve for base
@@ -353,18 +368,18 @@ impl<'a> SizeExpr<'a> {
     }
 
     /// Evaluate expression with given bindings (assumes all params are bound)
-    fn evaluate<const B: usize>(
+    fn evaluate(
         &self,
-        env: &Env<'a, B>,
+        env: &Env<'a>,
     ) -> Option<isize> {
         match self {
             SizeExpr::Param(name) => env.lookup(name).map(|v| v as isize),
             SizeExpr::Fixed(value) => Some(*value),
-            SizeExpr::Neg(expr) => expr.evaluate(env).map(|x| -x),
+            SizeExpr::Negate(expr) => expr.evaluate(env).map(|x| -x),
             SizeExpr::Pow(base, exp) => {
                 let base_val = base.evaluate(env)?;
                 let exp = *exp;
-                Self::integer_pow(base_val, exp)
+                base_val.checked_pow(exp as u32)
             }
             SizeExpr::Sum(exprs) => {
                 let mut sum = 0;
@@ -399,20 +414,20 @@ pub enum PatternTerm<'a> {
 }
 
 pub trait ShapePattern<'a> {
-    fn unpack_shape<const K: usize, const B: usize>(
+    fn unpack_shape<const K: usize>(
         &self,
         shape: &[usize],
         keys: [&'a str; K],
-        bindings: Bindings<'a, B>,
+        bindings: Bindings<'a>,
     ) -> Result<[usize; K], String>;
 }
 
 impl<'a, const D: usize> ShapePattern<'a> for [PatternTerm<'a>; D] {
-    fn unpack_shape<const K: usize, const B: usize>(
+    fn unpack_shape<const K: usize>(
         &self,
         shape: &[usize],
         keys: [&'a str; K],
-        bindings: Bindings<'a, B>,
+        bindings: Bindings<'a>,
     ) -> Result<[usize; K], String> {
         let mut env = Env::new(bindings);
 
@@ -426,15 +441,17 @@ impl<'a, const D: usize> ShapePattern<'a> for [PatternTerm<'a>; D] {
             }
         }
 
-        let ellipsis_len = if let Some(pos) = ellipsis_pos {
-            let skipped = shape.len() - (self.len() - 1);
-            if skipped < 0 {
+        let ellipsis_len = if ellipsis_pos.is_some() {
+            let shape_n = shape.len();
+            let non_ellipsis_terms = self.len() - 1; // Exclude the ellipsis term itself
+
+            if shape_n < non_ellipsis_terms {
                 return Err(format!(
                     "Shape too short for pattern: pattern:{:#?}, shape:{:#?}",
                     self, shape
                 ));
             } else {
-                skipped
+                shape_n - non_ellipsis_terms
             }
         } else {
             0
@@ -538,7 +555,7 @@ mod tests {
         // x + 5, target = 8, should solve x = 3
         let expr = SizeExpr::sum(vec![
             SizeExpr::param("x"),
-            SizeExpr::neg(SizeExpr::fixed(5)),
+            SizeExpr::negate(SizeExpr::fixed(5)),
         ]);
         let env = Env::new(&[]);
 
