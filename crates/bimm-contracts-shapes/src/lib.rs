@@ -154,8 +154,8 @@ impl<'a> SizeExpr<'a> {
             BindingState::MultipleUnbound => MatchResult::Failure,
             BindingState::SingleUnbound(param_name) => {
                 match self.solve_for_target(param_name, target, env) {
-                    Some(value) => MatchResult::Solve(param_name, value),
-                    None => MatchResult::Failure,
+                    Ok(value) => MatchResult::Solve(param_name, value),
+                    Err(_) => MatchResult::Failure,
                 }
             }
         }
@@ -251,23 +251,29 @@ impl<'a> SizeExpr<'a> {
         target_param: &str,
         target: isize,
         env: &Env<'a>,
-    ) -> Option<isize> {
+    ) -> Result<isize, String> {
         // TODO: Crutcher; migrate to Result<isize, String> for better error handling.
         match self {
             SizeExpr::Param(name) => {
                 if *name == target_param {
-                    Some(target)
+                    Ok(target)
                 } else {
                     // This param should be bound, but we're solving for a different param
-                    None
+                    Err(format!(
+                        "INTERNAL ERROR: solving for {} but found param {}",
+                        target_param, name
+                    ))
                 }
             }
             SizeExpr::Fixed(value) => {
                 // Fixed value should equal target
                 if *value == target {
-                    Some(target)
+                    Ok(target)
                 } else {
-                    None
+                    Err(format!(
+                        "Fixed value {} does not match target {}",
+                        value, target
+                    ))
                 }
             }
             SizeExpr::Negate(expr) => {
@@ -280,12 +286,13 @@ impl<'a> SizeExpr<'a> {
 
                 if exp == 0 {
                     // Invalid exponent
-                    return None;
+                    return Err("Exponent must be greater than 0".to_string());
                 }
 
                 // base^exp = target, solve for base
-                // base = target^(1/exp)
-                let root = Self::exact_nth_root(target, exp)?;
+                // base = target^(1/exp
+                let root = Self::exact_nth_root(target, exp)
+                    .map_or_else(|| Err("No integer nth root found".to_string()), Ok)?;
                 base.solve_for_target(target_param, root, env)
             }
             SizeExpr::Sum(exprs) => {
@@ -294,18 +301,26 @@ impl<'a> SizeExpr<'a> {
                 let mut unbound_expr = None;
                 let mut bound_sum: isize = 0;
 
+                // TODO(crutcher): sum, prod should handle children in a common way.
+
                 for expr in exprs {
                     match expr.binding_state(env) {
                         BindingState::FullyBound => {
-                            bound_sum += expr.evaluate(env)?;
+                            bound_sum += expr.evaluate(env).unwrap();
                         }
                         BindingState::SingleUnbound(param) if param == target_param => {
                             if unbound_expr.is_some() {
-                                return None; // Multiple unbound expressions
+                                // Multiple unbound expressions
+                                return Err("Multiple unbound expressions".to_string());
                             }
                             unbound_expr = Some(expr);
                         }
-                        _ => return None, // Wrong param or multiple unbound
+                        // Wrong param or multiple unbound
+                        _ => {
+                            return Err(
+                                "Wrong parameter or multiple unbound expressions".to_string()
+                            );
+                        }
                     }
                 }
 
@@ -313,7 +328,7 @@ impl<'a> SizeExpr<'a> {
                     // unbound_expr + bound_sum = target  =>  unbound_expr = target - bound_sum
                     expr.solve_for_target(target_param, target - bound_sum, env)
                 } else {
-                    None
+                    Err("No unbound expression found".to_string())
                 }
             }
             SizeExpr::Prod(exprs) => {
@@ -325,25 +340,33 @@ impl<'a> SizeExpr<'a> {
                 for expr in exprs {
                     match expr.binding_state(env) {
                         BindingState::FullyBound => {
-                            let value = expr.evaluate(env)?;
+                            let value = expr.evaluate(env).unwrap();
                             if value == 0 {
                                 // Product is zero, but we need non-zero target
                                 if target != 0 {
-                                    return None;
+                                    return Err(
+                                        "Product is zero, but target is non-zero".to_string()
+                                    );
                                 }
                                 // If target is also 0, the unbound param can be anything
                                 // We'll return 0 as "closest to zero"
-                                return Some(0);
+                                return Ok(0);
                             }
                             bound_product *= value;
                         }
                         BindingState::SingleUnbound(param) if param == target_param => {
                             if unbound_expr.is_some() {
-                                return None; // Multiple unbound expressions
+                                // Multiple unbound expressions
+                                return Err("Multiple unbound expressions".to_string());
                             }
                             unbound_expr = Some(expr);
                         }
-                        _ => return None, // Wrong param or multiple unbound
+                        // Wrong param or multiple unbound
+                        _ => {
+                            return Err(
+                                "Wrong parameter or multiple unbound expressions".to_string()
+                            );
+                        }
                     }
                 }
 
@@ -351,17 +374,22 @@ impl<'a> SizeExpr<'a> {
                     // unbound_expr * bound_product = target  =>  unbound_expr = target / bound_product
                     if bound_product == 0 {
                         // This shouldn't happen given our check above
-                        return None;
+                        return Err(
+                            "Product of bound expressions is zero, but unbound expression exists"
+                                .to_string(),
+                        );
                     }
 
                     if target % bound_product != 0 {
                         // No integer solution
-                        return None;
+                        return Err(
+                            "Target is not divisible by product of bound expressions".to_string()
+                        );
                     }
 
                     expr.solve_for_target(target_param, target / bound_product, env)
                 } else {
-                    None
+                    Err("No unbound expression found".to_string())
                 }
             }
         }
