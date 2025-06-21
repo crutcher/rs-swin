@@ -1,5 +1,5 @@
-use std::collections::HashMap;
-use std::ops::{AddAssign, MulAssign};
+use crate::EvalValue::{UnboundCount, Value};
+use crate::MatchResult::{Constraint, Match, MissMatch};
 
 pub trait StaticBindings {
     fn lookup(
@@ -35,8 +35,8 @@ impl<'a> StaticBindings for Bindings<'a> {
 }
 
 pub struct Env<'a> {
-    local: HashMap<&'a str, usize>,
     bindings: Bindings<'a>,
+    local: Vec<(&'a str, usize)>,
 }
 
 impl<'a> StaticBindings for Env<'a> {
@@ -44,17 +44,20 @@ impl<'a> StaticBindings for Env<'a> {
         &self,
         key: &str,
     ) -> Option<usize> {
-        self.local
-            .get(key)
-            .cloned()
-            .or_else(|| self.bindings.lookup(key))
+        let local_bindings = &self.local[..];
+        local_bindings.lookup(key)
+            .or_else(|| {
+                // If not found in local, check the static bindings
+                self.bindings.lookup(key)
+            })
     }
 
     fn contains_key(
         &self,
         key: &str,
     ) -> bool {
-        self.local.contains_key(key) || self.bindings.contains_key(key)
+        let local_bindings = &self.local[..];
+        local_bindings.contains_key(key) || self.bindings.contains_key(key)
     }
 }
 
@@ -64,15 +67,15 @@ impl<'a> Env<'a> {
         key: &'a str,
         value: usize,
     ) {
-        self.local.insert(key, value);
+        self.local.push((key, value))
     }
 }
 
 impl<'a> Env<'a> {
     fn new(bindings: Bindings<'a>) -> Self {
         Env {
-            local: HashMap::new(),
             bindings,
+            local: Vec::new(),
         }
     }
 
@@ -81,9 +84,10 @@ impl<'a> Env<'a> {
         keys: &[&str; K],
     ) -> [usize; K] {
         let mut values = [0; K];
+        let local_bindings = &self.local[..];
         for i in 0..K {
             let key = keys[i];
-            values[i] = match self.lookup(key) {
+            values[i] = match local_bindings.lookup(key) {
                 Some(value) => value,
                 None => panic!("No value for key \"{}\"", key),
             };
@@ -103,10 +107,31 @@ pub enum SizeExpr<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PatternTerm<'a> {
+    Any,
+    Ellipsis,
+    Expr(SizeExpr<'a>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MatchResult<'a> {
-    Success,               // All params bound and expression equals target
-    Failure,               // Multiple unbound params or other failure
-    Solve(&'a str, isize), // Single unbound param and its required value
+    /// All params bound and expression equals target.
+    Match,
+
+    /// Expression value does not match target.
+    MissMatch,
+
+    /// Expression can be solved for a single unbound param.
+    Constraint(&'a str, isize),
+
+    /// Expression cannot be solved with current bindings
+    UnderConstrained,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EvalValue {
+    Value(isize),
+    UnboundCount(usize)
 }
 
 impl<'a> SizeExpr<'a> {
@@ -138,119 +163,64 @@ impl<'a> SizeExpr<'a> {
         SizeExpr::Prod(exprs)
     }
 
-    // TODO(crutcher): Consider Result<<volue>, <unbound_count>> ?
-
-    /// Evaluate expression with given bindings (assumes all params are bound)
-    pub fn evaluate(
+    pub fn maybe_eval(
         &self,
         env: &Env<'a>,
-    ) -> Option<isize> {
-        match self {
-            SizeExpr::Fixed(value) => Some(*value),
-            SizeExpr::Param(name) => env.lookup(name).map(|v| v as isize),
-            SizeExpr::Negate(expr) => expr.evaluate(env).map(|x| -x),
-            SizeExpr::Pow(base, exp) => {
-                let base_val = base.evaluate(env)?;
-                let exp = *exp;
-                base_val.checked_pow(exp as u32)
-            }
-            SizeExpr::Sum(exprs) => {
-                let mut sum = 0;
-                for expr in exprs {
-                    sum += expr.evaluate(env)?;
+    ) -> EvalValue {
+        fn monoid<'a>(
+            exprs: &'a [SizeExpr<'a>],
+            env: &'a Env,
+            init: isize,
+            op: fn(&mut isize, isize),
+        ) -> EvalValue {
+            let mut accum = init;
+            let mut unbound_count = 0;
+
+            for expr in exprs {
+                match expr.maybe_eval(env) {
+                    Value(value) => op(&mut accum, value),
+                    UnboundCount(count) => unbound_count += count,
                 }
-                Some(sum)
             }
-            SizeExpr::Prod(exprs) => {
-                let mut prod = 1;
-                for expr in exprs {
-                    prod *= expr.evaluate(env)?;
-                }
-                Some(prod)
+            if unbound_count > 0 {
+                UnboundCount(unbound_count)
+            } else {
+                Value(accum)
             }
         }
-    }
 
-    pub fn value_or_count(
-        &self,
-        env: &Env<'a>,
-    ) -> Result<isize, usize> {
+
         match self {
-            SizeExpr::Fixed(value) => Ok(*value),
+            SizeExpr::Fixed(value) => Value(*value),
             SizeExpr::Param(name) => {
                 if let Some(value) = env.lookup(name) {
-                    Ok(value as isize)
+                    Value(value as isize)
                 } else {
-                    Err(1) // Single unbound param
+                    UnboundCount(1) // Single unbound param
                 }
             }
-            SizeExpr::Negate(expr) => expr.value_or_count(env).map(|x| -x),
+            SizeExpr::Negate(expr) => match expr.maybe_eval(env) {
+                Value(value) => Value(-value),
+                ubc => ubc,
+            }
             SizeExpr::Pow(base, exp) => {
-                let base_val = base.value_or_count(env)?;
-                if *exp == 0 {
-                    Ok(1) // Any number to the power of 0 is 1
-                } else {
-                    base_val.checked_pow(*exp as u32).ok_or(1)
+                match base.maybe_eval(env) {
+                    Value(value) => {
+                        if *exp == 0 {
+                            // Any number to the power of 0 is 1.
+                            Value(1 as isize)
+                        } else {
+                            Value(value.pow(*exp as u32))
+                        }
+                    }
+                    ubc => ubc
                 }
             }
             SizeExpr::Sum(exprs) => {
-                let mut sum = 0;
-                let mut unbound_count = 0;
-
-                for expr in exprs {
-                    match expr.value_or_count(env) {
-                        Ok(value) => sum += value,
-                        Err(count) => unbound_count += count,
-                    }
-                }
-
-                if unbound_count > 0 {
-                    Err(unbound_count)
-                } else {
-                    Ok(sum)
-                }
+                monoid(&exprs, env, 0, |accum, value| *accum += value)
             }
             SizeExpr::Prod(exprs) => {
-                let mut prod = 1;
-                let mut unbound_count = 0;
-
-                for expr in exprs {
-                    match expr.value_or_count(env) {
-                        Ok(value) => prod *= value,
-                        Err(count) => unbound_count += count,
-                    }
-                }
-
-                if unbound_count > 0 {
-                    Err(unbound_count)
-                } else {
-                    Ok(prod)
-                }
-            }
-        }
-    }
-
-    /// Match this expression against a target value with given bindings
-    pub fn match_target(
-        &self,
-        target: isize,
-        env: &Env<'a>,
-    ) -> MatchResult {
-        // TODO(crutcher): Result<?, ?> type; remove binding_state.
-        match self.binding_state(env) {
-            BindingState::FullyBound => {
-                if self.evaluate(env).unwrap() == target {
-                    MatchResult::Success
-                } else {
-                    MatchResult::Failure
-                }
-            }
-            BindingState::MultipleUnbound => MatchResult::Failure,
-            BindingState::SingleUnbound(param_name) => {
-                match self.solve_for_target(param_name, target, env) {
-                    Ok(value) => MatchResult::Solve(param_name, value),
-                    Err(_) => MatchResult::Failure,
-                }
+                monoid(&exprs, env, 1, |accum, value| *accum *= value)
             }
         }
     }
@@ -299,142 +269,36 @@ impl<'a> SizeExpr<'a> {
         }
     }
 
-    /// Determine the binding state of this expression
-    fn binding_state(
-        &self,
-        env: &Env<'a>,
-    ) -> BindingState {
-        match self {
-            SizeExpr::Param(name) => {
-                if env.contains_key(name) {
-                    BindingState::FullyBound
-                } else {
-                    BindingState::SingleUnbound(name)
-                }
-            }
-            SizeExpr::Fixed(_) => BindingState::FullyBound,
-            SizeExpr::Negate(expr) => expr.binding_state(env),
-            SizeExpr::Pow(base, _) => base.binding_state(env),
-            SizeExpr::Sum(exprs) | SizeExpr::Prod(exprs) => {
-                let mut unbound_params = Vec::new();
-
-                for expr in exprs {
-                    match expr.binding_state(env) {
-                        BindingState::FullyBound => {}
-                        BindingState::SingleUnbound(param) => {
-                            if !unbound_params.contains(&param) {
-                                unbound_params.push(param);
-                            }
-                        }
-                        BindingState::MultipleUnbound => return BindingState::MultipleUnbound,
-                    }
-                }
-
-                match unbound_params.len() {
-                    0 => BindingState::FullyBound,
-                    1 => BindingState::SingleUnbound(unbound_params[0]),
-                    _ => BindingState::MultipleUnbound,
-                }
-            }
-        }
-    }
-
-    fn count_unbound_params(
-        &self,
-        env: &Env<'a>,
-    ) -> usize {
-        match self {
-            SizeExpr::Param(name) => {
-                if env.contains_key(name) {
-                    0 // Fully bound
-                } else {
-                    1 // Single unbound param
-                }
-            }
-            SizeExpr::Fixed(_) => 0, // Fixed values are always bound
-            SizeExpr::Negate(expr) => expr.count_unbound_params(env),
-            SizeExpr::Pow(base, _) => base.count_unbound_params(env),
-            SizeExpr::Sum(exprs) | SizeExpr::Prod(exprs) => exprs
-                .iter()
-                .map(|expr| expr.count_unbound_params(env))
-                .sum(),
-        }
-    }
 
     /// Solve for a parameter by unpeeling the expression structure
-    fn solve_for_target(
-        &self,
-        // TODO: remove the need for this parameter.
-        target_param: &str,
+    fn match_target(
+        &'a self,
         target: isize,
         env: &Env<'a>,
-    ) -> Result<isize, String> {
-        if self.count_unbound_params(env) > 1 {
-            return Err("Multiple unbound parameters, cannot solve".to_string());
-        }
-
-        #[inline(always)]
-        fn partially_evaluate_children<'a>(
-            exprs: &'a [SizeExpr<'a>],
-            env: &Env,
-            init: isize,
-            op: fn(&mut isize, isize),
-        ) -> Result<(&'a SizeExpr<'a>, isize), String> {
-            let mut unbound_expr = None;
-            let mut accumulator: isize = init;
-
-            // TODO(crutcher): sum, prod should handle children in a common way.
-
-            for expr in exprs {
-                match expr.evaluate(env) {
-                    Some(value) => {
-                        op(&mut accumulator, value);
-                    }
-                    None => {
-                        if unbound_expr.is_some() {
-                            // More than one unbound expression, cannot solve
-                            return Err("Multiple unbound expressions in sum".to_string());
-                        } else {
-                            // Found the unbound expression
-                            unbound_expr = Some(expr);
-                        }
-                    }
-                }
-            }
-            if let Some(expr) = unbound_expr {
-                Ok((expr, accumulator))
-            } else {
-                Err("No unbound expression found".to_string())
-            }
-        }
-
-        // TODO: Crutcher; migrate to Result<isize, String> for better error handling.
+    ) -> Result<MatchResult<'a>, String> {
         match self {
-            SizeExpr::Param(name) => {
-                if *name == target_param {
-                    Ok(target)
+            SizeExpr::Fixed(value) => {
+                if *value == target {
+                    Ok(Match)
                 } else {
-                    // This param should be bound, but we're solving for a different param
-                    Err(format!(
-                        "INTERNAL ERROR: solving for {} but found param {}",
-                        target_param, name
-                    ))
+                    Err(format!("Fixed value {} does not match target {}", value, target))
                 }
             }
-            SizeExpr::Fixed(value) => {
-                // Fixed value should equal target
-                if *value == target {
-                    Ok(target)
+            SizeExpr::Param(name) => {
+                if let Some(value) = env.lookup(name) {
+                    if value as isize == target {
+                        Ok(Match)
+                    } else {
+                        Err(format!("Parameter {} has value {}, does not match target {}", name, value, target))
+                    }
                 } else {
-                    Err(format!(
-                        "Fixed value {} does not match target {}",
-                        value, target
-                    ))
+                    // Unbound parameter, return constraint
+                    Ok(Constraint(name, target))
                 }
             }
             SizeExpr::Negate(expr) => {
                 // neg(expr) = target  =>  expr = -target
-                expr.solve_for_target(target_param, -target, env)
+                expr.match_target(-target, env)
             }
             SizeExpr::Pow(base, exp) => {
                 // Exponent must be fixed and positive
@@ -447,70 +311,91 @@ impl<'a> SizeExpr<'a> {
 
                 // base^exp = target, solve for base
                 // base = target^(1/exp
-                let root = Self::exact_nth_root(target, exp)
-                    .map_or_else(|| Err("No integer nth root found".to_string()), Ok)?;
-                base.solve_for_target(target_param, root, env)
+                let root = match Self::exact_nth_root(target, exp) {
+                    Some(root) => root,
+                    None => return Ok(MissMatch), // No exact integer root
+                };
+                base.match_target(root, env)
             }
             SizeExpr::Sum(exprs) => {
-                // sum(exprs) = target
-                partially_evaluate_children(exprs, env, 0, |acc, value| acc.add_assign(value))
-                    .and_then(|(unbound_expr, bound_sum)| {
-                        // unbound_expr + bound_sum = target  =>  unbound_expr = target - bound_sum
-                        unbound_expr.solve_for_target(target_param, target - bound_sum, env)
-                    })
+                let mut unbound_expr = None;
+                let mut accumulator: isize = 0;
+
+                for expr in exprs {
+                    match expr.maybe_eval(&env) {
+                        Value(value) => accumulator += value,
+                        UnboundCount(count) => {
+                            if count == 1 && unbound_expr.is_none() {
+                                unbound_expr = Some(expr);
+                            } else {
+                                return Ok(MissMatch)
+                            }
+                        }
+                    }
+                }
+                if let Some(expr) = unbound_expr {
+                    expr.match_target(target - accumulator, env)
+                } else {
+                    // All expressions are bound, check if they sum to target
+                    if accumulator == target {
+                        Ok(Match)
+                    } else {
+                        Err(format!("Sum of bound expressions {} does not match target {}", accumulator, target))
+                    }
+                }
             }
             SizeExpr::Prod(exprs) => {
-                // prod(exprs) = target
-                partially_evaluate_children(exprs, env, 1, |acc, value| acc.mul_assign(value))
-                    .and_then(|(unbound_expr, bound_product)| {
-                        // unbound_expr * bound_product = target  =>  unbound_expr = target / bound_product
-                        if bound_product == 0 {
-                            return Err("Product of bound expressions is zero".to_string());
-                        }
+                let mut unbound_expr = None;
+                let mut accumulator: isize = 1;
 
-                        if target % bound_product != 0 {
-                            return Err("Target is not divisible by product of bound expressions"
-                                .to_string());
+                for expr in exprs {
+                    match expr.maybe_eval(&env) {
+                        Value(value) => accumulator *= value,
+                        UnboundCount(count) => {
+                            if count == 1 && unbound_expr.is_none() {
+                                unbound_expr = Some(expr);
+                            } else {
+                                return Ok(MissMatch)
+                            }
                         }
+                    }
+                }
+                if target % accumulator != 0 {
+                    return Ok(MissMatch);
+                }
+                if let Some(expr) = unbound_expr {
+                    expr.match_target(target / accumulator, env)
+                } else {
+                    // All expressions are bound, check if they sum to target
+                    if accumulator == target {
+                        Ok(Match)
+                    } else {
+                        Err(format!("Prod of bound expressions {} does not match target {}", accumulator, target))
+                    }
+                }
 
-                        unbound_expr.solve_for_target(target_param, target / bound_product, env)
-                    })
             }
         }
     }
 }
 
-#[derive(Debug)]
-pub enum BindingState<'a> {
-    FullyBound,
-    SingleUnbound(&'a str),
-    MultipleUnbound,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PatternTerm<'a> {
-    Any,
-    Ellipsis,
-    Expr(SizeExpr<'a>),
-}
-
 pub trait ShapePattern<'a> {
     fn unpack_shape<const K: usize>(
-        &self,
+        &'a self,
         shape: &[usize],
-        keys: [&'a str; K],
+        keys: &[&'a str; K],
         bindings: Bindings<'a>,
     ) -> Result<[usize; K], String>;
 }
 
 impl<'a, const D: usize> ShapePattern<'a> for [PatternTerm<'a>; D] {
     fn unpack_shape<const K: usize>(
-        &self,
+        &'a self,
         shape: &[usize],
-        keys: [&'a str; K],
+        keys: &[&'a str; K],
         bindings: Bindings<'a>,
     ) -> Result<[usize; K], String> {
-        let mut env = Env::new(bindings);
+        let mut env: Env<'a> = Env::new(bindings);
 
         let mut ellipsis_pos: Option<usize> = None;
         for (idx, term) in self.iter().enumerate() {
@@ -551,75 +436,72 @@ impl<'a, const D: usize> ShapePattern<'a> for [PatternTerm<'a>; D] {
             let term = &self[pattern_idx];
             let shape_idx = pattern_idx;
 
-            println!();
-            println!("pattern_idx: {:?}", pattern_idx);
-            println!("shape_idx: {:?}", shape_idx);
-            println!("term: {:?}", term);
-
-            match term {
+            (match term {
                 PatternTerm::Any => {
                     // Any term, no action needed
+                    Ok(())
                 }
                 PatternTerm::Ellipsis => {
-                    return Err(format!(
-                        "INTERNAL ERROR: Ellipsis term miss-handled pattern: {:#?}",
-                        self
-                    ));
+                    Err("INTERNAL ERROR: mishandled Ellipsis".to_string())
                 }
                 PatternTerm::Expr(expr) => {
-                    let target = shape[pattern_idx];
-                    match expr.match_target(target as isize, &env) {
-                        MatchResult::Success => {}
-                        MatchResult::Failure => {
-                            return Err(format!(
-                                "Pattern term {:#?} does not match target {}",
-                                expr, target
-                            ));
-                        }
-                        MatchResult::Solve(param_name, value) => {
+                    let target = shape[shape_idx] as isize;
+                    match expr.match_target(target, &env)? {
+                        MatchResult::Match => Ok(()),
+                        MatchResult::MissMatch => Err(format!(
+                            "Pattern term {:#?} does not match target {}",
+                            expr, target
+                        )),
+                        MatchResult::Constraint(param_name, value) => {
+                            let param_name: &'a str = param_name;
                             env.insert(param_name, value as usize);
+                            Ok(())
+                        }
+                        MatchResult::UnderConstrained => {
+                            Err(format!(
+                                "Pattern term {:#?} is under-constrained for target {}",
+                                expr, shape[shape_idx]
+                            ))
                         }
                     }
                 }
-            }
+            })?;
         }
 
         if ellipsis_len > 0 {
             for pattern_idx in (ellipsis_pos.unwrap() + 1)..shape.len() {
-                let shape_idx = pattern_idx + ellipsis_len;
                 let term = &self[pattern_idx];
-
-                println!();
-                println!("pattern_idx: {:?}", pattern_idx);
-                println!("shape_idx: {:?}", shape_idx);
-                println!("term: {:?}", term);
-
-                match term {
+                let shape_idx = pattern_idx + ellipsis_len;
+                (match term {
                     PatternTerm::Any => {
                         // Any term, no action needed
+                        Ok(())
                     }
                     PatternTerm::Ellipsis => {
-                        return Err(format!(
-                            "INTERNAL ERROR: Ellipsis term miss-handled pattern: {:#?}",
-                            self
-                        ));
+                        Err("INTERNAL ERROR: mishandled Ellipsis".to_string())
                     }
                     PatternTerm::Expr(expr) => {
-                        let target = shape[shape_idx];
-                        match expr.match_target(target as isize, &env) {
-                            MatchResult::Success => {}
-                            MatchResult::Failure => {
-                                return Err(format!(
-                                    "Pattern term {:#?} does not match target {}",
-                                    expr, target
-                                ));
-                            }
-                            MatchResult::Solve(param_name, value) => {
+                        let target = shape[shape_idx] as isize;
+                        match expr.match_target(target, &env)? {
+                            MatchResult::Match => Ok(()),
+                            MatchResult::MissMatch => Err(format!(
+                                "Pattern term {:#?} does not match target {}",
+                                expr, target
+                            )),
+                            MatchResult::Constraint(param_name, value) => {
+                                let param_name: &'a str = param_name;
                                 env.insert(param_name, value as usize);
+                                Ok(())
+                            }
+                            MatchResult::UnderConstrained => {
+                                Err(format!(
+                                    "Pattern term {:#?} is under-constrained for target {}",
+                                    expr, shape[shape_idx]
+                                ))
                             }
                         }
                     }
-                }
+                })?;
             }
         }
 
@@ -640,7 +522,7 @@ mod tests {
         ]);
         let env = Env::new(&[]);
 
-        assert_eq!(expr.match_target(8, &env), MatchResult::Solve("x", 13));
+        assert_eq!(expr.match_target(8, &env), Ok(MatchResult::Constraint("x", 13)));
     }
 
     #[test]
@@ -649,7 +531,7 @@ mod tests {
         let expr = SizeExpr::prod(vec![SizeExpr::fixed(2), SizeExpr::param("x")]);
         let env = Env::new(&[]);
 
-        assert_eq!(expr.match_target(6, &env), MatchResult::Solve("x", 3));
+        assert_eq!(expr.match_target(6, &env), Ok(MatchResult::Constraint("x", 3)));
     }
 
     #[test]
@@ -662,7 +544,7 @@ mod tests {
 
         // This should solve: first p gets target/second_p, but second_p is unbound too
         // Actually, this should fail because we have the same param multiple times
-        assert_eq!(expr.match_target(9, &env), MatchResult::Failure);
+        assert_eq!(expr.match_target(9, &env), Ok(MatchResult::MissMatch));
     }
 
     #[test]
@@ -687,16 +569,15 @@ mod tests {
         env.insert("z", 4);
 
         // p appears multiple times in the first product term, so this should fail
-        assert_eq!(expr.match_target(25, &env), MatchResult::Failure);
+        assert_eq!(expr.match_target(25, &env), Ok(MatchResult::MissMatch));
     }
 
     #[test]
     fn test_nested_structure() {
-        // 2 * (x + 3) - 1 with target = 9
-        // Should solve: 2 * (x + 3) - 1 = 9
-        //              2 * (x + 3) = 10
-        //              x + 3 = 5
-        //              x = 2
+        // 2 * (x + 3) - 1 == 9
+        // 2 * (x + 3) == 10
+        // x + 3 == 5
+        // x == 2
         let expr = SizeExpr::sum(vec![
             SizeExpr::prod(vec![
                 SizeExpr::fixed(2),
@@ -706,7 +587,7 @@ mod tests {
         ]);
         let env = Env::new(&[]);
 
-        assert_eq!(expr.match_target(9, &env), MatchResult::Solve("x", 2));
+        assert_eq!(expr.match_target(9, &env), Ok(MatchResult::Constraint("x", 2)));
     }
 
     #[test]
@@ -717,7 +598,7 @@ mod tests {
         let mut env = Env::new(&[]);
         env.insert("x", 3);
 
-        assert_eq!(expr.match_target(8, &env), MatchResult::Success);
+        assert_eq!(expr.match_target(8, &env), Ok(MatchResult::Match));
     }
 
     #[test]
@@ -726,16 +607,17 @@ mod tests {
         let expr = SizeExpr::sum(vec![SizeExpr::param("x"), SizeExpr::param("y")]);
         let env = Env::new(&[]);
 
-        assert_eq!(expr.match_target(5, &env), MatchResult::Failure);
+        assert_eq!(expr.match_target(5, &env), Ok(MatchResult::MissMatch));
     }
 
     #[test]
     fn test_no_integer_solution() {
-        // 2 * x, target = 3 (no integer solution)
+        // 2 * x == 3
+        // x = 3/2, which is not an integer
         let expr = SizeExpr::prod(vec![SizeExpr::fixed(2), SizeExpr::param("x")]);
         let env = Env::new(&[]);
 
-        assert_eq!(expr.match_target(3, &env), MatchResult::Failure);
+        assert_eq!(expr.match_target(3, &env), Ok(MatchResult::MissMatch));
     }
 
     #[test]
@@ -744,7 +626,7 @@ mod tests {
         let expr = SizeExpr::pow(SizeExpr::param("x"), 3);
         let env = Env::new(&[]);
 
-        assert_eq!(expr.match_target(8, &env), MatchResult::Solve("x", 2));
+        assert_eq!(expr.match_target(8, &env), Ok(MatchResult::Constraint("x", 2)));
     }
 
     #[test]
@@ -754,7 +636,7 @@ mod tests {
         let env = Env::new(&[]);
 
         // 2^3 = 8, so target 5 should fail
-        assert_eq!(expr.match_target(5, &env), MatchResult::Failure);
+        assert_eq!(expr.match_target(5, &env), Ok(MatchResult::MissMatch));
     }
 
     #[test]
@@ -766,7 +648,7 @@ mod tests {
         ]);
         let env = Env::new(&[]);
 
-        assert_eq!(expr.match_target(10, &env), MatchResult::Solve("x", 3));
+        assert_eq!(expr.match_target(10, &env), Ok(MatchResult::Constraint("x", 3)));
     }
 
     #[test]
@@ -775,7 +657,7 @@ mod tests {
         let expr = SizeExpr::pow(SizeExpr::param("x"), 3);
         let env = Env::new(&[]);
 
-        assert_eq!(expr.match_target(27, &env), MatchResult::Solve("x", 3));
+        assert_eq!(expr.match_target(27, &env), Ok(MatchResult::Constraint("x", 3)));
     }
 
     #[test]
@@ -784,7 +666,7 @@ mod tests {
         let expr = SizeExpr::pow(SizeExpr::param("x"), 3);
         let env = Env::new(&[]);
 
-        assert_eq!(expr.match_target(-8, &env), MatchResult::Solve("x", -2));
+        assert_eq!(expr.match_target(-8, &env), Ok(MatchResult::Constraint("x", -2)));
     }
 
     #[test]
@@ -793,7 +675,7 @@ mod tests {
         let expr = SizeExpr::pow(SizeExpr::param("x"), 2);
         let env = Env::new(&[]);
 
-        assert_eq!(expr.match_target(-4, &env), MatchResult::Failure);
+        assert_eq!(expr.match_target(-4, &env), Ok(MatchResult::MissMatch));
     }
 
     #[test]
@@ -805,7 +687,7 @@ mod tests {
         let c = 5;
 
         let shape = [b, h * p, w * p, c];
-        println!("shape: {:?}", shape);
+        // println!("shape: {:?}", shape);
 
         let pattern = [
             PatternTerm::Expr(SizeExpr::param("b")),
@@ -819,14 +701,14 @@ mod tests {
             ])),
             PatternTerm::Expr(SizeExpr::param("c")),
         ];
-        println!("pattern: {:#?}", pattern);
+        // println!("pattern: {:#?}", pattern);
 
         let bindings = [("p", p), ("c", c)];
 
         println!();
 
         let [u_b, u_h, u_w] = pattern
-            .unpack_shape(&shape, ["b", "h", "w"], &bindings)
+            .unpack_shape(&shape, &["b", "h", "w"], &bindings)
             .unwrap();
 
         assert_eq!(u_b, b);
