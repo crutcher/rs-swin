@@ -1,6 +1,3 @@
-use crate::EvalValue::{UnboundCount, Value};
-use crate::MatchResult::{Constraint, Match, MissMatch};
-
 pub trait StaticBindings {
     fn lookup(
         &self,
@@ -178,39 +175,39 @@ impl<'a> SizeExpr<'a> {
 
             for expr in exprs {
                 match expr.maybe_eval(env) {
-                    Value(value) => op(&mut accum, value),
-                    UnboundCount(count) => unbound_count += count,
+                    EvalValue::Value(value) => op(&mut accum, value),
+                    EvalValue::UnboundCount(count) => unbound_count += count,
                 }
             }
             if unbound_count > 0 {
-                UnboundCount(unbound_count)
+                EvalValue::UnboundCount(unbound_count)
             } else {
-                Value(accum)
+                EvalValue::Value(accum)
             }
         }
 
 
         match self {
-            SizeExpr::Fixed(value) => Value(*value),
+            SizeExpr::Fixed(value) => EvalValue::Value(*value),
             SizeExpr::Param(name) => {
                 if let Some(value) = env.lookup(name) {
-                    Value(value as isize)
+                    EvalValue::Value(value as isize)
                 } else {
-                    UnboundCount(1) // Single unbound param
+                    EvalValue::UnboundCount(1) // Single unbound param
                 }
             }
             SizeExpr::Negate(expr) => match expr.maybe_eval(env) {
-                Value(value) => Value(-value),
+                EvalValue::Value(value) => EvalValue::Value(-value),
                 ubc => ubc,
             }
             SizeExpr::Pow(base, exp) => {
                 match base.maybe_eval(env) {
-                    Value(value) => {
+                    EvalValue::Value(value) => {
                         if *exp == 0 {
                             // Any number to the power of 0 is 1.
-                            Value(1 as isize)
+                            EvalValue::Value(1 as isize)
                         } else {
-                            Value(value.pow(*exp as u32))
+                            EvalValue::Value(value.pow(*exp as u32))
                         }
                     }
                     ubc => ubc
@@ -279,7 +276,7 @@ impl<'a> SizeExpr<'a> {
         match self {
             SizeExpr::Fixed(value) => {
                 if *value == target {
-                    Ok(Match)
+                    Ok(MatchResult::Match)
                 } else {
                     Err(format!("Fixed value {} does not match target {}", value, target))
                 }
@@ -287,13 +284,13 @@ impl<'a> SizeExpr<'a> {
             SizeExpr::Param(name) => {
                 if let Some(value) = env.lookup(name) {
                     if value as isize == target {
-                        Ok(Match)
+                        Ok(MatchResult::Match)
                     } else {
                         Err(format!("Parameter {} has value {}, does not match target {}", name, value, target))
                     }
                 } else {
                     // Unbound parameter, return constraint
-                    Ok(Constraint(name, target))
+                    Ok(MatchResult::Constraint(name, target))
                 }
             }
             SizeExpr::Negate(expr) => {
@@ -313,7 +310,7 @@ impl<'a> SizeExpr<'a> {
                 // base = target^(1/exp
                 let root = match Self::exact_nth_root(target, exp) {
                     Some(root) => root,
-                    None => return Ok(MissMatch), // No exact integer root
+                    None => return Ok(MatchResult::MissMatch), // No exact integer root
                 };
                 base.match_target(root, env)
             }
@@ -323,12 +320,12 @@ impl<'a> SizeExpr<'a> {
 
                 for expr in exprs {
                     match expr.maybe_eval(&env) {
-                        Value(value) => accumulator += value,
-                        UnboundCount(count) => {
+                        EvalValue::Value(value) => accumulator += value,
+                        EvalValue::UnboundCount(count) => {
                             if count == 1 && unbound_expr.is_none() {
                                 unbound_expr = Some(expr);
                             } else {
-                                return Ok(MissMatch)
+                                return Ok(MatchResult::MissMatch)
                             }
                         }
                     }
@@ -338,7 +335,7 @@ impl<'a> SizeExpr<'a> {
                 } else {
                     // All expressions are bound, check if they sum to target
                     if accumulator == target {
-                        Ok(Match)
+                        Ok(MatchResult::Match)
                     } else {
                         Err(format!("Sum of bound expressions {} does not match target {}", accumulator, target))
                     }
@@ -350,25 +347,25 @@ impl<'a> SizeExpr<'a> {
 
                 for expr in exprs {
                     match expr.maybe_eval(&env) {
-                        Value(value) => accumulator *= value,
-                        UnboundCount(count) => {
+                        EvalValue::Value(value) => accumulator *= value,
+                        EvalValue::UnboundCount(count) => {
                             if count == 1 && unbound_expr.is_none() {
                                 unbound_expr = Some(expr);
                             } else {
-                                return Ok(MissMatch)
+                                return Ok(MatchResult::MissMatch)
                             }
                         }
                     }
                 }
                 if target % accumulator != 0 {
-                    return Ok(MissMatch);
+                    return Ok(MatchResult::MissMatch);
                 }
                 if let Some(expr) = unbound_expr {
                     expr.match_target(target / accumulator, env)
                 } else {
                     // All expressions are bound, check if they sum to target
                     if accumulator == target {
-                        Ok(Match)
+                        Ok(MatchResult::Match)
                     } else {
                         Err(format!("Prod of bound expressions {} does not match target {}", accumulator, target))
                     }
