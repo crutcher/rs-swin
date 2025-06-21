@@ -1,23 +1,31 @@
-pub trait StaticBindings {
+pub trait StaticBindings<'a> {
     fn lookup(
         &self,
-        key: &str,
+        key: &'a str,
     ) -> Option<usize>;
 
     fn contains_key(
         &self,
-        key: &str,
+        key: &'a str,
     ) -> bool {
         self.lookup(key).is_some()
     }
 }
 
+pub trait MutBindings<'a>: StaticBindings<'a> {
+    fn insert(
+        &mut self,
+        key: &'a str,
+        value: usize,
+    );
+}
+
 pub type Bindings<'a> = &'a [(&'a str, usize)];
 
-impl<'a> StaticBindings for Bindings<'a> {
+impl<'a> StaticBindings<'a> for Bindings<'a> {
     fn lookup(
         &self,
-        key: &str,
+        key: &'a str,
     ) -> Option<usize> {
         self.iter()
             .find_map(|(k, v)| if k == &key { Some(*v) } else { None })
@@ -25,7 +33,7 @@ impl<'a> StaticBindings for Bindings<'a> {
 
     fn contains_key(
         &self,
-        key: &str,
+        key: &'a str,
     ) -> bool {
         self.iter().any(|(k, _)| k == &key)
     }
@@ -36,7 +44,7 @@ pub struct Env<'a> {
     local: Vec<(&'a str, usize)>,
 }
 
-impl<'a> StaticBindings for Env<'a> {
+impl<'a> StaticBindings<'a> for Env<'a> {
     fn lookup(
         &self,
         key: &str,
@@ -57,8 +65,8 @@ impl<'a> StaticBindings for Env<'a> {
     }
 }
 
-impl<'a> Env<'a> {
-    pub fn insert(
+impl<'a> MutBindings<'a> for Env<'a> {
+    fn insert(
         &mut self,
         key: &'a str,
         value: usize,
@@ -478,7 +486,6 @@ impl<'a, const D: usize> ShapePattern<'a> for [PatternTerm<'a>; D] {
                         MatchResult::Match => Ok(()),
                         MatchResult::MissMatch => Err(describe_missmatch(self, shape, bindings)),
                         MatchResult::Constraint(param_name, value) => {
-                            let param_name: &'a str = param_name;
                             env.insert(param_name, value as usize);
                             Ok(())
                         }
@@ -508,7 +515,6 @@ impl<'a, const D: usize> ShapePattern<'a> for [PatternTerm<'a>; D] {
                                 Err(describe_missmatch(self, shape, bindings))
                             }
                             MatchResult::Constraint(param_name, value) => {
-                                let param_name: &'a str = param_name;
                                 env.insert(param_name, value as usize);
                                 Ok(())
                             }
