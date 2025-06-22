@@ -19,6 +19,7 @@ repository = "https://github.com/crutcher/bimm"
 
 [workspace.dependencies]
 bimm-contracts-shapes = { version = "0.1.0", path = "crates/bimm-contracts-shapes" }
+either = { version = "^1.15.0" }
 
 burn = { version = "^0.17.1" }
 

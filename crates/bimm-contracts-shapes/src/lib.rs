@@ -1,3 +1,5 @@
+use either::Either;
+
 pub trait StaticBindings<'a> {
     fn lookup(
         &self,
@@ -122,20 +124,59 @@ pub enum MatchResult<'a> {
     /// All params bound and expression equals target.
     Match,
 
-    /// Expression value does not match target.
-    MissMatch,
+    /// Expression value does not match the target.
+    Failure,
 
     /// Expression can be solved for a single unbound param.
     Constraint(&'a str, isize),
 
-    /// Expression cannot be solved with current bindings
-    UnderConstrained,
+    /// Expression is invalid.
+    /// This is permitted to be a heap String,
+    /// because we're going to build a formatted panic message.
+    Invalid(String),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum EvalValue {
-    Value(isize),
-    UnboundCount(usize),
+/// Find the exact integer nth root if it exists.
+///
+/// ## Arguments
+///
+/// - `value` - the value.
+/// - `n` - the root power.
+///
+/// ## Returns
+///
+/// Either the exact root (positive if possible) or None.
+fn maybe_nth_integer_root(
+    value: isize,
+    n: usize,
+) -> Option<isize> {
+    match value {
+        0 => Some(0),
+        1 => Some(1),
+        v if v > 1 => {
+            let value = value as usize;
+            let n = n as u32;
+            for x in 2usize.. {
+                let y: usize = x.saturating_pow(n);
+                if value < y {
+                    break;
+                }
+                if value == y {
+                    return Some(x as isize);
+                }
+            }
+            None
+        }
+        v => {
+            // Negative values: only possible for odd exponents
+            if n % 2 == 1 {
+                // For odd n, (-x)^n = -(x^n), so we can find the positive root and negate
+                maybe_nth_integer_root(-v, n).map(|root| -root)
+            } else {
+                None // No real root for negative value with even exponent
+            }
+        }
+    }
 }
 
 impl<'a> SizeExpr<'a> {
@@ -167,104 +208,60 @@ impl<'a> SizeExpr<'a> {
         SizeExpr::Prod(exprs)
     }
 
-    pub fn maybe_eval(
+    /// Evaluate an expression.
+    ///
+    /// ## Arguments
+    ///
+    /// - `env` - the binding environment.
+    ///
+    /// ## Returns
+    ///
+    /// - `Right(value)` - the value of the expression.
+    /// - `Left(count)` - the count of unbound parameters.
+    fn maybe_eval(
         &self,
         env: &Env<'a>,
-    ) -> EvalValue {
-        fn monoid<'a>(
+    ) -> Either<usize, isize> {
+        fn evaluate_monoid<'a>(
             exprs: &'a [SizeExpr<'a>],
             env: &'a Env,
-            init: isize,
-            op: fn(&mut isize, isize),
-        ) -> EvalValue {
-            let mut accum = init;
-            let mut unbound_count = 0;
+            zero: isize,
+            accumulate: fn(&mut isize, isize),
+        ) -> Either<usize, isize> {
+            let mut tmp = zero;
+            let mut count = 0;
 
             for expr in exprs {
                 match expr.maybe_eval(env) {
-                    EvalValue::Value(value) => op(&mut accum, value),
-                    EvalValue::UnboundCount(count) => unbound_count += count,
+                    Either::Right(v) => accumulate(&mut tmp, v),
+                    Either::Left(c) => count += c,
                 }
             }
-            if unbound_count > 0 {
-                EvalValue::UnboundCount(unbound_count)
+            if count > 0 {
+                Either::Left(count)
             } else {
-                EvalValue::Value(accum)
+                Either::Right(tmp)
             }
         }
 
         match self {
-            SizeExpr::Fixed(value) => EvalValue::Value(*value),
+            SizeExpr::Fixed(value) => Either::Right(*value),
             SizeExpr::Param(name) => {
                 if let Some(value) = env.lookup(name) {
-                    EvalValue::Value(value as isize)
+                    Either::Right(value as isize)
                 } else {
-                    EvalValue::UnboundCount(1) // Single unbound param
+                    Either::Left(1) // Single unbound param
                 }
             }
-            SizeExpr::Negate(expr) => match expr.maybe_eval(env) {
-                EvalValue::Value(value) => EvalValue::Value(-value),
-                ubc => ubc,
-            },
+            SizeExpr::Negate(expr) => expr.maybe_eval(env).map_right(|v| -v),
             SizeExpr::Pow(base, exp) => {
-                match base.maybe_eval(env) {
-                    EvalValue::Value(value) => {
-                        if *exp == 0 {
-                            // Any number to the power of 0 is 1.
-                            EvalValue::Value(1_isize)
-                        } else {
-                            EvalValue::Value(value.pow(*exp as u32))
-                        }
-                    }
-                    ubc => ubc,
-                }
+                base.maybe_eval(env).map_right(|value| {
+                    // Any number to the power of 0 is 1.
+                    if *exp == 0 { 1 } else { value.pow(*exp as u32) }
+                })
             }
-            SizeExpr::Sum(exprs) => monoid(exprs, env, 0, |accum, value| *accum += value),
-            SizeExpr::Prod(exprs) => monoid(exprs, env, 1, |accum, value| *accum *= value),
-        }
-    }
-
-    /// Find exact integer nth root if it exists (no search needed)
-    fn exact_nth_root(
-        value: isize,
-        n: usize,
-    ) -> Option<isize> {
-        if n == 0 {
-            return None; // Invalid exponent
-        }
-        if n == 1 {
-            return Some(value);
-        }
-
-        match value {
-            0 => Some(0),
-            1 => Some(1),
-            v if v > 0 => {
-                // For positive values, compute approximate root and check exact match
-                let approx = (v as f64).powf(1.0 / n as f64).round() as i32;
-
-                // Check candidates around the approximation
-                for candidate in (approx.saturating_sub(1))..=(approx + 1) {
-                    let candidate = candidate as isize;
-                    if candidate >= 0 {
-                        if let Some(power) = candidate.checked_pow(n as u32) {
-                            if power == value {
-                                return Some(candidate);
-                            }
-                        }
-                    }
-                }
-                None
-            }
-            v => {
-                // Negative values: only possible for odd exponents
-                if n % 2 == 1 {
-                    // For odd n, (-x)^n = -(x^n), so we can find the positive root and negate
-                    Self::exact_nth_root(-v, n).map(|root| -root)
-                } else {
-                    None // No real root for negative value with even exponent
-                }
-            }
+            SizeExpr::Sum(exprs) => evaluate_monoid(exprs, env, 0, |tmp, value| *tmp += value),
+            SizeExpr::Prod(exprs) => evaluate_monoid(exprs, env, 1, |tmp, value| *tmp *= value),
         }
     }
 
@@ -285,7 +282,7 @@ impl<'a> SizeExpr<'a> {
     /// ## Errors
     ///
     /// Returns an error string if the expression cannot be reconciled with the target value, such as when an exponent is invalid or a sum/product does not match the target.
-    fn reconcile_expression_value(
+    pub fn try_match(
         &'a self,
         target: isize,
         env: &Env<'a>,
@@ -315,7 +312,7 @@ impl<'a> SizeExpr<'a> {
                     Ok(MatchResult::Constraint(name, target))
                 }
             }
-            SizeExpr::Negate(expr) => expr.reconcile_expression_value(-target, env),
+            SizeExpr::Negate(expr) => expr.try_match(-target, env),
             SizeExpr::Pow(base, exp) => {
                 let exp = *exp;
 
@@ -326,11 +323,11 @@ impl<'a> SizeExpr<'a> {
 
                 // base^exp = target, solve for base
                 // base = target^(1/exp
-                let root = match Self::exact_nth_root(target, exp) {
+                let root = match maybe_nth_integer_root(target, exp) {
                     Some(root) => root,
-                    None => return Ok(MatchResult::MissMatch), // No exact integer root
+                    None => return Ok(MatchResult::Failure), // No exact integer root
                 };
-                base.reconcile_expression_value(root, env)
+                base.try_match(root, env)
             }
             SizeExpr::Sum(exprs) => {
                 let mut unbound_expr = None;
@@ -338,18 +335,18 @@ impl<'a> SizeExpr<'a> {
 
                 for expr in exprs {
                     match expr.maybe_eval(env) {
-                        EvalValue::Value(value) => accumulator += value,
-                        EvalValue::UnboundCount(count) => {
+                        Either::Right(value) => accumulator += value,
+                        Either::Left(count) => {
                             if count == 1 && unbound_expr.is_none() {
                                 unbound_expr = Some(expr);
                             } else {
-                                return Ok(MatchResult::MissMatch);
+                                return Ok(MatchResult::Failure);
                             }
                         }
                     }
                 }
                 if let Some(expr) = unbound_expr {
-                    expr.reconcile_expression_value(target - accumulator, env)
+                    expr.try_match(target - accumulator, env)
                 } else if accumulator == target {
                     Ok(MatchResult::Match)
                 } else {
@@ -365,12 +362,12 @@ impl<'a> SizeExpr<'a> {
 
                 for expr in exprs {
                     match expr.maybe_eval(env) {
-                        EvalValue::Value(value) => accumulator *= value,
-                        EvalValue::UnboundCount(count) => {
+                        Either::Right(value) => accumulator *= value,
+                        Either::Left(count) => {
                             if count == 1 && unbound_expr.is_none() {
                                 unbound_expr = Some(expr);
                             } else {
-                                return Ok(MatchResult::MissMatch);
+                                return Ok(MatchResult::Failure);
                             }
                         }
                     }
@@ -378,11 +375,11 @@ impl<'a> SizeExpr<'a> {
 
                 if target % accumulator != 0 {
                     // Non-integer solution
-                    return Ok(MatchResult::MissMatch);
+                    return Ok(MatchResult::Failure);
                 }
 
                 if let Some(expr) = unbound_expr {
-                    expr.reconcile_expression_value(target / accumulator, env)
+                    expr.try_match(target / accumulator, env)
                 } else if accumulator == target {
                     Ok(MatchResult::Match)
                 } else {
@@ -482,16 +479,14 @@ impl<'a, const D: usize> ShapePattern<'a> for [PatternTerm<'a>; D] {
                 )),
                 PatternTerm::Expr(expr) => {
                     let target = shape[shape_idx] as isize;
-                    match expr.reconcile_expression_value(target, &env)? {
+                    match expr.try_match(target, &env)? {
                         MatchResult::Match => Ok(()),
-                        MatchResult::MissMatch => Err(describe_missmatch(self, shape, bindings)),
+                        MatchResult::Failure => Err(describe_missmatch(self, shape, bindings)),
                         MatchResult::Constraint(param_name, value) => {
                             env.insert(param_name, value as usize);
                             Ok(())
                         }
-                        MatchResult::UnderConstrained => {
-                            Err(describe_missmatch(self, shape, bindings))
-                        }
+                        MatchResult::Invalid(msg) => Err(invalid_pattern(msg, self)),
                     }
                 }
             })?;
@@ -509,18 +504,14 @@ impl<'a, const D: usize> ShapePattern<'a> for [PatternTerm<'a>; D] {
                     PatternTerm::Ellipsis => Err("INTERNAL ERROR: mishandled Ellipsis".to_string()),
                     PatternTerm::Expr(expr) => {
                         let target = shape[shape_idx] as isize;
-                        match expr.reconcile_expression_value(target, &env)? {
+                        match expr.try_match(target, &env)? {
                             MatchResult::Match => Ok(()),
-                            MatchResult::MissMatch => {
-                                Err(describe_missmatch(self, shape, bindings))
-                            }
+                            MatchResult::Failure => Err(describe_missmatch(self, shape, bindings)),
                             MatchResult::Constraint(param_name, value) => {
                                 env.insert(param_name, value as usize);
                                 Ok(())
                             }
-                            MatchResult::UnderConstrained => {
-                                Err(describe_missmatch(self, shape, bindings))
-                            }
+                            MatchResult::Invalid(msg) => Err(invalid_pattern(msg, self)),
                         }
                     }
                 })?;
@@ -545,7 +536,7 @@ mod tests {
         let env = Env::new(&[]);
 
         assert_eq!(
-            expr.reconcile_expression_value(8, &env),
+            expr.try_match(8, &env),
             Ok(MatchResult::Constraint("x", 13))
         );
     }
@@ -556,10 +547,7 @@ mod tests {
         let expr = SizeExpr::prod(vec![SizeExpr::fixed(2), SizeExpr::param("x")]);
         let env = Env::new(&[]);
 
-        assert_eq!(
-            expr.reconcile_expression_value(6, &env),
-            Ok(MatchResult::Constraint("x", 3))
-        );
+        assert_eq!(expr.try_match(6, &env), Ok(MatchResult::Constraint("x", 3)));
     }
 
     #[test]
@@ -572,10 +560,7 @@ mod tests {
 
         // This should solve: first p gets target/second_p, but second_p is unbound too
         // Actually, this should fail because we have the same param multiple times
-        assert_eq!(
-            expr.reconcile_expression_value(9, &env),
-            Ok(MatchResult::MissMatch)
-        );
+        assert_eq!(expr.try_match(9, &env), Ok(MatchResult::Failure));
     }
 
     #[test]
@@ -600,10 +585,7 @@ mod tests {
         env.insert("z", 4);
 
         // p appears multiple times in the first product term, so this should fail
-        assert_eq!(
-            expr.reconcile_expression_value(25, &env),
-            Ok(MatchResult::MissMatch)
-        );
+        assert_eq!(expr.try_match(25, &env), Ok(MatchResult::Failure));
     }
 
     #[test]
@@ -621,10 +603,7 @@ mod tests {
         ]);
         let env = Env::new(&[]);
 
-        assert_eq!(
-            expr.reconcile_expression_value(9, &env),
-            Ok(MatchResult::Constraint("x", 2))
-        );
+        assert_eq!(expr.try_match(9, &env), Ok(MatchResult::Constraint("x", 2)));
     }
 
     #[test]
@@ -635,10 +614,7 @@ mod tests {
         let mut env = Env::new(&[]);
         env.insert("x", 3);
 
-        assert_eq!(
-            expr.reconcile_expression_value(8, &env),
-            Ok(MatchResult::Match)
-        );
+        assert_eq!(expr.try_match(8, &env), Ok(MatchResult::Match));
     }
 
     #[test]
@@ -647,10 +623,7 @@ mod tests {
         let expr = SizeExpr::sum(vec![SizeExpr::param("x"), SizeExpr::param("y")]);
         let env = Env::new(&[]);
 
-        assert_eq!(
-            expr.reconcile_expression_value(5, &env),
-            Ok(MatchResult::MissMatch)
-        );
+        assert_eq!(expr.try_match(5, &env), Ok(MatchResult::Failure));
     }
 
     #[test]
@@ -660,10 +633,7 @@ mod tests {
         let expr = SizeExpr::prod(vec![SizeExpr::fixed(2), SizeExpr::param("x")]);
         let env = Env::new(&[]);
 
-        assert_eq!(
-            expr.reconcile_expression_value(3, &env),
-            Ok(MatchResult::MissMatch)
-        );
+        assert_eq!(expr.try_match(3, &env), Ok(MatchResult::Failure));
     }
 
     #[test]
@@ -672,10 +642,7 @@ mod tests {
         let expr = SizeExpr::pow(SizeExpr::param("x"), 3);
         let env = Env::new(&[]);
 
-        assert_eq!(
-            expr.reconcile_expression_value(8, &env),
-            Ok(MatchResult::Constraint("x", 2))
-        );
+        assert_eq!(expr.try_match(8, &env), Ok(MatchResult::Constraint("x", 2)));
     }
 
     #[test]
@@ -685,10 +652,7 @@ mod tests {
         let env = Env::new(&[]);
 
         // 2^3 = 8, so target 5 should fail
-        assert_eq!(
-            expr.reconcile_expression_value(5, &env),
-            Ok(MatchResult::MissMatch)
-        );
+        assert_eq!(expr.try_match(5, &env), Ok(MatchResult::Failure));
     }
 
     #[test]
@@ -701,7 +665,7 @@ mod tests {
         let env = Env::new(&[]);
 
         assert_eq!(
-            expr.reconcile_expression_value(10, &env),
+            expr.try_match(10, &env),
             Ok(MatchResult::Constraint("x", 3))
         );
     }
@@ -713,7 +677,7 @@ mod tests {
         let env = Env::new(&[]);
 
         assert_eq!(
-            expr.reconcile_expression_value(27, &env),
+            expr.try_match(27, &env),
             Ok(MatchResult::Constraint("x", 3))
         );
     }
@@ -725,7 +689,7 @@ mod tests {
         let env = Env::new(&[]);
 
         assert_eq!(
-            expr.reconcile_expression_value(-8, &env),
+            expr.try_match(-8, &env),
             Ok(MatchResult::Constraint("x", -2))
         );
     }
@@ -736,10 +700,7 @@ mod tests {
         let expr = SizeExpr::pow(SizeExpr::param("x"), 2);
         let env = Env::new(&[]);
 
-        assert_eq!(
-            expr.reconcile_expression_value(-4, &env),
-            Ok(MatchResult::MissMatch)
-        );
+        assert_eq!(expr.try_match(-4, &env), Ok(MatchResult::Failure));
     }
 
     #[test]
