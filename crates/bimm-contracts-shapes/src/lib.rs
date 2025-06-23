@@ -1,4 +1,3 @@
-use either::Either;
 use std::fmt::{Display, Formatter};
 
 pub enum OpTree {
@@ -250,6 +249,12 @@ fn maybe_nth_integer_root(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum EvalResult {
+    Value(isize),
+    UnboundParams(usize),
+}
+
 impl<'a> SizeExpr<'a> {
     /// Evaluate an expression.
     ///
@@ -264,44 +269,53 @@ impl<'a> SizeExpr<'a> {
     fn try_evaluate(
         &self,
         env: &Env<'a>,
-    ) -> Either<usize, isize> {
+    ) -> EvalResult {
         #[inline(always)]
         fn reduce_monoid<'a>(
             exprs: &'a [SizeExpr<'a>],
             env: &'a Env,
             zero: isize,
             op: fn(&mut isize, isize),
-        ) -> Either<usize, isize> {
+        ) -> EvalResult {
             let mut tmp = zero;
             let mut count = 0;
-
             for expr in exprs {
                 match expr.try_evaluate(env) {
-                    Either::Right(v) => op(&mut tmp, v),
-                    Either::Left(c) => count += c,
+                    EvalResult::Value(v) => op(&mut tmp, v),
+                    EvalResult::UnboundParams(c) => count += c,
                 }
             }
-            if count > 0 {
-                Either::Left(count)
+            if count == 0 {
+                EvalResult::Value(tmp)
             } else {
-                Either::Right(tmp)
+                EvalResult::UnboundParams(count)
             }
         }
         match self {
-            SizeExpr::Fixed(value) => Either::Right(*value),
+            SizeExpr::Fixed(value) => EvalResult::Value(*value),
             SizeExpr::Param(name) => {
                 if let Some(value) = env.lookup(name) {
-                    Either::Right(value as isize)
+                    EvalResult::Value(value as isize)
                 } else {
-                    Either::Left(1) // Single unbound param
+                    EvalResult::UnboundParams(1) // Single unbound param
                 }
             }
-            SizeExpr::Negate(expr) => expr.try_evaluate(env).map_right(|v| -v),
+            SizeExpr::Negate(expr) => match expr.try_evaluate(env) {
+                EvalResult::Value(value) => EvalResult::Value(-value),
+                x => x,
+            },
             SizeExpr::Pow(base, exp) => {
-                base.try_evaluate(env).map_right(|value| {
-                    // Any number to the power of 0 is 1.
-                    if *exp == 0 { 1 } else { value.pow(*exp as u32) }
-                })
+                match base.try_evaluate(env) {
+                    EvalResult::Value(value) => {
+                        // Any number to the power of 0 is 1.
+                        if *exp == 0 {
+                            EvalResult::Value(1)
+                        } else {
+                            EvalResult::Value(value.pow(*exp as u32))
+                        }
+                    }
+                    x => x,
+                }
             }
             SizeExpr::Sum(exprs) => reduce_monoid(exprs, env, 0, |tmp, value| *tmp += value),
             SizeExpr::Prod(exprs) => reduce_monoid(exprs, env, 1, |tmp, value| *tmp *= value),
@@ -342,8 +356,8 @@ impl<'a> SizeExpr<'a> {
 
             for expr in exprs {
                 match expr.try_evaluate(env) {
-                    Either::Right(value) => op(&mut partial_value, value),
-                    Either::Left(count) => {
+                    EvalResult::Value(value) => op(&mut partial_value, value),
+                    EvalResult::UnboundParams(count) => {
                         if count == 1 && rem_expr.is_none() {
                             rem_expr = Some(expr);
                         } else {

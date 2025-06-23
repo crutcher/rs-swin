@@ -9,5 +9,4 @@ repository.workspace = true
 workspace = true
 
 [dependencies]
-either = { workspace = true }
 
