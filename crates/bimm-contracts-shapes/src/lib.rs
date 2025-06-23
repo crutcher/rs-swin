@@ -1,10 +1,5 @@
 use std::fmt::{Display, Formatter};
 
-pub enum OpTree {
-    Leaf(String),
-    Node { op: String, children: Vec<OpTree> },
-}
-
 pub trait StaticBindings<'a> {
     fn lookup(
         &self,
@@ -111,16 +106,16 @@ impl<'a> Env<'a> {
 pub enum SizeExpr<'a> {
     Fixed(isize),
     Param(&'a str),
-    Negate(Box<SizeExpr<'a>>),
-    Pow(Box<SizeExpr<'a>>, usize),
-    Sum(Vec<SizeExpr<'a>>),
-    Prod(Vec<SizeExpr<'a>>),
+    Negate(&'a SizeExpr<'a>),
+    Pow(&'a SizeExpr<'a>, usize),
+    Sum(&'a [SizeExpr<'a>]),
+    Prod(&'a [SizeExpr<'a>]),
 }
 
 impl Display for SizeExpr<'_> {
     fn fmt(
         &self,
-        f: &mut std::fmt::Formatter<'_>,
+        f: &mut Formatter<'_>,
     ) -> std::fmt::Result {
         match self {
             SizeExpr::Fixed(fixed) => write!(f, "{}", fixed),
@@ -173,7 +168,7 @@ impl Display for PatternTerm<'_> {
     }
 }
 
-fn format_shape_pattern<'a>(pattern: &[PatternTerm<'a>]) -> String {
+fn format_shape_pattern(pattern: &[PatternTerm]) -> String {
     // TODO: make this a `fmt` method.
     let mut result = String::new();
     result.push('[');
@@ -438,9 +433,9 @@ impl<'a, const D: usize> ShapePattern<'a> for [PatternTerm<'a>; D] {
         keys: &[&'a str; K],
         bindings: Bindings<'a>,
     ) -> Result<[usize; K], String> {
-        fn invalid_pattern<'a>(
+        fn invalid_pattern(
             error: String,
-            pattern: &[PatternTerm<'a>],
+            pattern: &[PatternTerm],
         ) -> String {
             format!(
                 "Invalid Pattern: {}\nPattern: {}\n",
@@ -497,59 +492,42 @@ impl<'a, const D: usize> ShapePattern<'a> for [PatternTerm<'a>; D] {
             None => self.len(),
         };
 
-        for pattern_idx in 0..marker {
-            let term = &self[pattern_idx];
-            let shape_idx = pattern_idx;
+        // At this point, either:
+        // - `marker` is the length of the pattern (no *effective* ellipsis);
+        // - or `marker` is the position of the ellipsis,
+        //   and we have `ellipsis_len` skipped elements after it.
 
-            (match term {
-                PatternTerm::Any => {
-                    // Any term, no action needed
-                    Ok(())
-                }
+        let mut check_term = |pattern_idx: usize, shape_idx: usize| {
+            let term = &self[pattern_idx];
+            let target = shape[shape_idx] as isize;
+
+            match term {
+                PatternTerm::Any => Ok(()), // Any term, no action needed
                 PatternTerm::Ellipsis => Err(invalid_pattern(
                     "INTERNAL ERROR: mishandled Ellipsis".to_string(),
                     self,
                 )),
-                PatternTerm::Expr(expr) => {
-                    let target = shape[shape_idx] as isize;
-                    match expr.try_match(target, &env)? {
-                        TryMatchResult::TargetMatch => Ok(()),
-                        TryMatchResult::ValueMissMatch => {
-                            Err(describe_missmatch(self, shape, bindings))
-                        }
-                        TryMatchResult::ParamConstraint(param_name, value) => {
-                            env.insert(param_name, value as usize);
-                            Ok(())
-                        }
+                PatternTerm::Expr(expr) => match expr.try_match(target, &env)? {
+                    TryMatchResult::TargetMatch => Ok(()),
+                    TryMatchResult::ValueMissMatch => {
+                        Err(describe_missmatch(self, shape, bindings))
                     }
-                }
-            })?;
+                    TryMatchResult::ParamConstraint(param_name, value) => {
+                        env.insert(param_name, value as usize);
+                        Ok(())
+                    }
+                },
+            }
+        };
+
+        for pattern_idx in 0..marker {
+            check_term(pattern_idx, pattern_idx)?;
         }
 
         if ellipsis_len > 0 {
             for pattern_idx in (ellipsis_pos.unwrap() + 1)..shape.len() {
-                let term = &self[pattern_idx];
                 let shape_idx = pattern_idx + ellipsis_len;
-                (match term {
-                    PatternTerm::Any => {
-                        // Any term, no action needed
-                        Ok(())
-                    }
-                    PatternTerm::Ellipsis => Err("INTERNAL ERROR: mishandled Ellipsis".to_string()),
-                    PatternTerm::Expr(expr) => {
-                        let target = shape[shape_idx] as isize;
-                        match expr.try_match(target, &env)? {
-                            TryMatchResult::TargetMatch => Ok(()),
-                            TryMatchResult::ValueMissMatch => {
-                                Err(describe_missmatch(self, shape, bindings))
-                            }
-                            TryMatchResult::ParamConstraint(param_name, value) => {
-                                env.insert(param_name, value as usize);
-                                Ok(())
-                            }
-                        }
-                    }
-                })?;
+                check_term(pattern_idx, shape_idx)?;
             }
         }
 
@@ -564,9 +542,7 @@ mod tests {
     #[test]
     fn test_simple_sum() {
         // x + 5, target = 8, should solve x = 3
-        let expr1 = SizeExpr::Fixed(5);
-        let exprs = vec![SizeExpr::Param("x"), SizeExpr::Negate(Box::new(expr1))];
-        let expr = SizeExpr::Sum(exprs);
+        let expr = SizeExpr::Sum(&[SizeExpr::Param("x"), SizeExpr::Negate(&SizeExpr::Fixed(5))]);
         let env = Env::new(&[]);
 
         assert_eq!(
@@ -578,8 +554,7 @@ mod tests {
     #[test]
     fn test_simple_product() {
         // 2 * x, target = 6, should solve x = 3
-        let exprs = vec![SizeExpr::Fixed(2), SizeExpr::Param("x")];
-        let expr = SizeExpr::Prod(exprs);
+        let expr = SizeExpr::Prod(&[SizeExpr::Fixed(2), SizeExpr::Param("x")]);
         let env = Env::new(&[]);
 
         assert_eq!(
@@ -593,8 +568,7 @@ mod tests {
         // p * p, target = 9
         // This becomes: p * p = 9, so we solve the first p for 9/p
         // But since both factors are the same unbound param, this should work
-        let exprs = vec![SizeExpr::Param("p"), SizeExpr::Param("p")];
-        let expr = SizeExpr::Prod(exprs);
+        let expr = SizeExpr::Prod(&[SizeExpr::Param("p"), SizeExpr::Param("p")]);
         let env = Env::new(&[]);
 
         // This should solve: first p gets target/second_p, but second_p is unbound too
@@ -610,15 +584,15 @@ mod tests {
         // w * p * h * p + c * z
         // With w=2, h=3, c=1, z=4, and p unbound, target=25
         // This should fail because p appears twice in the product
-        let exprs1 = vec![SizeExpr::Param("c"), SizeExpr::Param("z")];
-        let exprs2 = vec![
-            SizeExpr::Param("w"),
-            SizeExpr::Param("p"),
-            SizeExpr::Param("h"),
-            SizeExpr::Param("p"),
-        ];
-        let exprs = vec![SizeExpr::Prod(exprs2), SizeExpr::Prod(exprs1)];
-        let expr = SizeExpr::Sum(exprs);
+        static EXPR: SizeExpr = SizeExpr::Sum(&[
+            SizeExpr::Prod(&[
+                SizeExpr::Param("w"),
+                SizeExpr::Param("p"),
+                SizeExpr::Param("h"),
+                SizeExpr::Param("p"),
+            ]),
+            SizeExpr::Prod(&[SizeExpr::Param("c"), SizeExpr::Param("z")]),
+        ]);
 
         let mut env = Env::new(&[]);
         env.insert("w", 2);
@@ -628,7 +602,7 @@ mod tests {
 
         // p appears multiple times in the first product term, so this should fail
         assert_eq!(
-            expr.try_match(25, &env),
+            EXPR.try_match(25, &env),
             Err("Too many unbound params".to_string())
         );
     }
@@ -639,10 +613,13 @@ mod tests {
         // 2 * (x + 3) == 10
         // x + 3 == 5
         // x == 2
-        let exprs = vec![SizeExpr::Param("x"), SizeExpr::Fixed(3)];
-        let exprs2 = vec![SizeExpr::Fixed(2), SizeExpr::Sum(exprs)];
-        let exprs1 = vec![SizeExpr::Prod(exprs2), SizeExpr::Fixed(-1)];
-        let expr = SizeExpr::Sum(exprs1);
+        let expr = SizeExpr::Sum(&[
+            SizeExpr::Prod(&[
+                SizeExpr::Fixed(2),
+                SizeExpr::Sum(&[SizeExpr::Param("x"), SizeExpr::Fixed(3)]),
+            ]),
+            SizeExpr::Fixed(-1),
+        ]);
         let env = Env::new(&[]);
 
         assert_eq!(
@@ -654,8 +631,7 @@ mod tests {
     #[test]
     fn test_all_bound_success() {
         // x + 5 with x = 3, target = 8
-        let exprs = vec![SizeExpr::Param("x"), SizeExpr::Fixed(5)];
-        let expr = SizeExpr::Sum(exprs);
+        let expr = SizeExpr::Sum(&[SizeExpr::Param("x"), SizeExpr::Fixed(5)]);
 
         let mut env = Env::new(&[]);
         env.insert("x", 3);
@@ -666,8 +642,7 @@ mod tests {
     #[test]
     fn test_multiple_unbound() {
         // x + y, multiple unbound params
-        let exprs = vec![SizeExpr::Param("x"), SizeExpr::Param("y")];
-        let expr = SizeExpr::Sum(exprs);
+        let expr = SizeExpr::Sum(&[SizeExpr::Param("x"), SizeExpr::Param("y")]);
         let env = Env::new(&[]);
 
         assert_eq!(
@@ -680,8 +655,7 @@ mod tests {
     fn test_no_integer_solution() {
         // 2 * x == 3
         // x = 3/2, which is not an integer
-        let exprs = vec![SizeExpr::Fixed(2), SizeExpr::Param("x")];
-        let expr = SizeExpr::Prod(exprs);
+        let expr = SizeExpr::Prod(&[SizeExpr::Fixed(2), SizeExpr::Param("x")]);
         let env = Env::new(&[]);
 
         assert_eq!(
@@ -693,8 +667,7 @@ mod tests {
     #[test]
     fn test_power_solve_base() {
         // x^3 = 8, should solve x = 2
-        let base = SizeExpr::Param("x");
-        let expr = SizeExpr::Pow(Box::new(base), 3);
+        let expr = SizeExpr::Pow(&SizeExpr::Param("x"), 3);
         let env = Env::new(&[]);
 
         assert_eq!(
@@ -706,8 +679,7 @@ mod tests {
     #[test]
     fn test_power_no_solution() {
         // 2^3 = x where x != 8 (no solution when fully bound and doesn't match)
-        let base = SizeExpr::Fixed(2);
-        let expr = SizeExpr::Pow(Box::new(base), 3);
+        let expr = SizeExpr::Pow(&(SizeExpr::Fixed(2)), 3);
         let env = Env::new(&[]);
 
         // 2^3 = 8, so target 5 should fail
@@ -720,9 +692,10 @@ mod tests {
     #[test]
     fn test_power_in_sum() {
         // x^2 + 1 = 10, should solve x = 3 (since 3^2 + 1 = 10)
-        let base = SizeExpr::Param("x");
-        let exprs = vec![SizeExpr::Pow(Box::new(base), 2), SizeExpr::Fixed(1)];
-        let expr = SizeExpr::Sum(exprs);
+        let expr = SizeExpr::Sum(&[
+            SizeExpr::Pow(&(SizeExpr::Param("x")), 2),
+            SizeExpr::Fixed(1),
+        ]);
         let env = Env::new(&[]);
 
         assert_eq!(
@@ -734,8 +707,7 @@ mod tests {
     #[test]
     fn test_power_cube_root() {
         // x^3 = 27, should solve x = 3
-        let base = SizeExpr::Param("x");
-        let expr = SizeExpr::Pow(Box::new(base), 3);
+        let expr = SizeExpr::Pow(&(SizeExpr::Param("x")), 3);
         let env = Env::new(&[]);
 
         assert_eq!(
@@ -747,8 +719,7 @@ mod tests {
     #[test]
     fn test_power_negative_base_odd_exp() {
         // x^3 = -8, should solve x = -2 (since (-2)^3 = -8)
-        let base = SizeExpr::Param("x");
-        let expr = SizeExpr::Pow(Box::new(base), 3);
+        let expr = SizeExpr::Pow(&SizeExpr::Param("x"), 3);
         let env = Env::new(&[]);
 
         assert_eq!(
@@ -760,8 +731,7 @@ mod tests {
     #[test]
     fn test_power_negative_base_even_exp() {
         // x^2 = -4 (no real solution for even exponent and negative target)
-        let base = SizeExpr::Param("x");
-        let expr = SizeExpr::Pow(Box::new(base), 2);
+        let expr = SizeExpr::Pow(&SizeExpr::Param("x"), 2);
         let env = Env::new(&[]);
 
         assert_eq!(
@@ -772,13 +742,13 @@ mod tests {
 
     #[test]
     fn test_format_pattern() {
-        let base = SizeExpr::Param("h");
-        let exprs = vec![SizeExpr::Param("a"), SizeExpr::Param("b")];
-        let exprs1 = vec![SizeExpr::Param("h"), SizeExpr::Sum(exprs)];
         let pattern = [
             PatternTerm::Expr(SizeExpr::Param("b")),
-            PatternTerm::Expr(SizeExpr::Prod(exprs1)),
-            PatternTerm::Expr(SizeExpr::Pow(Box::new(base), 2)),
+            PatternTerm::Expr(SizeExpr::Prod(&[
+                SizeExpr::Param("h"),
+                SizeExpr::Sum(&[SizeExpr::Param("a"), SizeExpr::Param("b")]),
+            ])),
+            PatternTerm::Expr(SizeExpr::Pow(&SizeExpr::Param("h"), 2)),
         ];
 
         assert_eq!(format_shape_pattern(&pattern), "[b, (h*(a+b)), (h)^(2)]");
@@ -795,13 +765,13 @@ mod tests {
         let shape = [b, h * p, w * p, c];
         // println!("shape: {:?}", shape);
 
-        let pattern = [
+        static PATTERN: [PatternTerm; 4] = [
             PatternTerm::Expr(SizeExpr::Param("b")),
-            PatternTerm::Expr(SizeExpr::Prod(vec![
+            PatternTerm::Expr(SizeExpr::Prod(&[
                 SizeExpr::Param("h"),
                 SizeExpr::Param("p"),
             ])),
-            PatternTerm::Expr(SizeExpr::Prod(vec![
+            PatternTerm::Expr(SizeExpr::Prod(&[
                 SizeExpr::Param("w"),
                 SizeExpr::Param("p"),
             ])),
@@ -810,7 +780,7 @@ mod tests {
 
         let bindings = [("p", p), ("c", c)];
 
-        let [u_b, u_h, u_w] = pattern
+        let [u_b, u_h, u_w] = PATTERN
             .unpack_shape(&shape, &["b", "h", "w"], &bindings)
             .unwrap();
 
