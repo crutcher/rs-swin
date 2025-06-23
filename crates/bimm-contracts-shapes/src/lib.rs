@@ -182,6 +182,133 @@ fn format_shape_pattern(pattern: &[PatternTerm]) -> String {
     result
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Pattern<'a> {
+    pub terms: &'a [PatternTerm<'a>],
+}
+
+impl Display for Pattern<'_> {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
+        write!(f, "{}", format_shape_pattern(self.terms))
+    }
+}
+
+impl<'a> Pattern<'a> {
+    pub const fn new(terms: &'a [PatternTerm<'a>]) -> Self {
+        Pattern { terms }
+    }
+
+    pub fn unpack_shape<const K: usize>(
+        &'a self,
+        shape: &[usize],
+        keys: &[&'a str; K],
+        bindings: Bindings<'a>,
+    ) -> Result<[usize; K], String> {
+        fn invalid_pattern(
+            error: String,
+            pattern: &[PatternTerm],
+        ) -> String {
+            format!(
+                "Invalid Pattern: {}\nPattern: {}\n",
+                error,
+                format_shape_pattern(pattern)
+            )
+        }
+
+        fn describe_missmatch<'a>(
+            pattern: &[PatternTerm<'a>],
+            shape: &[usize],
+            bindings: Bindings<'a>,
+        ) -> String {
+            format!(
+                "Shape Match Failure:\nShape: {:#?}\nPattern: {:#?}\nBindings: {:#?}\n",
+                shape, pattern, bindings
+            )
+        }
+
+        let mut env: Env<'a> = Env::new(bindings);
+
+        let mut ellipsis_pos: Option<usize> = None;
+        for (idx, term) in self.terms.iter().enumerate() {
+            if let PatternTerm::Ellipsis = term {
+                if ellipsis_pos.is_some() {
+                    return Err(invalid_pattern(
+                        "Multiple ellipses in pattern".to_string(),
+                        self.terms,
+                    ));
+                }
+                ellipsis_pos = Some(idx);
+            }
+        }
+
+        let ellipsis_len = if ellipsis_pos.is_some() {
+            let shape_n = shape.len();
+            let non_ellipsis_terms = self.terms.len() - 1; // Exclude the ellipsis term itself
+
+            if shape_n < non_ellipsis_terms {
+                return Err(describe_missmatch(self.terms, shape, bindings));
+            } else {
+                shape_n - non_ellipsis_terms
+            }
+        } else {
+            0
+        };
+
+        if ellipsis_len == 0 {
+            ellipsis_pos = None;
+        }
+
+        let marker = match ellipsis_pos {
+            Some(pos) => pos,
+            None => self.terms.len(),
+        };
+
+        // At this point, either:
+        // - `marker` is the length of the pattern (no *effective* ellipsis);
+        // - or `marker` is the position of the ellipsis,
+        //   and we have `ellipsis_len` skipped elements after it.
+
+        let mut check_term = |pattern_idx: usize, shape_idx: usize| {
+            let term = &self.terms[pattern_idx];
+            let target = shape[shape_idx] as isize;
+
+            match term {
+                PatternTerm::Any => Ok(()), // Any term, no action needed
+                PatternTerm::Ellipsis => Err(invalid_pattern(
+                    "INTERNAL ERROR: mishandled Ellipsis".to_string(),
+                    self.terms,
+                )),
+                PatternTerm::Expr(expr) => match expr.try_match(target, &env)? {
+                    TryMatchResult::TargetMatch => Ok(()),
+                    TryMatchResult::ValueMissMatch => {
+                        Err(describe_missmatch(self.terms, shape, bindings))
+                    }
+                    TryMatchResult::ParamConstraint(param_name, value) => {
+                        env.insert(param_name, value as usize);
+                        Ok(())
+                    }
+                },
+            }
+        };
+
+        for pattern_idx in 0..marker {
+            check_term(pattern_idx, pattern_idx)?;
+        }
+
+        if ellipsis_len > 0 {
+            for pattern_idx in (ellipsis_pos.unwrap() + 1)..shape.len() {
+                let shape_idx = pattern_idx + ellipsis_len;
+                check_term(pattern_idx, shape_idx)?;
+            }
+        }
+
+        Ok(env.export(keys))
+    }
+}
+
 /// Result of `SizeExpr::try_match()`.
 ///
 /// All values are borrowed from the original expression,
@@ -417,124 +544,6 @@ impl<'a> SizeExpr<'a> {
     }
 }
 
-pub trait ShapePattern<'a> {
-    fn unpack_shape<const K: usize>(
-        &'a self,
-        shape: &[usize],
-        keys: &[&'a str; K],
-        bindings: Bindings<'a>,
-    ) -> Result<[usize; K], String>;
-}
-
-impl<'a, const D: usize> ShapePattern<'a> for [PatternTerm<'a>; D] {
-    fn unpack_shape<const K: usize>(
-        &'a self,
-        shape: &[usize],
-        keys: &[&'a str; K],
-        bindings: Bindings<'a>,
-    ) -> Result<[usize; K], String> {
-        fn invalid_pattern(
-            error: String,
-            pattern: &[PatternTerm],
-        ) -> String {
-            format!(
-                "Invalid Pattern: {}\nPattern: {}\n",
-                error,
-                format_shape_pattern(pattern)
-            )
-        }
-
-        fn describe_missmatch<'a>(
-            pattern: &[PatternTerm<'a>],
-            shape: &[usize],
-            bindings: Bindings<'a>,
-        ) -> String {
-            format!(
-                "Shape Match Failure:\nShape: {:#?}\nPattern: {:#?}\nBindings: {:#?}\n",
-                shape, pattern, bindings
-            )
-        }
-
-        let mut env: Env<'a> = Env::new(bindings);
-
-        let mut ellipsis_pos: Option<usize> = None;
-        for (idx, term) in self.iter().enumerate() {
-            if let PatternTerm::Ellipsis = term {
-                if ellipsis_pos.is_some() {
-                    return Err(invalid_pattern(
-                        "Multiple ellipses in pattern".to_string(),
-                        self,
-                    ));
-                }
-                ellipsis_pos = Some(idx);
-            }
-        }
-
-        let ellipsis_len = if ellipsis_pos.is_some() {
-            let shape_n = shape.len();
-            let non_ellipsis_terms = self.len() - 1; // Exclude the ellipsis term itself
-
-            if shape_n < non_ellipsis_terms {
-                return Err(describe_missmatch(self, shape, bindings));
-            } else {
-                shape_n - non_ellipsis_terms
-            }
-        } else {
-            0
-        };
-
-        if ellipsis_len == 0 {
-            ellipsis_pos = None;
-        }
-
-        let marker = match ellipsis_pos {
-            Some(pos) => pos,
-            None => self.len(),
-        };
-
-        // At this point, either:
-        // - `marker` is the length of the pattern (no *effective* ellipsis);
-        // - or `marker` is the position of the ellipsis,
-        //   and we have `ellipsis_len` skipped elements after it.
-
-        let mut check_term = |pattern_idx: usize, shape_idx: usize| {
-            let term = &self[pattern_idx];
-            let target = shape[shape_idx] as isize;
-
-            match term {
-                PatternTerm::Any => Ok(()), // Any term, no action needed
-                PatternTerm::Ellipsis => Err(invalid_pattern(
-                    "INTERNAL ERROR: mishandled Ellipsis".to_string(),
-                    self,
-                )),
-                PatternTerm::Expr(expr) => match expr.try_match(target, &env)? {
-                    TryMatchResult::TargetMatch => Ok(()),
-                    TryMatchResult::ValueMissMatch => {
-                        Err(describe_missmatch(self, shape, bindings))
-                    }
-                    TryMatchResult::ParamConstraint(param_name, value) => {
-                        env.insert(param_name, value as usize);
-                        Ok(())
-                    }
-                },
-            }
-        };
-
-        for pattern_idx in 0..marker {
-            check_term(pattern_idx, pattern_idx)?;
-        }
-
-        if ellipsis_len > 0 {
-            for pattern_idx in (ellipsis_pos.unwrap() + 1)..shape.len() {
-                let shape_idx = pattern_idx + ellipsis_len;
-                check_term(pattern_idx, shape_idx)?;
-            }
-        }
-
-        Ok(env.export(keys))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -765,7 +774,7 @@ mod tests {
         let shape = [b, h * p, w * p, c];
         // println!("shape: {:?}", shape);
 
-        static PATTERN: [PatternTerm; 4] = [
+        static PATTERN: Pattern = Pattern::new(&[
             PatternTerm::Expr(SizeExpr::Param("b")),
             PatternTerm::Expr(SizeExpr::Prod(&[
                 SizeExpr::Param("h"),
@@ -776,7 +785,7 @@ mod tests {
                 SizeExpr::Param("p"),
             ])),
             PatternTerm::Expr(SizeExpr::Param("c")),
-        ];
+        ]);
 
         let bindings = [("p", p), ("c", c)];
 
