@@ -153,7 +153,7 @@ pub enum TryMatchResult<'a> {
 /// ## Returns
 ///
 /// Either the exact root (positive if possible) or None.
-fn maybe_nth_integer_root(
+fn maybe_int_root(
     value: isize,
     n: usize,
 ) -> Option<isize> {
@@ -161,15 +161,18 @@ fn maybe_nth_integer_root(
         0 => Some(0),
         1 => Some(1),
         v if v > 1 => {
-            let value = value as usize;
             let n = n as u32;
-            for x in 2usize.. {
-                let y: usize = x.saturating_pow(n);
+            for x in 2isize.. {
+                let y: isize = x.pow(n);
+                if y < 0 {
+                    // Overflow.
+                    break;
+                }
                 if value < y {
                     break;
                 }
                 if value == y {
-                    return Some(x as isize);
+                    return Some(x);
                 }
             }
             None
@@ -178,7 +181,7 @@ fn maybe_nth_integer_root(
             // Negative values: only possible for odd exponents
             if n % 2 == 1 {
                 // For odd n, (-x)^n = -(x^n), so we can find the positive root and negate
-                maybe_nth_integer_root(-v, n).map(|root| -root)
+                maybe_int_root(-v, n).map(|root| -root)
             } else {
                 None // No real root for negative value with even exponent
             }
@@ -203,6 +206,7 @@ impl<'a> SizeExpr<'a> {
     ///
     /// - `Right(value)` - the value of the expression.
     /// - `Left(count)` - the count of unbound parameters.
+    #[must_use]
     fn try_evaluate<B>(
         &self,
         bindings: &B,
@@ -211,7 +215,7 @@ impl<'a> SizeExpr<'a> {
         B: StaticBindings<'a>,
     {
         #[inline(always)]
-        fn reduce_monoid<'a, B>(
+        fn reduce_children<'a, B>(
             exprs: &'a [SizeExpr<'a>],
             bindings: &B,
             zero: isize,
@@ -220,47 +224,40 @@ impl<'a> SizeExpr<'a> {
         where
             B: StaticBindings<'a>,
         {
-            let mut tmp = zero;
-            let mut count = 0;
+            let mut value = zero;
+            let mut unbound_count = 0;
             for expr in exprs {
                 match expr.try_evaluate(bindings) {
-                    EvalResult::Value(v) => op(&mut tmp, v),
-                    EvalResult::UnboundParams(c) => count += c,
+                    EvalResult::Value(v) => op(&mut value, v),
+                    EvalResult::UnboundParams(c) => unbound_count += c,
                 }
             }
-            if count == 0 {
-                EvalResult::Value(tmp)
+            if unbound_count == 0 {
+                EvalResult::Value(value)
             } else {
-                EvalResult::UnboundParams(count)
+                EvalResult::UnboundParams(unbound_count)
             }
         }
+
         match self {
-            SizeExpr::Param(name) => {
-                if let Some(value) = bindings.lookup(name) {
-                    EvalResult::Value(value as isize)
-                } else {
-                    EvalResult::UnboundParams(1) // Single unbound param
-                }
-            }
+            SizeExpr::Param(name) => match bindings.lookup(name) {
+                Some(value) => EvalResult::Value(value as isize),
+                None => EvalResult::UnboundParams(1),
+            },
             SizeExpr::Negate(expr) => match expr.try_evaluate(bindings) {
                 EvalResult::Value(value) => EvalResult::Value(-value),
                 x => x,
             },
-            SizeExpr::Pow(base, exp) => {
-                match base.try_evaluate(bindings) {
-                    EvalResult::Value(value) => {
-                        // Any number to the power of 0 is 1.
-                        if *exp == 0 {
-                            EvalResult::Value(1)
-                        } else {
-                            EvalResult::Value(value.pow(*exp as u32))
-                        }
-                    }
-                    x => x,
-                }
+            SizeExpr::Pow(base, exp) => match base.try_evaluate(bindings) {
+                EvalResult::Value(value) => EvalResult::Value(value.pow(*exp as u32)),
+                x => x,
+            },
+            SizeExpr::Sum(children) => {
+                reduce_children(children, bindings, 0, |tmp, value| *tmp += value)
             }
-            SizeExpr::Sum(exprs) => reduce_monoid(exprs, bindings, 0, |tmp, value| *tmp += value),
-            SizeExpr::Prod(exprs) => reduce_monoid(exprs, bindings, 1, |tmp, value| *tmp *= value),
+            SizeExpr::Prod(children) => {
+                reduce_children(children, bindings, 1, |tmp, value| *tmp *= value)
+            }
         }
     }
 
@@ -277,10 +274,7 @@ impl<'a> SizeExpr<'a> {
     /// * `Ok(MatchResult::MissMatch)` if the expression does not match the target.
     /// * `Ok(MatchResult::Constraint(name, value))` if the expression can be solved for a single unbound parameter.
     /// * `Ok(MatchResult::UnderConstrained)` if the expression cannot be solved with the current bindings.
-    ///
-    /// ## Errors
-    ///
-    /// Returns an error string if the expression cannot be reconciled with the target value, such as when an exponent is invalid or a sum/product does not match the target.
+    #[must_use]
     pub fn try_match<B>(
         &'a self,
         target: isize,
@@ -290,7 +284,7 @@ impl<'a> SizeExpr<'a> {
         B: StaticBindings<'a>,
     {
         #[inline(always)]
-        fn reduce_monoid<'a, B>(
+        fn reduce_children<'a, B>(
             exprs: &'a [SizeExpr<'a>],
             bindings: &B,
             zero: isize,
@@ -302,6 +296,7 @@ impl<'a> SizeExpr<'a> {
             let mut partial_value: isize = zero;
             let mut rem_expr = None;
 
+            // At most one child can be unbound, and by only one parameter.
             for expr in exprs {
                 match expr.try_evaluate(bindings) {
                     EvalResult::Value(value) => op(&mut partial_value, value),
@@ -314,6 +309,8 @@ impl<'a> SizeExpr<'a> {
                     }
                 }
             }
+            // If the monoid is fully bound, then return (value, None);
+            // Otherwise, return (partial_value, expr).
             Ok((partial_value, rem_expr))
         }
 
@@ -330,15 +327,16 @@ impl<'a> SizeExpr<'a> {
                 }
             }
             SizeExpr::Negate(expr) => expr.try_match(-target, bindings),
-            SizeExpr::Pow(base, exp) => match maybe_nth_integer_root(target, *exp) {
+            SizeExpr::Pow(base, exp) => match maybe_int_root(target, *exp) {
                 Some(root) => base.try_match(root, bindings),
                 None => Err("No integer solution.".to_string()),
             },
             SizeExpr::Sum(exprs) => {
                 let (partial_value, rem_expr) =
-                    reduce_monoid(exprs, bindings, 0, |acc, value| *acc += value)?;
+                    reduce_children(exprs, bindings, 0, |acc, value| *acc += value)?;
                 if let Some(expr) = rem_expr {
-                    expr.try_match(target - partial_value, bindings)
+                    let target = target - partial_value;
+                    expr.try_match(target, bindings)
                 } else if partial_value == target {
                     Ok(TryMatchResult::TargetMatch)
                 } else {
@@ -347,12 +345,14 @@ impl<'a> SizeExpr<'a> {
             }
             SizeExpr::Prod(exprs) => {
                 let (partial_value, rem_expr) =
-                    reduce_monoid(exprs, bindings, 1, |acc, value| *acc *= value)?;
-                if target % partial_value != 0 {
-                    // Non-integer solution
-                    Err("No integer solution.".to_string())
-                } else if let Some(expr) = rem_expr {
-                    expr.try_match(target / partial_value, bindings)
+                    reduce_children(exprs, bindings, 1, |acc, value| *acc *= value)?;
+                if let Some(expr) = rem_expr {
+                    if target % partial_value != 0 {
+                        // Non-integer solution
+                        return Err("No integer solution.".to_string());
+                    }
+                    let target = target / partial_value;
+                    expr.try_match(target, bindings)
                 } else if partial_value == target {
                     Ok(TryMatchResult::TargetMatch)
                 } else {
@@ -383,36 +383,29 @@ impl Display for PatternTerm<'_> {
     }
 }
 
-fn format_shape_pattern(pattern: &[PatternTerm]) -> String {
-    // TODO: make this a `fmt` method.
-    let mut result = String::new();
-    result.push('[');
-    for (idx, expr) in pattern.iter().enumerate() {
-        if idx > 0 {
-            result.push_str(", ");
-        }
-        result.push_str(&format!("{}", expr));
-    }
-    result.push(']');
-    result
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Pattern<'a> {
+pub struct ShapePattern<'a> {
     pub terms: &'a [PatternTerm<'a>],
     pub ellipsis_pos: Option<usize>,
 }
 
-impl Display for Pattern<'_> {
+impl Display for ShapePattern<'_> {
     fn fmt(
         &self,
         f: &mut Formatter<'_>,
     ) -> std::fmt::Result {
-        write!(f, "{}", format_shape_pattern(self.terms))
+        write!(f, "[")?;
+        for (idx, expr) in self.terms.iter().enumerate() {
+            if idx > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{}", expr)?;
+        }
+        write!(f, "]")
     }
 }
 
-impl<'a> Pattern<'a> {
+impl<'a> ShapePattern<'a> {
     pub const fn new(terms: &'a [PatternTerm<'a>]) -> Self {
         let mut i = 0;
         let mut ellipsis_pos: Option<usize> = None;
@@ -427,12 +420,14 @@ impl<'a> Pattern<'a> {
             i += 1;
         }
 
-        Pattern {
+        ShapePattern {
             terms,
             ellipsis_pos,
         }
     }
 
+    #[inline(always)]
+    #[must_use]
     fn check_ellipsis_split(
         &self,
         size: usize,
@@ -467,13 +462,33 @@ impl<'a> Pattern<'a> {
     /// ## Arguments
     ///
     /// - `shape`: the shape to match.
+    /// - `bindings`: the params which are already bound.
+    ///
+    /// ## Returns
+    ///
+    /// Either success, or an error.
+    #[must_use]
+    pub fn match_shape(
+        &'a self,
+        shape: &[usize],
+        bindings: Bindings<'a>,
+    ) -> Result<(), String> {
+        self.extract_keys(shape, &[], bindings).map(|_| ())
+    }
+
+    /// Match a shape to the pattern, and extract keys.
+    ///
+    /// ## Arguments
+    ///
+    /// - `shape`: the shape to match.
     /// - `keys`: the bound keys to export.
     /// - `bindings`: the params which are already bound.
     ///
     /// ## Returns
     ///
-    /// Either the list of key values, or an error.
-    pub fn match_shape<const K: usize>(
+    /// Either the list of key values; or an error.
+    #[must_use]
+    pub fn extract_keys<const K: usize>(
         &'a self,
         shape: &[usize],
         keys: &[&'a str; K],
@@ -488,46 +503,45 @@ impl<'a> Pattern<'a> {
 
         let mut env: Env<'a> = Env::new(bindings);
 
-        let (ellipsis_start, ellipsis_size) = match self.check_ellipsis_split(shape.len()) {
-            Ok((start, size)) => (start, size),
+        let (e_start, e_size) = match self.check_ellipsis_split(shape.len()) {
+            Ok((e_start, e_size)) => (e_start, e_size),
             Err(msg) => return Err(fail(msg)),
         };
 
         for shape_idx in 0..shape.len() {
-            let pattern_idx = if shape_idx < ellipsis_start {
+            let term_idx = if shape_idx < e_start {
                 shape_idx
-            } else if shape_idx < (ellipsis_start + ellipsis_size) {
+            } else if shape_idx < (e_start + e_size) {
                 continue;
             } else {
-                shape_idx + 1 - ellipsis_size
+                shape_idx + 1 - e_size
             };
 
-            let actual = shape[shape_idx] as isize;
-            let term = &self.terms[pattern_idx];
-
-            match term {
+            let expr = match &self.terms[term_idx] {
                 PatternTerm::Any => continue,
                 PatternTerm::Ellipsis => {
                     return Err(fail("INTERNAL ERROR: out-of-place Ellipsis".to_string()));
                 }
-                PatternTerm::Expr(expr) => match expr.try_match(actual, &bindings) {
-                    Err(msg) => return Err(fail(msg)),
-                    Ok(TryMatchResult::TargetMatch) => continue,
-                    Ok(TryMatchResult::ValueMissMatch) => {
-                        return Err(fail("Value MissMatch".to_string()));
-                    }
-                    Ok(TryMatchResult::ParamConstraint(param_name, value)) => {
-                        match env.lookup(param_name) {
-                            None => env.insert(param_name, value as usize),
-                            Some(v) => {
-                                return Err(fail(format!(
-                                    "Constraint miss-match: {} {} != {}",
-                                    param_name, value, v
-                                )));
-                            }
+                PatternTerm::Expr(expr) => expr,
+            };
+
+            match expr.try_match(shape[shape_idx] as isize, &bindings) {
+                Err(msg) => return Err(fail(msg)),
+                Ok(TryMatchResult::TargetMatch) => continue,
+                Ok(TryMatchResult::ValueMissMatch) => {
+                    return Err(fail("Value MissMatch".to_string()));
+                }
+                Ok(TryMatchResult::ParamConstraint(param_name, value)) => {
+                    match env.lookup(param_name) {
+                        None => env.insert(param_name, value as usize),
+                        Some(v) => {
+                            return Err(fail(format!(
+                                "Constraint miss-match: {} {} != {}",
+                                param_name, value, v
+                            )));
                         }
                     }
-                },
+                }
             }
         }
 
@@ -745,7 +759,7 @@ mod tests {
 
     #[test]
     fn test_format_pattern() {
-        let pattern = [
+        let pattern = ShapePattern::new(&[
             PatternTerm::Any,
             PatternTerm::Ellipsis,
             PatternTerm::Expr(SizeExpr::Param("b")),
@@ -757,18 +771,17 @@ mod tests {
                 ]),
             ])),
             PatternTerm::Expr(SizeExpr::Pow(&SizeExpr::Param("h"), 2)),
-        ];
+        ]);
 
-        assert_eq!(
-            format_shape_pattern(&pattern),
-            "[_, ..., b, (h*(a+(-b))), (h)^2]"
-        );
+        assert_eq!(pattern.to_string(), "[_, ..., b, (h*(a+(-b))), (h)^2]");
     }
 
     #[test]
     fn test_unpack_shape() {
-        static PATTERN: Pattern = Pattern::new(&[
+        static PATTERN: ShapePattern = ShapePattern::new(&[
+            PatternTerm::Any,
             PatternTerm::Expr(SizeExpr::Param("b")),
+            PatternTerm::Ellipsis,
             PatternTerm::Expr(SizeExpr::Prod(&[
                 SizeExpr::Param("h"),
                 SizeExpr::Param("p"),
@@ -777,6 +790,7 @@ mod tests {
                 SizeExpr::Param("w"),
                 SizeExpr::Param("p"),
             ])),
+            PatternTerm::Expr(SizeExpr::Pow(&SizeExpr::Param("z"), 3)),
             PatternTerm::Expr(SizeExpr::Param("c")),
         ]);
 
@@ -785,15 +799,17 @@ mod tests {
         let w = 2;
         let p = 4;
         let c = 5;
+        let z = 4;
 
-        let shape = [b, h * p, w * p, c];
+        let shape = [12, b, 1, 2, 3, h * p, w * p, z * z * z, c];
 
-        let [u_b, u_h, u_w] = PATTERN
-            .match_shape(&shape, &["b", "h", "w"], &[("p", p), ("c", c)])
+        let [u_b, u_h, u_w, u_z] = PATTERN
+            .extract_keys(&shape, &["b", "h", "w", "z"], &[("p", p), ("c", c)])
             .unwrap();
 
         assert_eq!(u_b, b);
         assert_eq!(u_h, h);
         assert_eq!(u_w, w);
+        assert_eq!(u_z, z);
     }
 }
