@@ -22,11 +22,18 @@ pub fn maybe_iroot(
         }
         1 => Some(1),
         v if v > 1 => {
-            let n = exp as u32;
+            let exp = exp as u32;
 
-            // Bin search for the integer root.
+            // Bisecting over the exclusive candidate range (lower, upper).
             let mut lower = 1isize;
-            let mut upper = value.isqrt() + 1;
+
+            let mut upper = value.isqrt();
+            if exp == 2 && value == upper.pow(2) {
+                // Short-circuit for the builtin `isqrt` + squares.
+                return Some(upper);
+            }
+            upper += 1;
+
             loop {
                 if lower + 1 >= upper {
                     // No integer root found
@@ -34,7 +41,7 @@ pub fn maybe_iroot(
                 }
                 let candidate = (lower + upper) / 2;
 
-                match candidate.checked_pow(n) {
+                match candidate.checked_pow(exp) {
                     None => {
                         // The candidate overflows; reduce the upper bound.
                         upper = candidate - 1;
