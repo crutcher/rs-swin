@@ -1,31 +1,12 @@
 use crate::bindings::{MutableStackEnvironment, MutableStackMap, StackEnvironment, StackMap};
-use crate::expressions::SizeExpr;
+use crate::expressions::{DimSizeExpr, TryMatchResult};
 use std::fmt::{Display, Formatter};
-
-/// Result of `SizeExpr::try_match()`.
-///
-/// All values are borrowed from the original expression,
-/// so they are valid as long as the expression is valid.
-///
-/// Runtime errors (malformed expressions, too-many unbound parameters, etc.)
-/// are not represented here; and are returned as `Err(String)` from `try_match`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TryMatchResult<'a> {
-    /// All params bound and expression equals target.
-    TargetMatch,
-
-    /// Expression value does not match the target.
-    ValueMissMatch,
-
-    /// Expression can be solved for a single unbound param.
-    ParamConstraint(&'a str, isize),
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PatternTerm<'a> {
     Any,
     Ellipsis,
-    Expr(SizeExpr<'a>),
+    Expr(DimSizeExpr<'a>),
 }
 
 impl Display for PatternTerm<'_> {
@@ -218,15 +199,15 @@ mod tests {
         let pattern = ShapePattern::new(&[
             PatternTerm::Any,
             PatternTerm::Ellipsis,
-            PatternTerm::Expr(SizeExpr::Param("b")),
-            PatternTerm::Expr(SizeExpr::Prod(&[
-                SizeExpr::Param("h"),
-                SizeExpr::Sum(&[
-                    SizeExpr::Param("a"),
-                    SizeExpr::Negate(&SizeExpr::Param("b")),
+            PatternTerm::Expr(DimSizeExpr::Param("b")),
+            PatternTerm::Expr(DimSizeExpr::Prod(&[
+                DimSizeExpr::Param("h"),
+                DimSizeExpr::Sum(&[
+                    DimSizeExpr::Param("a"),
+                    DimSizeExpr::Negate(&DimSizeExpr::Param("b")),
                 ]),
             ])),
-            PatternTerm::Expr(SizeExpr::Pow(&SizeExpr::Param("h"), 2)),
+            PatternTerm::Expr(DimSizeExpr::Pow(&DimSizeExpr::Param("h"), 2)),
         ]);
 
         assert_eq!(pattern.to_string(), "[_, ..., b, (h*(a+(-b))), (h)^2]");
@@ -236,18 +217,18 @@ mod tests {
     fn test_unpack_shape() {
         static PATTERN: ShapePattern = ShapePattern::new(&[
             PatternTerm::Any,
-            PatternTerm::Expr(SizeExpr::Param("b")),
+            PatternTerm::Expr(DimSizeExpr::Param("b")),
             PatternTerm::Ellipsis,
-            PatternTerm::Expr(SizeExpr::Prod(&[
-                SizeExpr::Param("h"),
-                SizeExpr::Param("p"),
+            PatternTerm::Expr(DimSizeExpr::Prod(&[
+                DimSizeExpr::Param("h"),
+                DimSizeExpr::Param("p"),
             ])),
-            PatternTerm::Expr(SizeExpr::Prod(&[
-                SizeExpr::Param("w"),
-                SizeExpr::Param("p"),
+            PatternTerm::Expr(DimSizeExpr::Prod(&[
+                DimSizeExpr::Param("w"),
+                DimSizeExpr::Param("p"),
             ])),
-            PatternTerm::Expr(SizeExpr::Pow(&SizeExpr::Param("z"), 3)),
-            PatternTerm::Expr(SizeExpr::Param("c")),
+            PatternTerm::Expr(DimSizeExpr::Pow(&DimSizeExpr::Param("z"), 3)),
+            PatternTerm::Expr(DimSizeExpr::Param("c")),
         ]);
 
         let b = 2;
