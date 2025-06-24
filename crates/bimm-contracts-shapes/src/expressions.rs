@@ -60,7 +60,7 @@ impl Display for DimSizeExpr<'_> {
 enum TryEvalResult {
     /// The evaluated value of the expression.
     Value(isize),
-    
+
     /// The count of unbound parameters in the expression.
     UnboundParams(usize),
 }
@@ -255,7 +255,37 @@ impl<'a> DimSizeExpr<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bindings::{MutableStackEnvironment, MutableStackMap};
+    use crate::bindings::{MutableStackEnvironment, MutableStackMap, StackEnvironment};
+
+    #[test]
+    fn test_try_eval() {
+        let env: StackEnvironment = &[("a", 5), ("b", 3)];
+
+        assert_eq!(DimSizeExpr::Param("a").try_eval(&env), TryEvalResult::Value(5));
+        assert_eq!(DimSizeExpr::Param("x").try_eval(&env), TryEvalResult::UnboundParams(1));
+
+        assert_eq!(DimSizeExpr::Negate(&DimSizeExpr::Param("a")).try_eval(&env), TryEvalResult::Value(-5));
+        assert_eq!(DimSizeExpr::Negate(&DimSizeExpr::Param("x")).try_eval(&env), TryEvalResult::UnboundParams(1));
+
+        assert_eq!(DimSizeExpr::Pow(&DimSizeExpr::Param("a"), 3).try_eval(&env), TryEvalResult::Value(5 * 5 * 5));
+        assert_eq!(DimSizeExpr::Pow(&DimSizeExpr::Param("x"), 3).try_eval(&env), TryEvalResult::UnboundParams(1));
+
+        assert_eq!(DimSizeExpr::Sum(&[DimSizeExpr::Param("a"), DimSizeExpr::Param("b")]).try_eval(&env), TryEvalResult::Value(8));
+        assert_eq!(DimSizeExpr::Sum(&[DimSizeExpr::Param("x"), DimSizeExpr::Param("y")]).try_eval(&env), TryEvalResult::UnboundParams(2));
+        
+        assert_eq!(DimSizeExpr::Prod(&[DimSizeExpr::Param("a"), DimSizeExpr::Param("b")]).try_eval(&env), TryEvalResult::Value(15));
+        assert_eq!(DimSizeExpr::Prod(&[DimSizeExpr::Param("x"), DimSizeExpr::Param("y")]).try_eval(&env), TryEvalResult::UnboundParams(2));
+        
+        // Fancy
+        assert_eq!(
+            DimSizeExpr::Sum(&[
+                DimSizeExpr::Prod(&[DimSizeExpr::Param("a"), DimSizeExpr::Param("b")]),
+                DimSizeExpr::Negate(&DimSizeExpr::Pow(&DimSizeExpr::Param("a"), 2))
+            ])
+            .try_eval(&env),
+            TryEvalResult::Value(5 * 3 - 5 * 5)
+        );
+    }
 
     #[test]
     fn test_simple_sum() {
