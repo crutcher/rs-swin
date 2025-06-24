@@ -16,6 +16,7 @@ license = "MIT"
 repository = "https://github.com/crutcher/bimm"
 
 [workspace.lints.clippy]
+double_must_use = "allow"
 
 [workspace.dependencies]
 bimm-contracts-shapes = { version = "0.1.0", path = "crates/bimm-contracts-shapes" }

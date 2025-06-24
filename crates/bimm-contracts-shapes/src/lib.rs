@@ -1,84 +1,7 @@
+use bindings::{MutableStackEnvironment, MutableStackMap, StackEnvironment, StackMap};
 use std::fmt::{Display, Formatter};
 
-pub trait StaticBindings<'a> {
-    fn lookup(
-        &self,
-        key: &'a str,
-    ) -> Option<usize>;
-}
-
-pub trait MutBindings<'a>: StaticBindings<'a> {
-    fn insert(
-        &mut self,
-        key: &'a str,
-        value: usize,
-    );
-}
-
-pub type Bindings<'a> = &'a [(&'a str, usize)];
-
-impl<'a> StaticBindings<'a> for Bindings<'a> {
-    fn lookup(
-        &self,
-        key: &'a str,
-    ) -> Option<usize> {
-        self.iter()
-            .find_map(|(k, v)| if k == &key { Some(*v) } else { None })
-    }
-}
-
-pub struct Env<'a> {
-    bindings: Bindings<'a>,
-    local: Vec<(&'a str, usize)>,
-}
-
-impl<'a> StaticBindings<'a> for Env<'a> {
-    fn lookup(
-        &self,
-        key: &str,
-    ) -> Option<usize> {
-        let local_bindings = &self.local[..];
-        local_bindings.lookup(key).or_else(|| {
-            // If not found in local, check the static bindings
-            self.bindings.lookup(key)
-        })
-    }
-}
-
-impl<'a> MutBindings<'a> for Env<'a> {
-    fn insert(
-        &mut self,
-        key: &'a str,
-        value: usize,
-    ) {
-        self.local.push((key, value))
-    }
-}
-
-impl<'a> Env<'a> {
-    fn new(bindings: Bindings<'a>) -> Self {
-        Env {
-            bindings,
-            local: Vec::new(),
-        }
-    }
-
-    fn export<const K: usize>(
-        &self,
-        keys: &[&str; K],
-    ) -> [usize; K] {
-        let mut values = [0; K];
-        let local_bindings = &self.local[..];
-        for i in 0..K {
-            let key = keys[i];
-            values[i] = match local_bindings.lookup(key) {
-                Some(value) => value,
-                None => panic!("No value for key \"{}\"", key),
-            };
-        }
-        values
-    }
-}
+pub mod bindings;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SizeExpr<'a> {
@@ -212,7 +135,7 @@ impl<'a> SizeExpr<'a> {
         bindings: &B,
     ) -> EvalResult
     where
-        B: StaticBindings<'a>,
+        B: StackMap<'a, usize>,
     {
         #[inline(always)]
         fn reduce_children<'a, B>(
@@ -222,7 +145,7 @@ impl<'a> SizeExpr<'a> {
             op: fn(&mut isize, isize),
         ) -> EvalResult
         where
-            B: StaticBindings<'a>,
+            B: StackMap<'a, usize>,
         {
             let mut value = zero;
             let mut unbound_count = 0;
@@ -281,7 +204,7 @@ impl<'a> SizeExpr<'a> {
         bindings: &B,
     ) -> Result<TryMatchResult<'a>, String>
     where
-        B: StaticBindings<'a>,
+        B: StackMap<'a, usize>,
     {
         #[inline(always)]
         fn reduce_children<'a, B>(
@@ -291,7 +214,7 @@ impl<'a> SizeExpr<'a> {
             op: fn(&mut isize, isize),
         ) -> Result<(isize, Option<&'a SizeExpr<'a>>), String>
         where
-            B: StaticBindings<'a>,
+            B: StackMap<'a, usize>,
         {
             let mut partial_value: isize = zero;
             let mut rem_expr = None;
@@ -471,7 +394,7 @@ impl<'a> ShapePattern<'a> {
     pub fn match_shape(
         &'a self,
         shape: &[usize],
-        bindings: Bindings<'a>,
+        bindings: StackEnvironment<'a>,
     ) -> Result<(), String> {
         self.extract_keys(shape, &[], bindings).map(|_| ())
     }
@@ -492,7 +415,7 @@ impl<'a> ShapePattern<'a> {
         &'a self,
         shape: &[usize],
         keys: &[&'a str; K],
-        bindings: Bindings<'a>,
+        bindings: StackEnvironment<'a>,
     ) -> Result<[usize; K], String> {
         let fail = |msg: String| {
             format!(
@@ -501,14 +424,14 @@ impl<'a> ShapePattern<'a> {
             )
         };
 
-        let mut env: Env<'a> = Env::new(bindings);
+        let mut env: MutableStackEnvironment<'a> = MutableStackEnvironment::new(bindings);
 
         let (e_start, e_size) = match self.check_ellipsis_split(shape.len()) {
             Ok((e_start, e_size)) => (e_start, e_size),
             Err(msg) => return Err(fail(msg)),
         };
 
-        for shape_idx in 0..shape.len() {
+        for (shape_idx, &dim_size) in shape.iter().enumerate() {
             let term_idx = if shape_idx < e_start {
                 shape_idx
             } else if shape_idx < (e_start + e_size) {
@@ -525,7 +448,7 @@ impl<'a> ShapePattern<'a> {
                 PatternTerm::Expr(expr) => expr,
             };
 
-            match expr.try_match(shape[shape_idx] as isize, &bindings) {
+            match expr.try_match(dim_size as isize, &bindings) {
                 Err(msg) => return Err(fail(msg)),
                 Ok(TryMatchResult::TargetMatch) => continue,
                 Ok(TryMatchResult::ValueMissMatch) => {
@@ -533,7 +456,7 @@ impl<'a> ShapePattern<'a> {
                 }
                 Ok(TryMatchResult::ParamConstraint(param_name, value)) => {
                     match env.lookup(param_name) {
-                        None => env.insert(param_name, value as usize),
+                        None => env.bind(param_name, value as usize),
                         Some(v) => {
                             return Err(fail(format!(
                                 "Constraint miss-match: {} {} != {}",
@@ -545,13 +468,14 @@ impl<'a> ShapePattern<'a> {
             }
         }
 
-        Ok(env.export(keys))
+        Ok(env.export_key_values(keys))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bindings::MutableStackMap;
 
     #[test]
     fn test_simple_sum() {
@@ -560,7 +484,7 @@ mod tests {
             SizeExpr::Param("x"),
             SizeExpr::Negate(&SizeExpr::Param("y")),
         ]);
-        let env = Env::new(&[("y", 5)]);
+        let env = MutableStackEnvironment::new(&[("y", 5)]);
 
         assert_eq!(
             expr.try_match(8, &env),
@@ -572,7 +496,7 @@ mod tests {
     fn test_simple_product() {
         // 2 * x, target = 6, should solve x = 3
         let expr = SizeExpr::Prod(&[SizeExpr::Param("y"), SizeExpr::Param("x")]);
-        let env = Env::new(&[("y", 2)]);
+        let env = MutableStackEnvironment::new(&[("y", 2)]);
 
         assert_eq!(
             expr.try_match(6, &env),
@@ -586,7 +510,7 @@ mod tests {
         // This becomes: p * p = 9, so we solve the first p for 9/p
         // But since both factors are the same unbound param, this should work
         let expr = SizeExpr::Prod(&[SizeExpr::Param("p"), SizeExpr::Param("p")]);
-        let env = Env::new(&[]);
+        let env = MutableStackEnvironment::new(&[]);
 
         // This should solve: first p gets target/second_p, but second_p is unbound too
         // Actually, this should fail because we have the same param multiple times
@@ -611,11 +535,11 @@ mod tests {
             SizeExpr::Prod(&[SizeExpr::Param("c"), SizeExpr::Param("z")]),
         ]);
 
-        let mut env = Env::new(&[]);
-        env.insert("w", 2);
-        env.insert("h", 3);
-        env.insert("c", 1);
-        env.insert("z", 4);
+        let mut env = MutableStackEnvironment::new(&[]);
+        env.bind("w", 2);
+        env.bind("h", 3);
+        env.bind("c", 1);
+        env.bind("z", 4);
 
         // p appears multiple times in the first product term, so this should fail
         assert_eq!(
@@ -637,7 +561,7 @@ mod tests {
             ]),
             SizeExpr::Negate(&SizeExpr::Param("c")),
         ]);
-        let env = Env::new(&[("a", 2), ("b", 3), ("c", 1)]);
+        let env = MutableStackEnvironment::new(&[("a", 2), ("b", 3), ("c", 1)]);
 
         assert_eq!(
             expr.try_match(9, &env),
@@ -650,8 +574,8 @@ mod tests {
         // x + 5 with x = 3, target = 8
         let expr = SizeExpr::Sum(&[SizeExpr::Param("x"), SizeExpr::Param("a")]);
 
-        let mut env = Env::new(&[("a", 5)]);
-        env.insert("x", 3);
+        let mut env = MutableStackEnvironment::new(&[("a", 5)]);
+        env.bind("x", 3);
 
         assert_eq!(expr.try_match(8, &env), Ok(TryMatchResult::TargetMatch));
     }
@@ -660,7 +584,7 @@ mod tests {
     fn test_multiple_unbound() {
         // x + y, multiple unbound params
         let expr = SizeExpr::Sum(&[SizeExpr::Param("x"), SizeExpr::Param("y")]);
-        let env = Env::new(&[]);
+        let env = MutableStackEnvironment::new(&[]);
 
         assert_eq!(
             expr.try_match(25, &env),
@@ -673,7 +597,7 @@ mod tests {
         // 2 * x == 3
         // x = 3/2, which is not an integer
         let expr = SizeExpr::Prod(&[SizeExpr::Param("a"), SizeExpr::Param("x")]);
-        let env = Env::new(&[("a", 2)]);
+        let env = MutableStackEnvironment::new(&[("a", 2)]);
 
         assert_eq!(
             expr.try_match(3, &env),
@@ -685,7 +609,7 @@ mod tests {
     fn test_power_solve_base() {
         // x^3 = 8, should solve x = 2
         let expr = SizeExpr::Pow(&SizeExpr::Param("x"), 3);
-        let env = Env::new(&[]);
+        let env = MutableStackEnvironment::new(&[]);
 
         assert_eq!(
             expr.try_match(8, &env),
@@ -697,7 +621,7 @@ mod tests {
     fn test_power_no_solution() {
         // 2^3 = x where x != 8 (no solution when fully bound and doesn't match)
         let expr = SizeExpr::Pow(&(SizeExpr::Param("a")), 3);
-        let env = Env::new(&[("a", 2)]);
+        let env = MutableStackEnvironment::new(&[("a", 2)]);
 
         // 2^3 = 8, so target 5 should fail
         assert_eq!(
@@ -713,7 +637,7 @@ mod tests {
             SizeExpr::Pow(&SizeExpr::Param("x"), 2),
             SizeExpr::Param("a"),
         ]);
-        let env = Env::new(&[("a", 1)]);
+        let env = MutableStackEnvironment::new(&[("a", 1)]);
 
         assert_eq!(
             expr.try_match(10, &env),
@@ -725,7 +649,7 @@ mod tests {
     fn test_power_cube_root() {
         // x^3 = 27, should solve x = 3
         let expr = SizeExpr::Pow(&(SizeExpr::Param("x")), 3);
-        let env = Env::new(&[]);
+        let env = MutableStackEnvironment::new(&[]);
 
         assert_eq!(
             expr.try_match(27, &env),
@@ -737,7 +661,7 @@ mod tests {
     fn test_power_negative_base_odd_exp() {
         // x^3 = -8, should solve x = -2 (since (-2)^3 = -8)
         let expr = SizeExpr::Pow(&SizeExpr::Param("x"), 3);
-        let env = Env::new(&[]);
+        let env = MutableStackEnvironment::new(&[]);
 
         assert_eq!(
             expr.try_match(-8, &env),
@@ -749,7 +673,7 @@ mod tests {
     fn test_power_negative_base_even_exp() {
         // x^2 = -4 (no real solution for even exponent and negative target)
         let expr = SizeExpr::Pow(&SizeExpr::Param("x"), 2);
-        let env = Env::new(&[]);
+        let env = MutableStackEnvironment::new(&[]);
 
         assert_eq!(
             expr.try_match(-4, &env),
