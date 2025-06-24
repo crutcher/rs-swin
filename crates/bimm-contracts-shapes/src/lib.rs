@@ -104,7 +104,6 @@ impl<'a> Env<'a> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SizeExpr<'a> {
-    Fixed(isize),
     Param(&'a str),
     Negate(&'a SizeExpr<'a>),
     Pow(&'a SizeExpr<'a>, usize),
@@ -118,7 +117,6 @@ impl Display for SizeExpr<'_> {
         f: &mut Formatter<'_>,
     ) -> std::fmt::Result {
         match self {
-            SizeExpr::Fixed(fixed) => write!(f, "{}", fixed),
             SizeExpr::Param(param) => write!(f, "{}", param),
             SizeExpr::Negate(negate) => write!(f, "-({})", negate),
             SizeExpr::Pow(base, exponent) => {
@@ -185,6 +183,7 @@ fn format_shape_pattern(pattern: &[PatternTerm]) -> String {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Pattern<'a> {
     pub terms: &'a [PatternTerm<'a>],
+    pub ellipsis_pos: Option<usize>,
 }
 
 impl Display for Pattern<'_> {
@@ -198,7 +197,52 @@ impl Display for Pattern<'_> {
 
 impl<'a> Pattern<'a> {
     pub const fn new(terms: &'a [PatternTerm<'a>]) -> Self {
-        Pattern { terms }
+        let mut i = 0;
+        let mut ellipsis_pos: Option<usize> = None;
+
+        while i < terms.len() {
+            if matches!(terms[i], PatternTerm::Ellipsis) {
+                match ellipsis_pos {
+                    Some(_) => panic!("Multiple ellipses in pattern"),
+                    None => ellipsis_pos = Some(i),
+                }
+            }
+            i += 1;
+        }
+
+        Pattern {
+            terms,
+            ellipsis_pos,
+        }
+    }
+
+    fn check_ellipsis_split(
+        &self,
+        size: usize,
+    ) -> Result<(usize, usize), String> {
+        let k = self.terms.len();
+        match self.ellipsis_pos {
+            None => {
+                if size != k {
+                    Err(format!(
+                        "Pattern size {} does not match the number of terms {}",
+                        size, k
+                    ))
+                } else {
+                    Ok((k, 0))
+                }
+            }
+            Some(pos) => {
+                let non_ellipsis_terms = k - 1;
+                if size < non_ellipsis_terms {
+                    return Err(format!(
+                        "Pattern size {} is less than the number of terms {} (without ellipsis)",
+                        size, non_ellipsis_terms
+                    ));
+                }
+                Ok((pos, size - non_ellipsis_terms))
+            }
+        }
     }
 
     pub fn unpack_shape<const K: usize>(
@@ -231,77 +275,37 @@ impl<'a> Pattern<'a> {
 
         let mut env: Env<'a> = Env::new(bindings);
 
-        let mut ellipsis_pos: Option<usize> = None;
-        for (idx, term) in self.terms.iter().enumerate() {
-            if let PatternTerm::Ellipsis = term {
-                if ellipsis_pos.is_some() {
-                    return Err(invalid_pattern(
-                        "Multiple ellipses in pattern".to_string(),
-                        self.terms,
-                    ));
-                }
-                ellipsis_pos = Some(idx);
-            }
-        }
-
-        let ellipsis_len = if ellipsis_pos.is_some() {
-            let shape_n = shape.len();
-            let non_ellipsis_terms = self.terms.len() - 1; // Exclude the ellipsis term itself
-
-            if shape_n < non_ellipsis_terms {
-                return Err(describe_missmatch(self.terms, shape, bindings));
-            } else {
-                shape_n - non_ellipsis_terms
-            }
-        } else {
-            0
-        };
-
-        if ellipsis_len == 0 {
-            ellipsis_pos = None;
-        }
-
-        let marker = match ellipsis_pos {
-            Some(pos) => pos,
-            None => self.terms.len(),
-        };
+        let (skip_marker, skip_size) = self.check_ellipsis_split(shape.len())?;
 
         // At this point, either:
         // - `marker` is the length of the pattern (no *effective* ellipsis);
         // - or `marker` is the position of the ellipsis,
         //   and we have `ellipsis_len` skipped elements after it.
 
-        let mut check_term = |pattern_idx: usize, shape_idx: usize| {
+        for shape_idx in 0..shape.len() {
+            let pattern_idx = if shape_idx < skip_marker {
+                shape_idx
+            } else if shape_idx < skip_marker + skip_size {
+                continue;
+            } else {
+                shape_idx - skip_size + 1
+            };
+
             let term = &self.terms[pattern_idx];
             let target = shape[shape_idx] as isize;
 
             match term {
-                PatternTerm::Any => Ok(()), // Any term, no action needed
-                PatternTerm::Ellipsis => Err(invalid_pattern(
-                    "INTERNAL ERROR: mishandled Ellipsis".to_string(),
-                    self.terms,
-                )),
+                PatternTerm::Any => continue,
+                PatternTerm::Ellipsis => panic!("INTERNAL ERROR: out-of-place Ellipsis"),
                 PatternTerm::Expr(expr) => match expr.try_match(target, &env)? {
-                    TryMatchResult::TargetMatch => Ok(()),
+                    TryMatchResult::TargetMatch => (),
                     TryMatchResult::ValueMissMatch => {
-                        Err(describe_missmatch(self.terms, shape, bindings))
+                        return Err(describe_missmatch(self.terms, shape, bindings));
                     }
                     TryMatchResult::ParamConstraint(param_name, value) => {
                         env.insert(param_name, value as usize);
-                        Ok(())
                     }
                 },
-            }
-        };
-
-        for pattern_idx in 0..marker {
-            check_term(pattern_idx, pattern_idx)?;
-        }
-
-        if ellipsis_len > 0 {
-            for pattern_idx in (ellipsis_pos.unwrap() + 1)..shape.len() {
-                let shape_idx = pattern_idx + ellipsis_len;
-                check_term(pattern_idx, shape_idx)?;
             }
         }
 
@@ -414,7 +418,6 @@ impl<'a> SizeExpr<'a> {
             }
         }
         match self {
-            SizeExpr::Fixed(value) => EvalResult::Value(*value),
             SizeExpr::Param(name) => {
                 if let Some(value) = env.lookup(name) {
                     EvalResult::Value(value as isize)
@@ -469,7 +472,7 @@ impl<'a> SizeExpr<'a> {
         #[inline(always)]
         fn reduce_monoid<'a>(
             exprs: &'a [SizeExpr<'a>],
-            env: &Env,
+            env: &Env<'a>,
             zero: isize,
             op: fn(&mut isize, isize),
         ) -> Result<(isize, Option<&'a SizeExpr<'a>>), String> {
@@ -492,13 +495,6 @@ impl<'a> SizeExpr<'a> {
         }
 
         match self {
-            SizeExpr::Fixed(value) => {
-                if *value == target {
-                    Ok(TryMatchResult::TargetMatch)
-                } else {
-                    Ok(TryMatchResult::ValueMissMatch)
-                }
-            }
             SizeExpr::Param(name) => {
                 if let Some(value) = env.lookup(name) {
                     if value as isize == target {
@@ -551,8 +547,11 @@ mod tests {
     #[test]
     fn test_simple_sum() {
         // x + 5, target = 8, should solve x = 3
-        let expr = SizeExpr::Sum(&[SizeExpr::Param("x"), SizeExpr::Negate(&SizeExpr::Fixed(5))]);
-        let env = Env::new(&[]);
+        let expr = SizeExpr::Sum(&[
+            SizeExpr::Param("x"),
+            SizeExpr::Negate(&SizeExpr::Param("y")),
+        ]);
+        let env = Env::new(&[("y", 5)]);
 
         assert_eq!(
             expr.try_match(8, &env),
@@ -563,8 +562,8 @@ mod tests {
     #[test]
     fn test_simple_product() {
         // 2 * x, target = 6, should solve x = 3
-        let expr = SizeExpr::Prod(&[SizeExpr::Fixed(2), SizeExpr::Param("x")]);
-        let env = Env::new(&[]);
+        let expr = SizeExpr::Prod(&[SizeExpr::Param("y"), SizeExpr::Param("x")]);
+        let env = Env::new(&[("y", 2)]);
 
         assert_eq!(
             expr.try_match(6, &env),
@@ -624,12 +623,12 @@ mod tests {
         // x == 2
         let expr = SizeExpr::Sum(&[
             SizeExpr::Prod(&[
-                SizeExpr::Fixed(2),
-                SizeExpr::Sum(&[SizeExpr::Param("x"), SizeExpr::Fixed(3)]),
+                SizeExpr::Param("a"),
+                SizeExpr::Sum(&[SizeExpr::Param("x"), SizeExpr::Param("b")]),
             ]),
-            SizeExpr::Fixed(-1),
+            SizeExpr::Negate(&SizeExpr::Param("c")),
         ]);
-        let env = Env::new(&[]);
+        let env = Env::new(&[("a", 2), ("b", 3), ("c", 1)]);
 
         assert_eq!(
             expr.try_match(9, &env),
@@ -640,9 +639,9 @@ mod tests {
     #[test]
     fn test_all_bound_success() {
         // x + 5 with x = 3, target = 8
-        let expr = SizeExpr::Sum(&[SizeExpr::Param("x"), SizeExpr::Fixed(5)]);
+        let expr = SizeExpr::Sum(&[SizeExpr::Param("x"), SizeExpr::Param("a")]);
 
-        let mut env = Env::new(&[]);
+        let mut env = Env::new(&[("a", 5)]);
         env.insert("x", 3);
 
         assert_eq!(expr.try_match(8, &env), Ok(TryMatchResult::TargetMatch));
@@ -664,8 +663,8 @@ mod tests {
     fn test_no_integer_solution() {
         // 2 * x == 3
         // x = 3/2, which is not an integer
-        let expr = SizeExpr::Prod(&[SizeExpr::Fixed(2), SizeExpr::Param("x")]);
-        let env = Env::new(&[]);
+        let expr = SizeExpr::Prod(&[SizeExpr::Param("a"), SizeExpr::Param("x")]);
+        let env = Env::new(&[("a", 2)]);
 
         assert_eq!(
             expr.try_match(3, &env),
@@ -688,8 +687,8 @@ mod tests {
     #[test]
     fn test_power_no_solution() {
         // 2^3 = x where x != 8 (no solution when fully bound and doesn't match)
-        let expr = SizeExpr::Pow(&(SizeExpr::Fixed(2)), 3);
-        let env = Env::new(&[]);
+        let expr = SizeExpr::Pow(&(SizeExpr::Param("a")), 3);
+        let env = Env::new(&[("a", 2)]);
 
         // 2^3 = 8, so target 5 should fail
         assert_eq!(
@@ -702,10 +701,10 @@ mod tests {
     fn test_power_in_sum() {
         // x^2 + 1 = 10, should solve x = 3 (since 3^2 + 1 = 10)
         let expr = SizeExpr::Sum(&[
-            SizeExpr::Pow(&(SizeExpr::Param("x")), 2),
-            SizeExpr::Fixed(1),
+            SizeExpr::Pow(&SizeExpr::Param("x"), 2),
+            SizeExpr::Param("a"),
         ]);
-        let env = Env::new(&[]);
+        let env = Env::new(&[("a", 1)]);
 
         assert_eq!(
             expr.try_match(10, &env),
