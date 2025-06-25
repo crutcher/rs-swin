@@ -86,6 +86,8 @@ impl<'a> ShapePattern<'a> {
 
     /// Match a shape pattern.
     ///
+    /// Wraps `unpack_shape`, without extracting keys.
+    ///
     /// ## Arguments
     ///
     /// - `shape`: the shape to match.
@@ -94,12 +96,40 @@ impl<'a> ShapePattern<'a> {
     /// ## Panics
     ///
     /// If the shape does not match the pattern, or if there is a conflict in the bindings.
+    #[inline(always)]
     pub fn assert_shape(
         &'a self,
         shape: &[usize],
         env: StackEnvironment<'a>,
     ) {
         let _ignored = self.unpack_shape(shape, &[], env);
+    }
+
+    /// Match and unpack a shape pattern.
+    ///
+    /// Wraps `maybe_unpack_shape` and panics if the shape does not match.
+    ///
+    /// ## Arguments
+    ///
+    /// - `shape`: the shape to match.
+    /// - `keys`: the bound keys to export.
+    /// - `env`: the params which are already bound.
+    ///
+    /// ## Returns
+    ///
+    /// The list of key values.
+    ///
+    /// ## Panics
+    ///
+    /// If the shape does not match the pattern, or if there is a conflict in the bindings.
+    #[must_use]
+    pub fn unpack_shape<const K: usize>(
+        &'a self,
+        shape: &[usize],
+        keys: &[&'a str; K],
+        env: StackEnvironment<'a>,
+    ) -> [usize; K] {
+        self.maybe_unpack_shape(shape, keys, env).unwrap()
     }
 
     /// Match and unpack a shape pattern.
@@ -113,22 +143,24 @@ impl<'a> ShapePattern<'a> {
     /// ## Returns
     ///
     /// Either the list of key values; or an error.
-    ///
-    /// ## Panics
-    ///
-    /// If the shape does not match the pattern, or if there is a conflict in the bindings.
     #[must_use]
-    pub fn unpack_shape<const K: usize>(
+    pub fn maybe_unpack_shape<const K: usize>(
         &'a self,
         shape: &[usize],
         keys: &[&'a str; K],
         env: StackEnvironment<'a>,
-    ) -> [usize; K] {
-        let fail = |msg: String| -> ! {
-            panic!(
-                "Shape Match Error: {msg}\nShape: {:?}\nPattern: {self}\nBindings: {:?}",
-                shape, env
+    ) -> Result<[usize; K], String> {
+        let fail = |msg: String| -> String {
+            format!(
+                "Shape Error:: {}\n shape:\n  {:?}\n expected:\n  {self}\n  {:?}",
+                msg, shape, env
             )
+        };
+        let fail_at = |shape_idx: usize, term_idx: usize, msg: String| -> String {
+            fail(format!(
+                "{} !~ {} :: {}",
+                shape[shape_idx], self.terms[term_idx], msg
+            ))
         };
 
         let rank = shape.len();
@@ -137,7 +169,7 @@ impl<'a> ShapePattern<'a> {
 
         let (e_start, e_size) = match self.check_ellipsis_split(rank) {
             Ok((e_start, e_size)) => (e_start, e_size),
-            Err(msg) => fail(msg),
+            Err(msg) => return Err(fail(msg)),
         };
 
         for (shape_idx, &dim_size) in shape.iter().enumerate() {
@@ -158,18 +190,19 @@ impl<'a> ShapePattern<'a> {
             };
 
             match expr.try_match(dim_size as isize, &env) {
-                Err(msg) => fail(msg),
+                Err(msg) => return Err(fail_at(shape_idx, term_idx, msg)),
                 Ok(TryMatchResult::Match) => continue,
                 Ok(TryMatchResult::Conflict) => {
-                    fail("Value MissMatch".to_string());
+                    return Err(fail_at(shape_idx, term_idx, "Value MissMatch".to_string()));
                 }
                 Ok(TryMatchResult::ParamConstraint(param_name, value)) => {
                     match mut_env.lookup(param_name) {
                         None => mut_env.bind(param_name, value as usize),
                         Some(v) => {
-                            fail(format!(
-                                "Constraint miss-match: {} {} != {}",
-                                param_name, value, v
+                            return Err(fail_at(
+                                shape_idx,
+                                term_idx,
+                                format!("Constraint miss-match: {} {} != {}", param_name, v, value),
                             ));
                         }
                     }
@@ -177,7 +210,7 @@ impl<'a> ShapePattern<'a> {
             }
         }
 
-        mut_env.export_key_values(keys)
+        Ok(mut_env.export_key_values(keys))
     }
 
     /// Check if the pattern has an ellipsis.
@@ -289,6 +322,49 @@ mod tests {
     }
 
     #[test]
+    fn test_panic_msg() {
+        static PATTERN: ShapePattern = ShapePattern::new(&[
+            ShapePatternTerm::Any,
+            ShapePatternTerm::Expr(DimSizeExpr::Param("b")),
+            ShapePatternTerm::Ellipsis,
+            ShapePatternTerm::Expr(DimSizeExpr::Prod(&[
+                DimSizeExpr::Param("h"),
+                DimSizeExpr::Param("p"),
+            ])),
+            ShapePatternTerm::Expr(DimSizeExpr::Prod(&[
+                DimSizeExpr::Param("w"),
+                DimSizeExpr::Param("p"),
+            ])),
+            ShapePatternTerm::Expr(DimSizeExpr::Pow(&DimSizeExpr::Param("z"), 3)),
+            ShapePatternTerm::Expr(DimSizeExpr::Param("c")),
+        ]);
+
+        let b = 2;
+        let h = 3;
+        let w = 2;
+        let p = 4;
+        let c = 5;
+        let z = 4;
+
+        let shape = [12, b, 1, 2, 3, h * p, w * p, 1 + z * z * z, c];
+
+        let result =
+            PATTERN.maybe_unpack_shape(&shape, &["b", "h", "w", "z"], &[("p", p), ("c", c)]);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err();
+        assert_eq!(
+            err_msg,
+            "\
+Shape Error:: 65 !~ (z)^3 :: No integer solution.
+ shape:
+  [12, 2, 1, 2, 3, 12, 8, 65, 5]
+ expected:
+  [_, b, ..., (h*p), (w*p), (z)^3, c]
+  [(\"p\", 4), (\"c\", 5)]"
+        );
+    }
+
+    #[test]
     fn test_unpack_shape() {
         static PATTERN: ShapePattern = ShapePattern::new(&[
             ShapePatternTerm::Any,
@@ -314,13 +390,63 @@ mod tests {
         let z = 4;
 
         let shape = [12, b, 1, 2, 3, h * p, w * p, z * z * z, c];
+        let env = [("p", p), ("c", c)];
 
-        let [u_b, u_h, u_w, u_z] =
-            PATTERN.unpack_shape(&shape, &["b", "h", "w", "z"], &[("p", p), ("c", c)]);
+        PATTERN.assert_shape(&shape, &env);
+
+        let [u_b, u_h, u_w, u_z] = PATTERN.unpack_shape(&shape, &["b", "h", "w", "z"], &env);
 
         assert_eq!(u_b, b);
         assert_eq!(u_h, h);
         assert_eq!(u_w, w);
         assert_eq!(u_z, z);
+    }
+
+    #[should_panic(expected = "Shape rank 3 != pattern dim count 1")]
+    #[test]
+    fn test_shape_mismatch_no_ellipsis() {
+        // This should panic because the shape does not match the pattern.
+        let pattern = ShapePattern::new(&[ShapePatternTerm::Expr(DimSizeExpr::Param("a"))]);
+        let shape = [1, 2, 3];
+        pattern.assert_shape(&shape, &[]);
+    }
+
+    #[should_panic(expected = "Shape rank 3 < non-ellipsis pattern term count 4")]
+    #[test]
+    fn test_shape_mismatch_with_ellipsis() {
+        // This should panic because the shape does not match the pattern.
+        let pattern = ShapePattern::new(&[
+            ShapePatternTerm::Any,
+            ShapePatternTerm::Any,
+            ShapePatternTerm::Ellipsis,
+            ShapePatternTerm::Expr(DimSizeExpr::Param("b")),
+            ShapePatternTerm::Expr(DimSizeExpr::Param("c")),
+        ]);
+        let shape = [1, 2, 3];
+        pattern.assert_shape(&shape, &[]);
+    }
+
+    #[should_panic(expected = "Value MissMatch")]
+    #[test]
+    fn test_shape_mismatch_value() {
+        // This should panic because the value does not match the constraint.
+        let pattern = ShapePattern::new(&[
+            ShapePatternTerm::Expr(DimSizeExpr::Param("a")),
+            ShapePatternTerm::Expr(DimSizeExpr::Param("b")),
+        ]);
+        let shape = [2, 3];
+        pattern.assert_shape(&shape, &[("a", 2), ("b", 4)]);
+    }
+
+    #[should_panic(expected = "Constraint miss-match: a 2 != 3")]
+    #[test]
+    fn test_shape_mismatch_constraint() {
+        // This should panic because the constraint does not match.
+        let pattern = ShapePattern::new(&[
+            ShapePatternTerm::Expr(DimSizeExpr::Param("a")),
+            ShapePatternTerm::Expr(DimSizeExpr::Param("a")),
+        ]);
+        let shape = [2, 3];
+        pattern.assert_shape(&shape, &[]);
     }
 }
