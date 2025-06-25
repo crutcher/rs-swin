@@ -82,66 +82,6 @@ impl<'a> ShapePattern<'a> {
         }
     }
 
-    /// Check if the pattern has an ellipsis.
-    ///
-    /// ## Arguments
-    ///
-    /// - `size`: the size of the shape to match.
-    ///
-    /// ## Returns
-    ///
-    /// - `Ok((usize, usize))`: the position of the ellipsis and the number of dimensions it matches.
-    /// - `Err(String)`: an error message if the pattern does not match the expected size.
-    #[inline(always)]
-    #[must_use]
-    fn check_ellipsis_split(
-        &self,
-        size: usize,
-    ) -> Result<(usize, usize), String> {
-        let k = self.terms.len();
-        match self.ellipsis_pos {
-            None => {
-                if size != k {
-                    Err(format!(
-                        "Pattern size {} does not match the number of terms {}",
-                        size, k
-                    ))
-                } else {
-                    Ok((k, 0))
-                }
-            }
-            Some(pos) => {
-                let non_ellipsis_terms = k - 1;
-                if size < non_ellipsis_terms {
-                    return Err(format!(
-                        "Pattern size {} is less than the number of terms {} (without ellipsis)",
-                        size, non_ellipsis_terms
-                    ));
-                }
-                Ok((pos, size - non_ellipsis_terms))
-            }
-        }
-    }
-
-    /// Match a shape to the pattern.
-    ///
-    /// ## Arguments
-    ///
-    /// - `shape`: the shape to match.
-    /// - `bindings`: the params which are already bound.
-    ///
-    /// ## Returns
-    ///
-    /// Either success, or an error.
-    #[must_use]
-    pub fn match_shape(
-        &'a self,
-        shape: &[usize],
-        bindings: StackEnvironment<'a>,
-    ) -> Result<(), String> {
-        self.extract_dims(shape, &[], bindings).map(|_| ())
-    }
-
     /// Match a shape to the pattern, and extract keys.
     ///
     /// ## Arguments
@@ -212,6 +152,66 @@ impl<'a> ShapePattern<'a> {
         }
 
         Ok(env.export_key_values(keys))
+    }
+
+    /// Check if the pattern has an ellipsis.
+    ///
+    /// ## Arguments
+    ///
+    /// - `size`: the size of the shape to match.
+    ///
+    /// ## Returns
+    ///
+    /// - `Ok((usize, usize))`: the position of the ellipsis and the number of dimensions it matches.
+    /// - `Err(String)`: an error message if the pattern does not match the expected size.
+    #[inline(always)]
+    #[must_use]
+    fn check_ellipsis_split(
+        &self,
+        size: usize,
+    ) -> Result<(usize, usize), String> {
+        let k = self.terms.len();
+        match self.ellipsis_pos {
+            None => {
+                if size != k {
+                    Err(format!(
+                        "Pattern size {} does not match the number of terms {}",
+                        size, k
+                    ))
+                } else {
+                    Ok((k, 0))
+                }
+            }
+            Some(pos) => {
+                let non_ellipsis_terms = k - 1;
+                if size < non_ellipsis_terms {
+                    return Err(format!(
+                        "Pattern size {} is less than the number of terms {} (without ellipsis)",
+                        size, non_ellipsis_terms
+                    ));
+                }
+                Ok((pos, size - non_ellipsis_terms))
+            }
+        }
+    }
+
+    /// Match a shape to the pattern.
+    ///
+    /// ## Arguments
+    ///
+    /// - `shape`: the shape to match.
+    /// - `bindings`: the params which are already bound.
+    ///
+    /// ## Returns
+    ///
+    /// Either success, or an error.
+    #[must_use]
+    pub fn match_shape(
+        &'a self,
+        shape: &[usize],
+        bindings: StackEnvironment<'a>,
+    ) -> Result<(), String> {
+        self.extract_dims(shape, &[], bindings).map(|_| ())
     }
 }
 
