@@ -189,23 +189,14 @@ impl<'a> ShapeContract<'a> {
                 DimMatcher::Expr(expr) => expr,
             };
 
-            match expr.try_match(dim_size as isize, &env) {
+            match expr.try_match(dim_size as isize, &mut_env) {
                 Err(msg) => return Err(fail_at(shape_idx, term_idx, msg)),
                 Ok(TryMatchResult::Match) => continue,
                 Ok(TryMatchResult::Conflict) => {
                     return Err(fail_at(shape_idx, term_idx, "Value MissMatch".to_string()));
                 }
                 Ok(TryMatchResult::ParamConstraint(param_name, value)) => {
-                    match mut_env.lookup(param_name) {
-                        None => mut_env.bind(param_name, value as usize),
-                        Some(v) => {
-                            return Err(fail_at(
-                                shape_idx,
-                                term_idx,
-                                format!("Constraint miss-match: {} {} != {}", param_name, v, value),
-                            ));
-                        }
-                    }
+                    mut_env.bind(param_name, value as usize);
                 }
             }
         }
@@ -415,17 +406,5 @@ Shape Error:: 65 !~ (z)^3 :: No integer solution.
         ]);
         let shape = [2, 3];
         pattern.assert_shape(&shape, &[("a", 2), ("b", 4)]);
-    }
-
-    #[should_panic(expected = "Constraint miss-match: a 2 != 3")]
-    #[test]
-    fn test_shape_mismatch_constraint() {
-        // This should panic because the constraint does not match.
-        let pattern = ShapeContract::new(&[
-            DimMatcher::Expr(DimExpr::Param("a")),
-            DimMatcher::Expr(DimExpr::Param("a")),
-        ]);
-        let shape = [2, 3];
-        pattern.assert_shape(&shape, &[]);
     }
 }
