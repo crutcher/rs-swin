@@ -90,7 +90,7 @@ impl<'a> ShapePattern<'a> {
     ///
     /// - `shape`: the shape to match.
     /// - `keys`: the bound keys to export.
-    /// - `bindings`: the params which are already bound.
+    /// - `env`: the params which are already bound.
     ///
     /// ## Returns
     ///
@@ -100,18 +100,18 @@ impl<'a> ShapePattern<'a> {
         &'a self,
         shape: &[usize],
         keys: &[&'a str; K],
-        bindings: StackEnvironment<'a>,
+        env: StackEnvironment<'a>,
     ) -> Result<[usize; K], String> {
         let fail = |msg: String| {
             format!(
                 "Shape Match Error: {msg}\nShape: {:?}\nPattern: {self}\nBindings: {:?}",
-                shape, bindings
+                shape, env
             )
         };
 
         let rank = shape.len();
 
-        let mut env: MutableStackEnvironment<'a> = MutableStackEnvironment::new(bindings);
+        let mut mut_env: MutableStackEnvironment<'a> = MutableStackEnvironment::new(env);
 
         let (e_start, e_size) = match self.check_ellipsis_split(rank) {
             Ok((e_start, e_size)) => (e_start, e_size),
@@ -135,15 +135,15 @@ impl<'a> ShapePattern<'a> {
                 ShapePatternTerm::Expr(expr) => expr,
             };
 
-            match expr.try_match(dim_size as isize, &bindings) {
+            match expr.try_match(dim_size as isize, &env) {
                 Err(msg) => return Err(fail(msg)),
                 Ok(TryMatchResult::Match) => continue,
                 Ok(TryMatchResult::Conflict) => {
                     return Err(fail("Value MissMatch".to_string()));
                 }
                 Ok(TryMatchResult::ParamConstraint(param_name, value)) => {
-                    match env.lookup(param_name) {
-                        None => env.bind(param_name, value as usize),
+                    match mut_env.lookup(param_name) {
+                        None => mut_env.bind(param_name, value as usize),
                         Some(v) => {
                             return Err(fail(format!(
                                 "Constraint miss-match: {} {} != {}",
@@ -155,7 +155,7 @@ impl<'a> ShapePattern<'a> {
             }
         }
 
-        Ok(env.export_key_values(keys))
+        Ok(mut_env.export_key_values(keys))
     }
 
     /// Check if the pattern has an ellipsis.
