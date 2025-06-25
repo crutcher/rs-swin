@@ -1,9 +1,9 @@
+use bimm_contracts_shapes::{DimSizeExpr, ShapePattern, ShapePatternTerm};
 use burn::config::Config;
 use burn::module::Module;
 use burn::nn::conv::{Conv2d, Conv2dConfig};
 use burn::nn::{LayerNorm, LayerNormConfig};
 use burn::prelude::{Backend, Tensor};
-use burn_contracts::assert_tensor;
 
 /// Common introspection interface for PatchEmbed modules.
 pub trait PatchEmbedMeta {
@@ -181,13 +181,19 @@ impl<B: Backend> PatchEmbed<B> {
         &self,
         x: Tensor<B, 4>,
     ) -> Tensor<B, 3> {
-        assert_tensor(&x)
-            .unpacks_shape(
-                [],
-                "b c h w",
-                &[("h", self.input_height()), ("w", self.input_width())],
-            )
-            .unwrap();
+        static PATTERN: ShapePattern = ShapePattern::new(&[
+            ShapePatternTerm::Expr(DimSizeExpr::Param("batch")),
+            ShapePatternTerm::Expr(DimSizeExpr::Param("channels")),
+            ShapePatternTerm::Expr(DimSizeExpr::Param("height")),
+            ShapePatternTerm::Expr(DimSizeExpr::Param("width")),
+        ]);
+        PATTERN.assert_shape(
+            &x.shape().dims,
+            &[
+                ("height", self.input_height()),
+                ("width", self.input_width()),
+            ],
+        );
 
         let x = self.projection.forward(x);
         let x = x.flatten(2, 3);

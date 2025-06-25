@@ -10,11 +10,9 @@ workspace = true
 [dependencies]
 bimm-contracts-shapes = { workspace = true }
 burn = { workspace = true }
-burn-contracts = { workspace = true }
 
 [dev-dependencies]
 burn = { workspace = true, features = ["ndarray"] }
-burn-contracts = { workspace = true, features = ["testing"] }
 
 num-traits = { workspace = true }
 hamcrest = { workspace = true }

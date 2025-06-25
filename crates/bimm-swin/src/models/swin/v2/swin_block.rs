@@ -11,8 +11,7 @@ use burn::nn::{Dropout, DropoutConfig, Gelu, LayerNorm, LayerNormConfig, Linear,
 use burn::prelude::{Backend, Tensor};
 use burn::tensor::BasicOps;
 
-#[cfg(debug_assertions)]
-use burn_contracts::assert_tensor;
+use bimm_contracts_shapes::{DimSizeExpr, ShapePattern, ShapePatternTerm};
 
 pub trait BlockMlpMeta {
     fn d_input(&self) -> usize;
@@ -108,26 +107,29 @@ impl<B: Backend> BlockMlp<B> {
         &self,
         x: Tensor<B, D>,
     ) -> Tensor<B, D> {
-        #[cfg(debug_assertions)]
-        assert_tensor(&x)
-            .unpacks_shape([], "... in", &[("in", self.d_input())])
-            .unwrap();
+        static INPUT_PATTERN: ShapePattern = ShapePattern::new(&[
+            ShapePatternTerm::Ellipsis,
+            ShapePatternTerm::Expr(DimSizeExpr::Param("in")),
+        ]);
+        INPUT_PATTERN.assert_shape(&x.shape().dims, &[("in", self.d_input())]);
 
         let x = self.fc1.forward(x);
-        #[cfg(debug_assertions)]
-        assert_tensor(&x)
-            .unpacks_shape([], "... h", &[("h", self.d_hidden())])
-            .unwrap();
+        static F_PATTERN: ShapePattern = ShapePattern::new(&[
+            ShapePatternTerm::Ellipsis,
+            ShapePatternTerm::Expr(DimSizeExpr::Param("h")),
+        ]);
+        F_PATTERN.assert_shape(&x.shape().dims, &[("h", self.d_hidden())]);
 
         let x = self.act.forward(x);
 
         let x = self.drop.forward(x);
 
         let x = self.fc2.forward(x);
-        #[cfg(debug_assertions)]
-        assert_tensor(&x)
-            .unpacks_shape([], "... o", &[("o", self.d_output())])
-            .unwrap();
+        static OUTPUT_PATTERN: ShapePattern = ShapePattern::new(&[
+            ShapePatternTerm::Ellipsis,
+            ShapePatternTerm::Expr(DimSizeExpr::Param("out")),
+        ]);
+        OUTPUT_PATTERN.assert_shape(&x.shape().dims, &[("out", self.d_output())]);
 
         self.drop.forward(x)
     }
@@ -651,7 +653,7 @@ mod tests {
 
         let y = mlp.forward(x);
 
-        assert_tensor(&y).has_named_dims([("A", a), ("B", b), ("C", d_output)]);
+        assert_eq!(y.dims(), [a, b, d_output]);
     }
 
     #[test]

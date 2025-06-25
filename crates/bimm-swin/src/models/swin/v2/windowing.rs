@@ -1,6 +1,6 @@
+use bimm_contracts_shapes::{DimSizeExpr, ShapePattern, ShapePatternTerm};
 use burn::prelude::{Backend, Tensor};
 use burn::tensor::BasicOps;
-use burn_contracts::assert_tensor;
 
 /// Window Partition
 ///
@@ -20,13 +20,23 @@ pub fn window_partition<B: Backend, K>(
 where
     K: BasicOps<B>,
 {
-    let [b, h_wins, w_wins, c] = assert_tensor(&tensor)
-        .unpacks_shape(
-            ["b", "h_wins", "w_wins", "c"],
-            "b (h_wins window_size) (w_wins window_size) c",
-            &[("window_size", window_size)],
-        )
-        .unwrap();
+    static PATTERN: ShapePattern = ShapePattern::new(&[
+        ShapePatternTerm::Expr(DimSizeExpr::Param("batch")),
+        ShapePatternTerm::Expr(DimSizeExpr::Prod(&[
+            DimSizeExpr::Param("h_wins"),
+            DimSizeExpr::Param("window_size"),
+        ])),
+        ShapePatternTerm::Expr(DimSizeExpr::Prod(&[
+            DimSizeExpr::Param("w_wins"),
+            DimSizeExpr::Param("window_size"),
+        ])),
+        ShapePatternTerm::Expr(DimSizeExpr::Param("channels")),
+    ]);
+    let [b, h_wins, w_wins, c] = PATTERN.unpack_shape(
+        &tensor.shape().dims,
+        &["batch", "h_wins", "w_wins", "channels"],
+        &[("window_size", window_size)],
+    );
 
     tensor
         .reshape([b, h_wins, window_size, w_wins, window_size, c])
@@ -55,20 +65,29 @@ pub fn window_reverse<B: Backend, K>(
 where
     K: BasicOps<B>,
 {
+    static PATTERN: ShapePattern = ShapePattern::new(&[
+        ShapePatternTerm::Expr(DimSizeExpr::Prod(&[
+            DimSizeExpr::Param("batch"),
+            DimSizeExpr::Param("h_wins"),
+            DimSizeExpr::Param("w_wins"),
+        ])),
+        ShapePatternTerm::Expr(DimSizeExpr::Param("window_size")),
+        ShapePatternTerm::Expr(DimSizeExpr::Param("window_size")),
+        ShapePatternTerm::Expr(DimSizeExpr::Param("channels")),
+    ]);
+
     let h_wins = h / window_size;
     let w_wins = w / window_size;
 
-    let [b, c] = assert_tensor(&windows)
-        .unpacks_shape(
-            ["b", "c"],
-            "(b h_wins w_wins) window_size window_size c",
-            &[
-                ("h_wins", h_wins),
-                ("w_wins", w_wins),
-                ("window_size", window_size),
-            ],
-        )
-        .unwrap();
+    let [b, c] = PATTERN.unpack_shape(
+        &windows.shape().dims,
+        &["batch", "channels"],
+        &[
+            ("h_wins", h_wins),
+            ("w_wins", w_wins),
+            ("window_size", window_size),
+        ],
+    );
 
     windows
         .reshape([b, h_wins, w_wins, window_size, window_size, c])
@@ -81,8 +100,7 @@ mod tests {
     use super::*;
     use burn::backend::NdArray;
     use burn::prelude::Tensor;
-    use burn::tensor::Distribution;
-    use burn_contracts::assert_tensor;
+    use burn::tensor::{Distribution, Tolerance};
 
     #[test]
     fn test_window_partition() {
@@ -102,12 +120,16 @@ mod tests {
 
         let windows = window_partition(input.clone(), window_size);
 
-        assert_tensor(&windows).has_dims([b * h_wins * w_wins, window_size, window_size, channels]);
+        assert_eq!(
+            &windows.dims(),
+            &[b * h_wins * w_wins, window_size, window_size, channels]
+        );
 
         let reverse = window_reverse(windows, window_size, h, w);
+        assert_eq!(&reverse.dims(), &[b, h, w, channels]);
 
-        assert_tensor(&reverse)
-            .has_dims([b, h, w, channels])
-            .is_close(&input, None, None);
+        reverse
+            .to_data()
+            .assert_approx_eq(&input.to_data(), Tolerance::<f64>::default());
     }
 }

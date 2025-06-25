@@ -23,8 +23,6 @@ bimm-contracts-shapes = { version = "0.1.0", path = "crates/bimm-contracts-shape
 
 burn = { version = "^0.17.1" }
 
-burn-contracts = { version = "^0.3.1" }
-
 # Test and dev dependencies
 num-traits = { version = "^0.2.19" }
 hamcrest = { version = "^0.1.5" }

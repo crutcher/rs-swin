@@ -7,12 +7,12 @@ pub use pos_bias::*;
 pub use pos_grid::*;
 
 use crate::compat::linalg::l2_normalize;
+use bimm_contracts_shapes::{DimSizeExpr, ShapePattern, ShapePatternTerm};
 use burn::config::Config;
 use burn::module::{Module, Param, ParamId};
 use burn::nn::{Dropout, DropoutConfig, Linear, LinearConfig};
 use burn::prelude::{Backend, Tensor};
 use burn::tensor::activation::softmax;
-use burn_contracts::assert_tensor;
 
 pub const EPS: f64 = 1e-12;
 
@@ -144,9 +144,12 @@ impl<B: Backend> WindowAttention<B> {
         x: Tensor<B, 3>,
         mask: Option<Tensor<B, 3>>,
     ) -> Tensor<B, 3> {
-        let [b_nw, n, c] = assert_tensor(&x)
-            .unpacks_shape(["b_nw", "n", "c"], "b_nw n c", &[("unused", 0)])
-            .unwrap();
+        static PATTERN: ShapePattern = ShapePattern::new(&[
+            ShapePatternTerm::Expr(DimSizeExpr::Param("b_nw")),
+            ShapePatternTerm::Expr(DimSizeExpr::Param("n")),
+            ShapePatternTerm::Expr(DimSizeExpr::Param("c")),
+        ]);
+        let [b_nw, n, c] = PATTERN.unpack_shape(&x.shape().dims, &["b_nw", "n", "c"], &[]);
 
         // n = ws * ws
 
@@ -314,7 +317,6 @@ mod tests {
     use burn::backend::NdArray;
     use burn::prelude::Tensor;
     use burn::tensor::Distribution;
-    use burn_contracts::assert_tensor;
 
     #[test]
     fn test_wa() {
@@ -344,6 +346,22 @@ mod tests {
         );
 
         let res = attn_mod.forward(input, None);
-        assert_tensor(&res).has_dims([b * num_windows, window_size * window_size, channels]);
+        static PATTERN: ShapePattern = ShapePattern::new(&[
+            ShapePatternTerm::Expr(DimSizeExpr::Prod(&[
+                DimSizeExpr::Param("batch"),
+                DimSizeExpr::Param("num_windows"),
+            ])),
+            ShapePatternTerm::Expr(DimSizeExpr::Pow(&DimSizeExpr::Param("window_size"), 2)),
+            ShapePatternTerm::Expr(DimSizeExpr::Param("channels")),
+        ]);
+        PATTERN.assert_shape(
+            &res.shape().dims,
+            &[
+                ("batch", b),
+                ("num_windows", num_windows),
+                ("window_size", window_size),
+                ("channels", channels),
+            ],
+        );
     }
 }

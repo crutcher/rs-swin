@@ -1,10 +1,10 @@
 use crate::models::swin::v2::windowing::{window_partition, window_reverse};
+use bimm_contracts_shapes::{DimSizeExpr, ShapePattern, ShapePatternTerm};
 use burn::config::Config;
 use burn::module::Module;
 use burn::nn::{LayerNorm, LayerNormConfig, Linear, LinearConfig};
 use burn::prelude::{Backend, Tensor};
 use burn::tensor::BasicOps;
-use burn_contracts::assert_tensor;
 
 /// Metadata for PatchMerging.
 pub trait PatchMergingMeta {
@@ -119,14 +119,23 @@ impl<B: Backend> PatchMerging<B> {
         &self,
         x: Tensor<B, 3>,
     ) -> Tensor<B, 3> {
-        #[allow(unused_variables)]
-        let [b, h, w] = assert_tensor(&x)
-            .unpacks_shape(
-                ["b", "h", "w"],
-                "b (h w) d_in",
-                &[("h", self.input_height()), ("w", self.input_width())],
-            )
-            .unwrap();
+        static INPUT_PATTERN: ShapePattern = ShapePattern::new(&[
+            ShapePatternTerm::Expr(DimSizeExpr::Param("batch")),
+            ShapePatternTerm::Expr(DimSizeExpr::Prod(&[
+                DimSizeExpr::Param("height"),
+                DimSizeExpr::Param("width"),
+            ])),
+            ShapePatternTerm::Expr(DimSizeExpr::Param("d_in")),
+        ]);
+        let [b, h, w] = INPUT_PATTERN.unpack_shape(
+            &x.dims(),
+            &["batch", "height", "width"],
+            &[
+                ("height", self.input_height()),
+                ("width", self.input_width()),
+                ("d_in", self.d_input()),
+            ],
+        );
 
         let x = collate_patches(x, h, w);
 
@@ -134,12 +143,23 @@ impl<B: Backend> PatchMerging<B> {
 
         let x = self.norm.forward(x);
 
-        #[cfg(debug_assertions)]
-        assert_tensor(&x).has_named_dims([
-            ("B", b),
-            ("(H/2)*(W/2)", (h / 2) * (w / 2)),
-            ("d_out", self.d_output()),
+        static OUTPUT_PATTERN: ShapePattern = ShapePattern::new(&[
+            ShapePatternTerm::Expr(DimSizeExpr::Param("batch")),
+            ShapePatternTerm::Expr(DimSizeExpr::Prod(&[
+                DimSizeExpr::Param("half_height"),
+                DimSizeExpr::Param("half_width"),
+            ])),
+            ShapePatternTerm::Expr(DimSizeExpr::Param("d_out")),
         ]);
+        OUTPUT_PATTERN.assert_shape(
+            &x.dims(),
+            &[
+                ("batch", b),
+                ("half_height", self.output_height()),
+                ("half_width", self.output_width()),
+                ("d_out", self.d_output()),
+            ],
+        );
 
         x
     }
@@ -167,9 +187,19 @@ pub fn collate_patches<B: Backend, K>(
 where
     K: BasicOps<B>,
 {
-    let [b, h, w, c] = assert_tensor(&x)
-        .unpacks_shape(["b", "h", "w", "c"], "b (h w) c", &[("h", h), ("w", w)])
-        .unwrap();
+    static INPUT_PATTERN: ShapePattern = ShapePattern::new(&[
+        ShapePatternTerm::Expr(DimSizeExpr::Param("batch")),
+        ShapePatternTerm::Expr(DimSizeExpr::Prod(&[
+            DimSizeExpr::Param("height"),
+            DimSizeExpr::Param("width"),
+        ])),
+        ShapePatternTerm::Expr(DimSizeExpr::Param("channels")),
+    ]);
+    let [b, h, w, c] = INPUT_PATTERN.unpack_shape(
+        &x.dims(),
+        &["batch", "height", "width", "channels"],
+        &[("height", h), ("width", w)],
+    );
 
     let h2 = h / 2;
     let w2 = w / 2;
@@ -211,9 +241,19 @@ where
     let h2 = h / 2;
     let w2 = w / 2;
 
-    let [b, c] = assert_tensor(&x)
-        .unpacks_shape(["b", "c"], "b (h2 w2) c", &[("h2", h2), ("w2", w2)])
-        .unwrap();
+    static INPUT_PATTERN: ShapePattern = ShapePattern::new(&[
+        ShapePatternTerm::Expr(DimSizeExpr::Param("batch")),
+        ShapePatternTerm::Expr(DimSizeExpr::Prod(&[
+            DimSizeExpr::Param("half_height"),
+            DimSizeExpr::Param("half_width"),
+        ])),
+        ShapePatternTerm::Expr(DimSizeExpr::Param("channels")),
+    ]);
+    let [b, c] = INPUT_PATTERN.unpack_shape(
+        &x.dims(),
+        &["batch", "channels"],
+        &[("half_height", h2), ("half_width", w2)],
+    );
 
     let c = c / 4;
 
@@ -244,11 +284,7 @@ mod tests {
         let x = Tensor::<NdArray, 3>::random([b, h * w, c], distribution, &device);
 
         let y = collate_patches(x.clone(), h, w);
-        assert_tensor(&y).has_named_dims([
-            ("B", b),
-            ("(H/2)*(W/2)", (h / 2) * (w / 2)),
-            ("4*d_in", 4 * c),
-        ]);
+        assert_eq!(&y.dims(), &[b, (h / 2) * (w / 2), 4 * c]);
 
         decollate_patches(y.clone(), h, w)
             .into_data()
@@ -278,11 +314,7 @@ mod tests {
         let x = Tensor::random([b, h * w, c], distribution, &device);
 
         let y = patch_merging.forward(x.clone());
-        assert_tensor(&y).has_named_dims([
-            ("B", b),
-            ("H/2*W/2", (h / 2) * (w / 2)),
-            ("4*C", 2 * c),
-        ]);
+        assert_eq!(&y.dims(), &[b, h / 2 * w / 2, 2 * c]);
     }
 
     #[test]
@@ -332,11 +364,7 @@ mod tests {
             let patch_embed = config.init::<NdArray>(&device);
 
             let y = patch_embed.forward(x.clone());
-            assert_tensor(&y).has_named_dims([
-                ("B", b),
-                ("H/patch_size*W/patch_size", (h / 4) * (w / 4)),
-                ("d_out", d_output),
-            ]);
+            assert_eq!(&y.dims(), &[b, (h / 4) * (w / 4), d_output]);
 
             let z = patch_embed.projection.forward(x.clone());
             let z: Tensor<NdArray, 3> = z.flatten(2, 3);
@@ -351,11 +379,7 @@ mod tests {
             let patch_embed = config.init::<NdArray>(&device);
 
             let y = patch_embed.forward(x.clone());
-            assert_tensor(&y).has_named_dims([
-                ("B", b),
-                ("H/patch_size*W/patch_size", (h / 4) * (w / 4)),
-                ("d_out", d_output),
-            ]);
+            assert_eq!(&y.dims(), &[b, (h / 4) * (w / 4), d_output]);
 
             let z = patch_embed.projection.forward(x.clone());
             let z: Tensor<NdArray, 3> = z.flatten(2, 3);

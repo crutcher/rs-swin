@@ -236,8 +236,8 @@ mod tests {
     use crate::models::swin::v2::window_attention::{
         window_attention_relative_position_index, window_log1p_relative_offset_grid,
     };
+    use bimm_contracts_shapes::{DimSizeExpr, ShapePattern, ShapePatternTerm};
     use burn::backend::NdArray;
-    use burn_contracts::assert_tensor;
 
     #[test]
     fn test_og_rpb() {
@@ -268,16 +268,24 @@ mod tests {
         let table = rpb.forward();
         // heads, h*w, h*w
 
-        assert_tensor(&table)
-            .unpacks_shape(
-                [],
-                "heads (h w) (h w)",
-                &[
-                    ("heads", num_heads),
-                    ("h", window_shape[0]),
-                    ("w", window_shape[1]),
-                ],
-            )
-            .unwrap();
+        static PATTERN: ShapePattern = ShapePattern::new(&[
+            ShapePatternTerm::Expr(DimSizeExpr::Param("heads")),
+            ShapePatternTerm::Expr(DimSizeExpr::Prod(&[
+                DimSizeExpr::Param("h"),
+                DimSizeExpr::Param("w"),
+            ])),
+            ShapePatternTerm::Expr(DimSizeExpr::Prod(&[
+                DimSizeExpr::Param("h"),
+                DimSizeExpr::Param("w"),
+            ])),
+        ]);
+        PATTERN.assert_shape(
+            &table.dims(),
+            &[
+                ("heads", num_heads),
+                ("h", window_shape[0]),
+                ("w", window_shape[1]),
+            ],
+        );
     }
 }

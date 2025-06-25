@@ -154,7 +154,6 @@ mod tests {
     use super::*;
     use burn::backend::NdArray;
     use burn::prelude::{Tensor, TensorData, s};
-    use burn_contracts::assert_tensor;
 
     #[test]
     fn test_apply_attention_mask() {
@@ -189,7 +188,7 @@ mod tests {
         );
 
         let res = apply_attention_mask(b_nw, n, num_heads, attn, mask.clone());
-        assert_tensor(&res).has_dims([b_nw, num_heads, n, n]);
+        assert_eq!(res.dims(), [b_nw, num_heads, n, n]);
 
         let res = res.reshape([b, nw, num_heads, n, n]);
 
