@@ -166,8 +166,8 @@ impl<'a> ShapePattern<'a> {
 
             match expr.try_match(dim_size as isize, &bindings) {
                 Err(msg) => return Err(fail(msg)),
-                Ok(TryMatchResult::TargetMatch) => continue,
-                Ok(TryMatchResult::ValueMissMatch) => {
+                Ok(TryMatchResult::Match) => continue,
+                Ok(TryMatchResult::Conflict) => {
                     return Err(fail("Value MissMatch".to_string()));
                 }
                 Ok(TryMatchResult::ParamConstraint(param_name, value)) => {
