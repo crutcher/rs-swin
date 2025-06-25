@@ -190,7 +190,6 @@ impl<'a> ShapeContract<'a> {
             };
 
             match expr.try_match(dim_size as isize, &mut_env) {
-                Err(msg) => return Err(fail_at(shape_idx, term_idx, msg)),
                 Ok(TryMatchResult::Match) => continue,
                 Ok(TryMatchResult::Conflict) => {
                     return Err(fail_at(shape_idx, term_idx, "Value MissMatch".to_string()));
@@ -198,6 +197,7 @@ impl<'a> ShapeContract<'a> {
                 Ok(TryMatchResult::ParamConstraint(param_name, value)) => {
                     mut_env.bind(param_name, value as usize);
                 }
+                Err(msg) => return Err(fail_at(shape_idx, term_idx, msg)),
             }
         }
 
