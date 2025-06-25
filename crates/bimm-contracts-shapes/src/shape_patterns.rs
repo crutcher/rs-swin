@@ -84,7 +84,25 @@ impl<'a> ShapePattern<'a> {
         }
     }
 
-    /// Match a shape to the pattern, and extract keys.
+    /// Match a shape pattern.
+    ///
+    /// ## Arguments
+    ///
+    /// - `shape`: the shape to match.
+    /// - `env`: the params which are already bound.
+    ///
+    /// ## Panics
+    ///
+    /// If the shape does not match the pattern, or if there is a conflict in the bindings.
+    pub fn assert_shape(
+        &'a self,
+        shape: &[usize],
+        env: StackEnvironment<'a>,
+    ) {
+        let _ignored = self.unpack_shape(shape, &[], env);
+    }
+
+    /// Match and unpack a shape pattern.
     ///
     /// ## Arguments
     ///
@@ -95,15 +113,19 @@ impl<'a> ShapePattern<'a> {
     /// ## Returns
     ///
     /// Either the list of key values; or an error.
+    ///
+    /// ## Panics
+    ///
+    /// If the shape does not match the pattern, or if there is a conflict in the bindings.
     #[must_use]
-    pub fn extract_dims<const K: usize>(
+    pub fn unpack_shape<const K: usize>(
         &'a self,
         shape: &[usize],
         keys: &[&'a str; K],
         env: StackEnvironment<'a>,
-    ) -> Result<[usize; K], String> {
-        let fail = |msg: String| {
-            format!(
+    ) -> [usize; K] {
+        let fail = |msg: String| -> ! {
+            panic!(
                 "Shape Match Error: {msg}\nShape: {:?}\nPattern: {self}\nBindings: {:?}",
                 shape, env
             )
@@ -115,7 +137,7 @@ impl<'a> ShapePattern<'a> {
 
         let (e_start, e_size) = match self.check_ellipsis_split(rank) {
             Ok((e_start, e_size)) => (e_start, e_size),
-            Err(msg) => return Err(fail(msg)),
+            Err(msg) => fail(msg),
         };
 
         for (shape_idx, &dim_size) in shape.iter().enumerate() {
@@ -136,26 +158,26 @@ impl<'a> ShapePattern<'a> {
             };
 
             match expr.try_match(dim_size as isize, &env) {
-                Err(msg) => return Err(fail(msg)),
+                Err(msg) => fail(msg),
                 Ok(TryMatchResult::Match) => continue,
                 Ok(TryMatchResult::Conflict) => {
-                    return Err(fail("Value MissMatch".to_string()));
+                    fail("Value MissMatch".to_string());
                 }
                 Ok(TryMatchResult::ParamConstraint(param_name, value)) => {
                     match mut_env.lookup(param_name) {
                         None => mut_env.bind(param_name, value as usize),
                         Some(v) => {
-                            return Err(fail(format!(
+                            fail(format!(
                                 "Constraint miss-match: {} {} != {}",
                                 param_name, value, v
-                            )));
+                            ));
                         }
                     }
                 }
             }
         }
 
-        Ok(mut_env.export_key_values(keys))
+        mut_env.export_key_values(keys)
     }
 
     /// Check if the pattern has an ellipsis.
@@ -194,25 +216,6 @@ impl<'a> ShapePattern<'a> {
                 Ok((pos, rank - non_ellipsis_terms))
             }
         }
-    }
-
-    /// Match a shape to the pattern.
-    ///
-    /// ## Arguments
-    ///
-    /// - `shape`: the shape to match.
-    /// - `env`: the params which are already bound.
-    ///
-    /// ## Returns
-    ///
-    /// Either success, or an error.
-    #[must_use]
-    pub fn match_shape(
-        &'a self,
-        shape: &[usize],
-        env: StackEnvironment<'a>,
-    ) -> Result<(), String> {
-        self.extract_dims(shape, &[], env).map(|_| ())
     }
 }
 
@@ -312,9 +315,8 @@ mod tests {
 
         let shape = [12, b, 1, 2, 3, h * p, w * p, z * z * z, c];
 
-        let [u_b, u_h, u_w, u_z] = PATTERN
-            .extract_dims(&shape, &["b", "h", "w", "z"], &[("p", p), ("c", c)])
-            .unwrap();
+        let [u_b, u_h, u_w, u_z] =
+            PATTERN.unpack_shape(&shape, &["b", "h", "w", "z"], &[("p", p), ("c", c)]);
 
         assert_eq!(u_b, b);
         assert_eq!(u_h, h);
