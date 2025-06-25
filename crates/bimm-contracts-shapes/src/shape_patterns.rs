@@ -2,14 +2,16 @@ use crate::bindings::{MutableStackEnvironment, MutableStackMap, StackEnvironment
 use crate::expressions::{DimSizeExpr, TryMatchResult};
 use std::fmt::{Display, Formatter};
 
-/// A term in a shape pattern, which can be:
-/// - `Any`: matches any dimension size.
-/// - `Ellipsis`: matches a variable number of dimensions.
-/// - `Expr`: a dimension size expression that must match a specific value.
+/// A term in a shape pattern.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ShapePatternTerm<'a> {
+    /// Matches any dimension size.
     Any,
+
+    /// Matches a variable number of dimensions (ellipsis).
     Ellipsis,
+
+    /// A dimension size expression that must match a specific value.
     Expr(DimSizeExpr<'a>),
 }
 
@@ -107,9 +109,11 @@ impl<'a> ShapePattern<'a> {
             )
         };
 
+        let rank = shape.len();
+
         let mut env: MutableStackEnvironment<'a> = MutableStackEnvironment::new(bindings);
 
-        let (e_start, e_size) = match self.check_ellipsis_split(shape.len()) {
+        let (e_start, e_size) = match self.check_ellipsis_split(rank) {
             Ok((e_start, e_size)) => (e_start, e_size),
             Err(msg) => return Err(fail(msg)),
         };
@@ -126,7 +130,7 @@ impl<'a> ShapePattern<'a> {
             let expr = match &self.terms[term_idx] {
                 ShapePatternTerm::Any => continue,
                 ShapePatternTerm::Ellipsis => {
-                    return Err(fail("INTERNAL ERROR: out-of-place Ellipsis".to_string()));
+                    unreachable!("Ellipsis should have been handled before");
                 }
                 ShapePatternTerm::Expr(expr) => expr,
             };
@@ -158,7 +162,7 @@ impl<'a> ShapePattern<'a> {
     ///
     /// ## Arguments
     ///
-    /// - `size`: the size of the shape to match.
+    /// - `rank`: the number of dims of the shape to match.
     ///
     /// ## Returns
     ///
@@ -168,29 +172,26 @@ impl<'a> ShapePattern<'a> {
     #[must_use]
     fn check_ellipsis_split(
         &self,
-        size: usize,
+        rank: usize,
     ) -> Result<(usize, usize), String> {
         let k = self.terms.len();
         match self.ellipsis_pos {
             None => {
-                if size != k {
-                    Err(format!(
-                        "Pattern size {} does not match the number of terms {}",
-                        size, k
-                    ))
+                if rank != k {
+                    Err(format!("Shape rank {} != pattern dim count {}", rank, k,))
                 } else {
                     Ok((k, 0))
                 }
             }
             Some(pos) => {
                 let non_ellipsis_terms = k - 1;
-                if size < non_ellipsis_terms {
+                if rank < non_ellipsis_terms {
                     return Err(format!(
-                        "Pattern size {} is less than the number of terms {} (without ellipsis)",
-                        size, non_ellipsis_terms
+                        "Shape rank {} < non-ellipsis pattern term count {}",
+                        rank, non_ellipsis_terms,
                     ));
                 }
-                Ok((pos, size - non_ellipsis_terms))
+                Ok((pos, rank - non_ellipsis_terms))
             }
         }
     }
@@ -219,6 +220,51 @@ impl<'a> ShapePattern<'a> {
 mod tests {
     use super::*;
     use crate::shape_patterns::{ShapePattern, ShapePatternTerm};
+
+    #[should_panic(expected = "Multiple ellipses in pattern")]
+    #[test]
+    fn test_bad_new() {
+        // Multiple ellipses in pattern should panic.
+        let _ = ShapePattern::new(&[
+            ShapePatternTerm::Any,
+            ShapePatternTerm::Ellipsis,
+            ShapePatternTerm::Ellipsis,
+        ]);
+    }
+    #[test]
+    fn test_check_ellipsis_split() {
+        {
+            // With ellipsis.
+            let pattern = ShapePattern::new(&[
+                ShapePatternTerm::Any,
+                ShapePatternTerm::Ellipsis,
+                ShapePatternTerm::Expr(DimSizeExpr::Param("b")),
+            ]);
+
+            assert_eq!(pattern.check_ellipsis_split(2), Ok((1, 0)));
+            assert_eq!(pattern.check_ellipsis_split(3), Ok((1, 1)));
+            assert_eq!(pattern.check_ellipsis_split(4), Ok((1, 2)));
+
+            assert_eq!(
+                pattern.check_ellipsis_split(1),
+                Err("Shape rank 1 < non-ellipsis pattern term count 2".to_string())
+            );
+        }
+        {
+            // Without ellipsis.
+            let pattern = ShapePattern::new(&[
+                ShapePatternTerm::Any,
+                ShapePatternTerm::Expr(DimSizeExpr::Param("b")),
+            ]);
+
+            assert_eq!(pattern.check_ellipsis_split(2), Ok((2, 0)));
+
+            assert_eq!(
+                pattern.check_ellipsis_split(1),
+                Err("Shape rank 1 != pattern dim count 2".to_string())
+            );
+        }
+    }
 
     #[test]
     fn test_format_pattern() {
