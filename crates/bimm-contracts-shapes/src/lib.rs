@@ -1,10 +1,10 @@
 extern crate core;
 
 pub mod bindings;
+pub mod contracts;
 pub mod expressions;
-pub mod math_util;
-pub mod shape_patterns;
+pub mod math;
 
 pub use bindings::StackEnvironment;
-pub use expressions::DimSizeExpr;
-pub use shape_patterns::{ShapePattern, ShapePatternTerm};
+pub use contracts::{DimMatcher, ShapeContract};
+pub use expressions::DimExpr;

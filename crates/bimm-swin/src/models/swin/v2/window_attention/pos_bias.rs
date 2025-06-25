@@ -236,7 +236,7 @@ mod tests {
     use crate::models::swin::v2::window_attention::{
         window_attention_relative_position_index, window_log1p_relative_offset_grid,
     };
-    use bimm_contracts_shapes::{DimSizeExpr, ShapePattern, ShapePatternTerm};
+    use bimm_contracts_shapes::{DimExpr, DimMatcher, ShapeContract};
     use burn::backend::NdArray;
 
     #[test]
@@ -268,18 +268,12 @@ mod tests {
         let table = rpb.forward();
         // heads, h*w, h*w
 
-        static PATTERN: ShapePattern = ShapePattern::new(&[
-            ShapePatternTerm::Expr(DimSizeExpr::Param("heads")),
-            ShapePatternTerm::Expr(DimSizeExpr::Prod(&[
-                DimSizeExpr::Param("h"),
-                DimSizeExpr::Param("w"),
-            ])),
-            ShapePatternTerm::Expr(DimSizeExpr::Prod(&[
-                DimSizeExpr::Param("h"),
-                DimSizeExpr::Param("w"),
-            ])),
+        static CONTRACT: ShapeContract = ShapeContract::new(&[
+            DimMatcher::Expr(DimExpr::Param("heads")),
+            DimMatcher::Expr(DimExpr::Prod(&[DimExpr::Param("h"), DimExpr::Param("w")])),
+            DimMatcher::Expr(DimExpr::Prod(&[DimExpr::Param("h"), DimExpr::Param("w")])),
         ]);
-        PATTERN.assert_shape(
+        CONTRACT.assert_shape(
             &table.dims(),
             &[
                 ("heads", num_heads),

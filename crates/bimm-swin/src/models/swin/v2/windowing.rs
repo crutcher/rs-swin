@@ -1,4 +1,4 @@
-use bimm_contracts_shapes::{DimSizeExpr, ShapePattern, ShapePatternTerm};
+use bimm_contracts_shapes::{DimExpr, DimMatcher, ShapeContract};
 use burn::prelude::{Backend, Tensor};
 use burn::tensor::BasicOps;
 
@@ -20,20 +20,20 @@ pub fn window_partition<B: Backend, K>(
 where
     K: BasicOps<B>,
 {
-    static PATTERN: ShapePattern = ShapePattern::new(&[
-        ShapePatternTerm::Expr(DimSizeExpr::Param("batch")),
-        ShapePatternTerm::Expr(DimSizeExpr::Prod(&[
-            DimSizeExpr::Param("h_wins"),
-            DimSizeExpr::Param("window_size"),
+    static CONTRACT: ShapeContract = ShapeContract::new(&[
+        DimMatcher::Expr(DimExpr::Param("batch")),
+        DimMatcher::Expr(DimExpr::Prod(&[
+            DimExpr::Param("h_wins"),
+            DimExpr::Param("window_size"),
         ])),
-        ShapePatternTerm::Expr(DimSizeExpr::Prod(&[
-            DimSizeExpr::Param("w_wins"),
-            DimSizeExpr::Param("window_size"),
+        DimMatcher::Expr(DimExpr::Prod(&[
+            DimExpr::Param("w_wins"),
+            DimExpr::Param("window_size"),
         ])),
-        ShapePatternTerm::Expr(DimSizeExpr::Param("channels")),
+        DimMatcher::Expr(DimExpr::Param("channels")),
     ]);
-    let [b, h_wins, w_wins, c] = PATTERN.unpack_shape(
-        &tensor.shape().dims,
+    let [b, h_wins, w_wins, c] = CONTRACT.unpack_shape(
+        &tensor.dims(),
         &["batch", "h_wins", "w_wins", "channels"],
         &[("window_size", window_size)],
     );
@@ -65,22 +65,22 @@ pub fn window_reverse<B: Backend, K>(
 where
     K: BasicOps<B>,
 {
-    static PATTERN: ShapePattern = ShapePattern::new(&[
-        ShapePatternTerm::Expr(DimSizeExpr::Prod(&[
-            DimSizeExpr::Param("batch"),
-            DimSizeExpr::Param("h_wins"),
-            DimSizeExpr::Param("w_wins"),
+    static CONTRACT: ShapeContract = ShapeContract::new(&[
+        DimMatcher::Expr(DimExpr::Prod(&[
+            DimExpr::Param("batch"),
+            DimExpr::Param("h_wins"),
+            DimExpr::Param("w_wins"),
         ])),
-        ShapePatternTerm::Expr(DimSizeExpr::Param("window_size")),
-        ShapePatternTerm::Expr(DimSizeExpr::Param("window_size")),
-        ShapePatternTerm::Expr(DimSizeExpr::Param("channels")),
+        DimMatcher::Expr(DimExpr::Param("window_size")),
+        DimMatcher::Expr(DimExpr::Param("window_size")),
+        DimMatcher::Expr(DimExpr::Param("channels")),
     ]);
 
     let h_wins = h / window_size;
     let w_wins = w / window_size;
 
-    let [b, c] = PATTERN.unpack_shape(
-        &windows.shape().dims,
+    let [b, c] = CONTRACT.unpack_shape(
+        &windows.dims(),
         &["batch", "channels"],
         &[
             ("h_wins", h_wins),

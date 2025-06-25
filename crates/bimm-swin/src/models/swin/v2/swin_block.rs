@@ -11,7 +11,7 @@ use burn::nn::{Dropout, DropoutConfig, Gelu, LayerNorm, LayerNormConfig, Linear,
 use burn::prelude::{Backend, Tensor};
 use burn::tensor::BasicOps;
 
-use bimm_contracts_shapes::{DimSizeExpr, ShapePattern, ShapePatternTerm};
+use bimm_contracts_shapes::{DimExpr, DimMatcher, ShapeContract};
 
 pub trait BlockMlpMeta {
     fn d_input(&self) -> usize;
@@ -107,29 +107,25 @@ impl<B: Backend> BlockMlp<B> {
         &self,
         x: Tensor<B, D>,
     ) -> Tensor<B, D> {
-        static INPUT_PATTERN: ShapePattern = ShapePattern::new(&[
-            ShapePatternTerm::Ellipsis,
-            ShapePatternTerm::Expr(DimSizeExpr::Param("in")),
-        ]);
-        INPUT_PATTERN.assert_shape(&x.shape().dims, &[("in", self.d_input())]);
+        static INPUT_CONTRACT: ShapeContract =
+            ShapeContract::new(&[DimMatcher::Ellipsis, DimMatcher::Expr(DimExpr::Param("in"))]);
+        INPUT_CONTRACT.assert_shape(&x.dims(), &[("in", self.d_input())]);
 
         let x = self.fc1.forward(x);
-        static F_PATTERN: ShapePattern = ShapePattern::new(&[
-            ShapePatternTerm::Ellipsis,
-            ShapePatternTerm::Expr(DimSizeExpr::Param("h")),
-        ]);
-        F_PATTERN.assert_shape(&x.shape().dims, &[("h", self.d_hidden())]);
+        static F_CONTRACT: ShapeContract =
+            ShapeContract::new(&[DimMatcher::Ellipsis, DimMatcher::Expr(DimExpr::Param("h"))]);
+        F_CONTRACT.assert_shape(&x.dims(), &[("h", self.d_hidden())]);
 
         let x = self.act.forward(x);
 
         let x = self.drop.forward(x);
 
         let x = self.fc2.forward(x);
-        static OUTPUT_PATTERN: ShapePattern = ShapePattern::new(&[
-            ShapePatternTerm::Ellipsis,
-            ShapePatternTerm::Expr(DimSizeExpr::Param("out")),
+        static OUTPUT_CONTRACT: ShapeContract = ShapeContract::new(&[
+            DimMatcher::Ellipsis,
+            DimMatcher::Expr(DimExpr::Param("out")),
         ]);
-        OUTPUT_PATTERN.assert_shape(&x.shape().dims, &[("out", self.d_output())]);
+        OUTPUT_CONTRACT.assert_shape(&x.dims(), &[("out", self.d_output())]);
 
         self.drop.forward(x)
     }

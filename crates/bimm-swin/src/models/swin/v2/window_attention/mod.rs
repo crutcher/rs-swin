@@ -7,7 +7,7 @@ pub use pos_bias::*;
 pub use pos_grid::*;
 
 use crate::compat::linalg::l2_normalize;
-use bimm_contracts_shapes::{DimSizeExpr, ShapePattern, ShapePatternTerm};
+use bimm_contracts_shapes::{DimExpr, DimMatcher, ShapeContract};
 use burn::config::Config;
 use burn::module::{Module, Param, ParamId};
 use burn::nn::{Dropout, DropoutConfig, Linear, LinearConfig};
@@ -144,12 +144,12 @@ impl<B: Backend> WindowAttention<B> {
         x: Tensor<B, 3>,
         mask: Option<Tensor<B, 3>>,
     ) -> Tensor<B, 3> {
-        static PATTERN: ShapePattern = ShapePattern::new(&[
-            ShapePatternTerm::Expr(DimSizeExpr::Param("b_nw")),
-            ShapePatternTerm::Expr(DimSizeExpr::Param("n")),
-            ShapePatternTerm::Expr(DimSizeExpr::Param("c")),
+        static CONTRACT: ShapeContract = ShapeContract::new(&[
+            DimMatcher::Expr(DimExpr::Param("b_nw")),
+            DimMatcher::Expr(DimExpr::Param("n")),
+            DimMatcher::Expr(DimExpr::Param("c")),
         ]);
-        let [b_nw, n, c] = PATTERN.unpack_shape(&x.shape().dims, &["b_nw", "n", "c"], &[]);
+        let [b_nw, n, c] = CONTRACT.unpack_shape(&x.shape().dims, &["b_nw", "n", "c"], &[]);
 
         // n = ws * ws
 
@@ -346,15 +346,15 @@ mod tests {
         );
 
         let res = attn_mod.forward(input, None);
-        static PATTERN: ShapePattern = ShapePattern::new(&[
-            ShapePatternTerm::Expr(DimSizeExpr::Prod(&[
-                DimSizeExpr::Param("batch"),
-                DimSizeExpr::Param("num_windows"),
+        static CONTRACT: ShapeContract = ShapeContract::new(&[
+            DimMatcher::Expr(DimExpr::Prod(&[
+                DimExpr::Param("batch"),
+                DimExpr::Param("num_windows"),
             ])),
-            ShapePatternTerm::Expr(DimSizeExpr::Pow(&DimSizeExpr::Param("window_size"), 2)),
-            ShapePatternTerm::Expr(DimSizeExpr::Param("channels")),
+            DimMatcher::Expr(DimExpr::Pow(&DimExpr::Param("window_size"), 2)),
+            DimMatcher::Expr(DimExpr::Param("channels")),
         ]);
-        PATTERN.assert_shape(
+        CONTRACT.assert_shape(
             &res.shape().dims,
             &[
                 ("batch", b),

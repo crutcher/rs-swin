@@ -1,4 +1,4 @@
-use bimm_contracts_shapes::{DimSizeExpr, ShapePattern, ShapePatternTerm};
+use bimm_contracts_shapes::{DimExpr, DimMatcher, ShapeContract};
 use burn::config::Config;
 use burn::module::Module;
 use burn::nn::conv::{Conv2d, Conv2dConfig};
@@ -181,14 +181,14 @@ impl<B: Backend> PatchEmbed<B> {
         &self,
         x: Tensor<B, 4>,
     ) -> Tensor<B, 3> {
-        static PATTERN: ShapePattern = ShapePattern::new(&[
-            ShapePatternTerm::Expr(DimSizeExpr::Param("batch")),
-            ShapePatternTerm::Expr(DimSizeExpr::Param("channels")),
-            ShapePatternTerm::Expr(DimSizeExpr::Param("height")),
-            ShapePatternTerm::Expr(DimSizeExpr::Param("width")),
+        static CONTRACT: ShapeContract = ShapeContract::new(&[
+            DimMatcher::Expr(DimExpr::Param("batch")),
+            DimMatcher::Expr(DimExpr::Param("channels")),
+            DimMatcher::Expr(DimExpr::Param("height")),
+            DimMatcher::Expr(DimExpr::Param("width")),
         ]);
-        PATTERN.assert_shape(
-            &x.shape().dims,
+        CONTRACT.assert_shape(
+            &x.dims(),
             &[
                 ("height", self.input_height()),
                 ("width", self.input_width()),

@@ -1,5 +1,5 @@
 use crate::models::swin::v2::windowing::{window_partition, window_reverse};
-use bimm_contracts_shapes::{DimSizeExpr, ShapePattern, ShapePatternTerm};
+use bimm_contracts_shapes::{DimExpr, DimMatcher, ShapeContract};
 use burn::config::Config;
 use burn::module::Module;
 use burn::nn::{LayerNorm, LayerNormConfig, Linear, LinearConfig};
@@ -119,15 +119,15 @@ impl<B: Backend> PatchMerging<B> {
         &self,
         x: Tensor<B, 3>,
     ) -> Tensor<B, 3> {
-        static INPUT_PATTERN: ShapePattern = ShapePattern::new(&[
-            ShapePatternTerm::Expr(DimSizeExpr::Param("batch")),
-            ShapePatternTerm::Expr(DimSizeExpr::Prod(&[
-                DimSizeExpr::Param("height"),
-                DimSizeExpr::Param("width"),
+        static INPUT_CONTRACT: ShapeContract = ShapeContract::new(&[
+            DimMatcher::Expr(DimExpr::Param("batch")),
+            DimMatcher::Expr(DimExpr::Prod(&[
+                DimExpr::Param("height"),
+                DimExpr::Param("width"),
             ])),
-            ShapePatternTerm::Expr(DimSizeExpr::Param("d_in")),
+            DimMatcher::Expr(DimExpr::Param("d_in")),
         ]);
-        let [b, h, w] = INPUT_PATTERN.unpack_shape(
+        let [b, h, w] = INPUT_CONTRACT.unpack_shape(
             &x.dims(),
             &["batch", "height", "width"],
             &[
@@ -143,15 +143,15 @@ impl<B: Backend> PatchMerging<B> {
 
         let x = self.norm.forward(x);
 
-        static OUTPUT_PATTERN: ShapePattern = ShapePattern::new(&[
-            ShapePatternTerm::Expr(DimSizeExpr::Param("batch")),
-            ShapePatternTerm::Expr(DimSizeExpr::Prod(&[
-                DimSizeExpr::Param("half_height"),
-                DimSizeExpr::Param("half_width"),
+        static OUTPUT_CONTRACT: ShapeContract = ShapeContract::new(&[
+            DimMatcher::Expr(DimExpr::Param("batch")),
+            DimMatcher::Expr(DimExpr::Prod(&[
+                DimExpr::Param("half_height"),
+                DimExpr::Param("half_width"),
             ])),
-            ShapePatternTerm::Expr(DimSizeExpr::Param("d_out")),
+            DimMatcher::Expr(DimExpr::Param("d_out")),
         ]);
-        OUTPUT_PATTERN.assert_shape(
+        OUTPUT_CONTRACT.assert_shape(
             &x.dims(),
             &[
                 ("batch", b),
@@ -187,15 +187,15 @@ pub fn collate_patches<B: Backend, K>(
 where
     K: BasicOps<B>,
 {
-    static INPUT_PATTERN: ShapePattern = ShapePattern::new(&[
-        ShapePatternTerm::Expr(DimSizeExpr::Param("batch")),
-        ShapePatternTerm::Expr(DimSizeExpr::Prod(&[
-            DimSizeExpr::Param("height"),
-            DimSizeExpr::Param("width"),
+    static INPUT_CONTRACT: ShapeContract = ShapeContract::new(&[
+        DimMatcher::Expr(DimExpr::Param("batch")),
+        DimMatcher::Expr(DimExpr::Prod(&[
+            DimExpr::Param("height"),
+            DimExpr::Param("width"),
         ])),
-        ShapePatternTerm::Expr(DimSizeExpr::Param("channels")),
+        DimMatcher::Expr(DimExpr::Param("channels")),
     ]);
-    let [b, h, w, c] = INPUT_PATTERN.unpack_shape(
+    let [b, h, w, c] = INPUT_CONTRACT.unpack_shape(
         &x.dims(),
         &["batch", "height", "width", "channels"],
         &[("height", h), ("width", w)],
@@ -241,15 +241,15 @@ where
     let h2 = h / 2;
     let w2 = w / 2;
 
-    static INPUT_PATTERN: ShapePattern = ShapePattern::new(&[
-        ShapePatternTerm::Expr(DimSizeExpr::Param("batch")),
-        ShapePatternTerm::Expr(DimSizeExpr::Prod(&[
-            DimSizeExpr::Param("half_height"),
-            DimSizeExpr::Param("half_width"),
+    static INPUT_CONTRACT: ShapeContract = ShapeContract::new(&[
+        DimMatcher::Expr(DimExpr::Param("batch")),
+        DimMatcher::Expr(DimExpr::Prod(&[
+            DimExpr::Param("half_height"),
+            DimExpr::Param("half_width"),
         ])),
-        ShapePatternTerm::Expr(DimSizeExpr::Param("channels")),
+        DimMatcher::Expr(DimExpr::Param("channels")),
     ]);
-    let [b, c] = INPUT_PATTERN.unpack_shape(
+    let [b, c] = INPUT_CONTRACT.unpack_shape(
         &x.dims(),
         &["batch", "channels"],
         &[("half_height", h2), ("half_width", w2)],
