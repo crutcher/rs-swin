@@ -255,7 +255,7 @@ impl<'a> DimSizeExpr<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bindings::{StackEnvironment};
+    use crate::bindings::StackEnvironment;
 
     #[test]
     fn test_try_eval() {
@@ -268,7 +268,10 @@ mod tests {
 
         let expr = DimSizeExpr::Param("x");
         assert_eq!(expr.try_eval(&env), TryEvalResult::UnboundParams(1));
-        assert_eq!(expr.try_match(5, &env).unwrap(), TryMatchResult::ParamConstraint("x", 5));
+        assert_eq!(
+            expr.try_match(5, &env).unwrap(),
+            TryMatchResult::ParamConstraint("x", 5)
+        );
 
         let expr = DimSizeExpr::Negate(&DimSizeExpr::Param("a"));
         assert_eq!(expr.try_eval(&env), TryEvalResult::Value(-5));
@@ -277,16 +280,28 @@ mod tests {
 
         let expr = DimSizeExpr::Negate(&DimSizeExpr::Param("x"));
         assert_eq!(expr.try_eval(&env), TryEvalResult::UnboundParams(1));
-        assert_eq!(expr.try_match(-5, &env).unwrap(), TryMatchResult::ParamConstraint("x", 5));
+        assert_eq!(
+            expr.try_match(-5, &env).unwrap(),
+            TryMatchResult::ParamConstraint("x", 5)
+        );
 
         let expr = DimSizeExpr::Pow(&DimSizeExpr::Param("a"), 3);
         assert_eq!(expr.try_eval(&env), TryEvalResult::Value(5 * 5 * 5));
-        assert_eq!(expr.try_match(5 * 5 * 5, &env).unwrap(), TryMatchResult::Match);
-        assert_eq!(expr.try_match(4 * 4 * 4, &env).unwrap(), TryMatchResult::Conflict);
+        assert_eq!(
+            expr.try_match(5 * 5 * 5, &env).unwrap(),
+            TryMatchResult::Match
+        );
+        assert_eq!(
+            expr.try_match(4 * 4 * 4, &env).unwrap(),
+            TryMatchResult::Conflict
+        );
 
         let expr = DimSizeExpr::Pow(&DimSizeExpr::Param("x"), 3);
         assert_eq!(expr.try_eval(&env), TryEvalResult::UnboundParams(1));
-        assert_eq!(expr.try_match(27, &env).unwrap(), TryMatchResult::ParamConstraint("x", 3));
+        assert_eq!(
+            expr.try_match(27, &env).unwrap(),
+            TryMatchResult::ParamConstraint("x", 3)
+        );
 
         let expr = DimSizeExpr::Sum(&[DimSizeExpr::Param("a"), DimSizeExpr::Param("b")]);
         assert_eq!(expr.try_eval(&env), TryEvalResult::Value(8));
@@ -295,7 +310,10 @@ mod tests {
 
         let expr = DimSizeExpr::Sum(&[DimSizeExpr::Param("x"), DimSizeExpr::Param("b")]);
         assert_eq!(expr.try_eval(&env), TryEvalResult::UnboundParams(1));
-        assert_eq!(expr.try_match(8, &env).unwrap(), TryMatchResult::ParamConstraint("x", 5));
+        assert_eq!(
+            expr.try_match(8, &env).unwrap(),
+            TryMatchResult::ParamConstraint("x", 5)
+        );
 
         let expr = DimSizeExpr::Prod(&[DimSizeExpr::Param("a"), DimSizeExpr::Param("b")]);
         assert_eq!(expr.try_eval(&env), TryEvalResult::Value(15));
@@ -304,20 +322,22 @@ mod tests {
 
         let expr = DimSizeExpr::Prod(&[DimSizeExpr::Param("x"), DimSizeExpr::Param("b")]);
         assert_eq!(expr.try_eval(&env), TryEvalResult::UnboundParams(1));
-        assert_eq!(expr.try_match(15, &env).unwrap(), TryMatchResult::ParamConstraint("x", 5));
+        assert_eq!(
+            expr.try_match(15, &env).unwrap(),
+            TryMatchResult::ParamConstraint("x", 5)
+        );
 
         // Fancy
-        let expr =
-        DimSizeExpr::Sum(&[
+        let expr = DimSizeExpr::Sum(&[
             DimSizeExpr::Prod(&[DimSizeExpr::Param("a"), DimSizeExpr::Param("b")]),
-            DimSizeExpr::Negate(&DimSizeExpr::Pow(&DimSizeExpr::Param("a"), 2))
+            DimSizeExpr::Negate(&DimSizeExpr::Pow(&DimSizeExpr::Param("a"), 2)),
         ]);
         let target = 5 * 3 - 5 * 5; // 15 - 25 = -10
         assert_eq!(expr.try_eval(&env), TryEvalResult::Value(target));
         assert_eq!(expr.try_match(target, &env).unwrap(), TryMatchResult::Match);
         assert_eq!(expr.try_match(42, &env).unwrap(), TryMatchResult::Conflict);
     }
-    
+
     #[test]
     fn test_too_many_unbound_params() {
         let env: StackEnvironment = &[("a", 5), ("b", 3)];
@@ -328,14 +348,11 @@ mod tests {
             DimSizeExpr::Param("x"),
             DimSizeExpr::Param("y"),
         ]);
-        assert_eq!(
-            expr.try_eval(&env),
-            TryEvalResult::UnboundParams(2)
-        );
+        assert_eq!(expr.try_eval(&env), TryEvalResult::UnboundParams(2));
         assert!(expr.try_match(8, &env).is_err());
         assert!(expr.try_match(42, &env).is_err());
     }
-    
+
     #[test]
     fn test_pow_no_integer_solution() {
         let env: StackEnvironment = &[("a", 5)];
@@ -344,7 +361,7 @@ mod tests {
         assert_eq!(expr.try_eval(&env), TryEvalResult::Value(125));
         assert!(expr.try_match(126, &env).is_err());
     }
-    
+
     #[test]
     fn test_prod_no_integer_solution() {
         let env: StackEnvironment = &[("a", 5)];

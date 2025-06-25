@@ -2,29 +2,37 @@ use crate::bindings::{MutableStackEnvironment, MutableStackMap, StackEnvironment
 use crate::expressions::{DimSizeExpr, TryMatchResult};
 use std::fmt::{Display, Formatter};
 
+/// A term in a shape pattern, which can be:
+/// - `Any`: matches any dimension size.
+/// - `Ellipsis`: matches a variable number of dimensions.
+/// - `Expr`: a dimension size expression that must match a specific value.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PatternTerm<'a> {
+pub enum ShapePatternTerm<'a> {
     Any,
     Ellipsis,
     Expr(DimSizeExpr<'a>),
 }
 
-impl Display for PatternTerm<'_> {
+impl Display for ShapePatternTerm<'_> {
     fn fmt(
         &self,
         f: &mut Formatter<'_>,
     ) -> std::fmt::Result {
         match self {
-            PatternTerm::Any => write!(f, "_"),
-            PatternTerm::Ellipsis => write!(f, "..."),
-            PatternTerm::Expr(expr) => write!(f, "{}", expr),
+            ShapePatternTerm::Any => write!(f, "_"),
+            ShapePatternTerm::Ellipsis => write!(f, "..."),
+            ShapePatternTerm::Expr(expr) => write!(f, "{}", expr),
         }
     }
 }
 
+/// A shape pattern, which is a sequence of terms that can match a shape.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShapePattern<'a> {
-    pub terms: &'a [PatternTerm<'a>],
+    /// The terms in the pattern.
+    pub terms: &'a [ShapePatternTerm<'a>],
+
+    /// The position of the ellipsis in the pattern, if any.
     pub ellipsis_pos: Option<usize>,
 }
 
@@ -45,12 +53,21 @@ impl Display for ShapePattern<'_> {
 }
 
 impl<'a> ShapePattern<'a> {
-    pub const fn new(terms: &'a [PatternTerm<'a>]) -> Self {
+    /// Create a new shape pattern from a slice of terms.
+    ///
+    /// ## Arguments
+    ///
+    /// - `terms`: a slice of `ShapePatternTerm` that defines the pattern.
+    ///
+    /// ## Returns
+    ///
+    /// A new `ShapePattern` instance.
+    pub const fn new(terms: &'a [ShapePatternTerm<'a>]) -> Self {
         let mut i = 0;
         let mut ellipsis_pos: Option<usize> = None;
 
         while i < terms.len() {
-            if matches!(terms[i], PatternTerm::Ellipsis) {
+            if matches!(terms[i], ShapePatternTerm::Ellipsis) {
                 match ellipsis_pos {
                     Some(_) => panic!("Multiple ellipses in pattern"),
                     None => ellipsis_pos = Some(i),
@@ -65,6 +82,16 @@ impl<'a> ShapePattern<'a> {
         }
     }
 
+    /// Check if the pattern has an ellipsis.
+    ///
+    /// ## Arguments
+    ///
+    /// - `size`: the size of the shape to match.
+    ///
+    /// ## Returns
+    ///
+    /// - `Ok((usize, usize))`: the position of the ellipsis and the number of dimensions it matches.
+    /// - `Err(String)`: an error message if the pattern does not match the expected size.
     #[inline(always)]
     #[must_use]
     fn check_ellipsis_split(
@@ -112,7 +139,7 @@ impl<'a> ShapePattern<'a> {
         shape: &[usize],
         bindings: StackEnvironment<'a>,
     ) -> Result<(), String> {
-        self.extract_keys(shape, &[], bindings).map(|_| ())
+        self.extract_dims(shape, &[], bindings).map(|_| ())
     }
 
     /// Match a shape to the pattern, and extract keys.
@@ -127,7 +154,7 @@ impl<'a> ShapePattern<'a> {
     ///
     /// Either the list of key values; or an error.
     #[must_use]
-    pub fn extract_keys<const K: usize>(
+    pub fn extract_dims<const K: usize>(
         &'a self,
         shape: &[usize],
         keys: &[&'a str; K],
@@ -157,11 +184,11 @@ impl<'a> ShapePattern<'a> {
             };
 
             let expr = match &self.terms[term_idx] {
-                PatternTerm::Any => continue,
-                PatternTerm::Ellipsis => {
+                ShapePatternTerm::Any => continue,
+                ShapePatternTerm::Ellipsis => {
                     return Err(fail("INTERNAL ERROR: out-of-place Ellipsis".to_string()));
                 }
-                PatternTerm::Expr(expr) => expr,
+                ShapePatternTerm::Expr(expr) => expr,
             };
 
             match expr.try_match(dim_size as isize, &bindings) {
@@ -190,24 +217,23 @@ impl<'a> ShapePattern<'a> {
 
 #[cfg(test)]
 mod tests {
-
     use super::*;
-    use crate::shape_patterns::{PatternTerm, ShapePattern};
+    use crate::shape_patterns::{ShapePattern, ShapePatternTerm};
 
     #[test]
     fn test_format_pattern() {
         let pattern = ShapePattern::new(&[
-            PatternTerm::Any,
-            PatternTerm::Ellipsis,
-            PatternTerm::Expr(DimSizeExpr::Param("b")),
-            PatternTerm::Expr(DimSizeExpr::Prod(&[
+            ShapePatternTerm::Any,
+            ShapePatternTerm::Ellipsis,
+            ShapePatternTerm::Expr(DimSizeExpr::Param("b")),
+            ShapePatternTerm::Expr(DimSizeExpr::Prod(&[
                 DimSizeExpr::Param("h"),
                 DimSizeExpr::Sum(&[
                     DimSizeExpr::Param("a"),
                     DimSizeExpr::Negate(&DimSizeExpr::Param("b")),
                 ]),
             ])),
-            PatternTerm::Expr(DimSizeExpr::Pow(&DimSizeExpr::Param("h"), 2)),
+            ShapePatternTerm::Expr(DimSizeExpr::Pow(&DimSizeExpr::Param("h"), 2)),
         ]);
 
         assert_eq!(pattern.to_string(), "[_, ..., b, (h*(a+(-b))), (h)^2]");
@@ -216,19 +242,19 @@ mod tests {
     #[test]
     fn test_unpack_shape() {
         static PATTERN: ShapePattern = ShapePattern::new(&[
-            PatternTerm::Any,
-            PatternTerm::Expr(DimSizeExpr::Param("b")),
-            PatternTerm::Ellipsis,
-            PatternTerm::Expr(DimSizeExpr::Prod(&[
+            ShapePatternTerm::Any,
+            ShapePatternTerm::Expr(DimSizeExpr::Param("b")),
+            ShapePatternTerm::Ellipsis,
+            ShapePatternTerm::Expr(DimSizeExpr::Prod(&[
                 DimSizeExpr::Param("h"),
                 DimSizeExpr::Param("p"),
             ])),
-            PatternTerm::Expr(DimSizeExpr::Prod(&[
+            ShapePatternTerm::Expr(DimSizeExpr::Prod(&[
                 DimSizeExpr::Param("w"),
                 DimSizeExpr::Param("p"),
             ])),
-            PatternTerm::Expr(DimSizeExpr::Pow(&DimSizeExpr::Param("z"), 3)),
-            PatternTerm::Expr(DimSizeExpr::Param("c")),
+            ShapePatternTerm::Expr(DimSizeExpr::Pow(&DimSizeExpr::Param("z"), 3)),
+            ShapePatternTerm::Expr(DimSizeExpr::Param("c")),
         ]);
 
         let b = 2;
@@ -241,7 +267,7 @@ mod tests {
         let shape = [12, b, 1, 2, 3, h * p, w * p, z * z * z, c];
 
         let [u_b, u_h, u_w, u_z] = PATTERN
-            .extract_keys(&shape, &["b", "h", "w", "z"], &[("p", p), ("c", c)])
+            .extract_dims(&shape, &["b", "h", "w", "z"], &[("p", p), ("c", c)])
             .unwrap();
 
         assert_eq!(u_b, b);
