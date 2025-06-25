@@ -201,7 +201,7 @@ impl<'a> ShapePattern<'a> {
     /// ## Arguments
     ///
     /// - `shape`: the shape to match.
-    /// - `bindings`: the params which are already bound.
+    /// - `env`: the params which are already bound.
     ///
     /// ## Returns
     ///
@@ -210,9 +210,9 @@ impl<'a> ShapePattern<'a> {
     pub fn match_shape(
         &'a self,
         shape: &[usize],
-        bindings: StackEnvironment<'a>,
+        env: StackEnvironment<'a>,
     ) -> Result<(), String> {
-        self.extract_dims(shape, &[], bindings).map(|_| ())
+        self.extract_dims(shape, &[], env).map(|_| ())
     }
 }
 
