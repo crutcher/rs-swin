@@ -317,4 +317,41 @@ mod tests {
         assert_eq!(expr.try_match(target, &env).unwrap(), TryMatchResult::Match);
         assert_eq!(expr.try_match(42, &env).unwrap(), TryMatchResult::Conflict);
     }
+    
+    #[test]
+    fn test_too_many_unbound_params() {
+        let env: StackEnvironment = &[("a", 5), ("b", 3)];
+
+        let expr = DimSizeExpr::Sum(&[
+            DimSizeExpr::Param("a"),
+            DimSizeExpr::Param("b"),
+            DimSizeExpr::Param("x"),
+            DimSizeExpr::Param("y"),
+        ]);
+        assert_eq!(
+            expr.try_eval(&env),
+            TryEvalResult::UnboundParams(2)
+        );
+        assert!(expr.try_match(8, &env).is_err());
+        assert!(expr.try_match(42, &env).is_err());
+    }
+    
+    #[test]
+    fn test_pow_no_integer_solution() {
+        let env: StackEnvironment = &[("a", 5)];
+
+        let expr = DimSizeExpr::Pow(&DimSizeExpr::Param("a"), 3);
+        assert_eq!(expr.try_eval(&env), TryEvalResult::Value(125));
+        assert!(expr.try_match(126, &env).is_err());
+    }
+    
+    #[test]
+    fn test_prod_no_integer_solution() {
+        let env: StackEnvironment = &[("a", 5)];
+
+        let expr = DimSizeExpr::Prod(&[DimSizeExpr::Param("a"), DimSizeExpr::Param("b")]);
+        assert_eq!(expr.try_eval(&env), TryEvalResult::UnboundParams(1));
+        assert!(expr.try_match(14, &env).is_err());
+        assert!(expr.try_match(15, &env).is_ok());
+    }
 }
