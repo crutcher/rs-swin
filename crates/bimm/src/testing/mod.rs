@@ -1,3 +1,4 @@
+use num_traits::float::Float;
 use std::fmt::Debug;
 
 pub fn assert_close_to_vec<T>(
@@ -5,11 +6,7 @@ pub fn assert_close_to_vec<T>(
     expected: &[T],
     tolerance: T,
 ) where
-    T: num_traits::float::Float
-        + std::ops::Sub<Output = T>
-        + std::ops::Add<Output = T>
-        + Copy
-        + Debug,
+    T: Float + std::ops::Sub<Output = T> + std::ops::Add<Output = T> + Copy + Debug,
 {
     let mut pass = actual.len() == expected.len();
     for (&a, &e) in actual.iter().zip(expected.iter()) {

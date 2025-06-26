@@ -12,10 +12,11 @@ workspace = true
 [dependencies]
 burn = { workspace = true, features = ["train", "autodiff", "cuda", "fusion"] }
 
-bimm-swin = { path = "../../crates/bimm-swin" }
-rs-cinic-10-index = { workspace = true }
-rs-cinic-10-burn = { workspace = true }
-strum = { workspace = true }
-enum-ordinalize = { workspace = true }
-rand = "0.9.1"
+bimm-swin = { path = "../../crates/bimm" }
+rand = { workspace = true}
+
+rs-cinic-10-index = { version = "^0.1.10" }
+rs-cinic-10-burn = { version = "^0.1.10" }
+strum = {  version = "^0.27.1" }
+enum-ordinalize = { version = "^4.3.0" }
 
