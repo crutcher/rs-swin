@@ -151,9 +151,17 @@ impl<'a> ShapeContract<'a> {
         env: StackEnvironment<'a>,
     ) -> Result<[usize; K], String> {
         let fail = |msg: String| -> String {
+            let bindings = format!(
+                "{{{}}}",
+                env.iter()
+                    .map(|(k, v)| format!("\"{}\": {}", k, v))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+
             format!(
-                "Shape Error:: {}\n shape:\n  {:?}\n expected:\n  {self}\n  {:?}",
-                msg, shape, env
+                "Shape Error:: {}\n shape:\n  {:?}\n expected:\n  {self}\n  {}",
+                msg, shape, bindings
             )
         };
         let fail_at = |shape_idx: usize, term_idx: usize, msg: String| -> String {
@@ -336,7 +344,7 @@ Shape Error:: 65 !~ (z)^3 :: No integer solution.
   [12, 2, 1, 2, 3, 12, 8, 65, 5]
  expected:
   [_, b, ..., (h*p), (w*p), (z)^3, c]
-  [(\"p\", 4), (\"c\", 5)]"
+  {\"p\": 4, \"c\": 5}"
         );
     }
 
