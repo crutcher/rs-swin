@@ -2,7 +2,7 @@
 mod data;
 
 use crate::data::{CinicBatch, CinicBatcher, CinicDataset};
-use bimm_swin::models::swin::v2::transformer::{
+use bimm::models::swin::v2::transformer::{
     LayerConfig, SwinTransformerV2, SwinTransformerV2Config,
 };
 use burn::backend::{Autodiff, Cuda};

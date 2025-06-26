@@ -12,7 +12,7 @@ workspace = true
 [dependencies]
 burn = { workspace = true, features = ["train", "autodiff", "cuda", "fusion"] }
 
-bimm-swin = { path = "../../crates/bimm" }
+bimm = { workspace = true } 
 rand = { workspace = true}
 
 rs-cinic-10-index = { version = "^0.1.10" }

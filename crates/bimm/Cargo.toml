@@ -1,5 +1,5 @@
 [package]
-name = "bimm-swin"
+name = "bimm"
 edition.workspace = true
 version.workspace = true
 license.workspace = true

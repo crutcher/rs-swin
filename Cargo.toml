@@ -22,6 +22,7 @@ double_must_use = "allow"
 burn = { version = "^0.17.1" }
 rand = {  version = "0.9.1"  }
 
+bimm = { version = "0.1.0", path = "crates/bimm" }
 bimm-contracts-shapes = { version = "0.1.0", path = "crates/bimm-contracts-shapes" }
 
 # Test and dev dependencies

@@ -171,11 +171,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8c3c1a368f70d6cf7302d78f8f7093da241fb8e8807c05cc9e51a125895a6d5b"
 
 [[package]]
-name = "bimm-contracts-shapes"
-version = "0.1.0"
-
-[[package]]
-name = "bimm-swin"
+name = "bimm"
 version = "0.1.0"
 dependencies = [
  "bimm-contracts-shapes",
@@ -183,6 +179,10 @@ dependencies = [
  "hamcrest",
  "num-traits",
 ]
+
+[[package]]
+name = "bimm-contracts-shapes"
+version = "0.1.0"
 
 [[package]]
 name = "bincode"
@@ -4251,7 +4251,7 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 name = "swin_tiny"
 version = "0.1.0"
 dependencies = [
- "bimm-swin",
+ "bimm",
  "burn",
  "enum-ordinalize",
  "rand 0.9.1",
