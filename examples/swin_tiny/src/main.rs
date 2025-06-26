@@ -17,7 +17,7 @@ use burn::prelude::{Backend, Int, Tensor};
 use burn::record::CompactRecorder;
 use burn::tensor::backend::AutodiffBackend;
 use burn::train::metric::store::{Aggregate, Direction, Split};
-use burn::train::metric::{AccuracyMetric, LearningRateMetric, LossMetric};
+use burn::train::metric::{AccuracyMetric, CpuMemory, CpuTemperature, CpuUse, CudaMetric, LearningRateMetric, LossMetric};
 use burn::train::{
     ClassificationOutput, LearnerBuilder, MetricEarlyStoppingStrategy, StoppingCondition,
 };
@@ -176,6 +176,14 @@ pub fn train<B: AutodiffBackend>(
         .metric_valid_numeric(LossMetric::new())
         .metric_train_numeric(AccuracyMetric::new())
         .metric_valid_numeric(AccuracyMetric::new())
+        .metric_train(CudaMetric::new())
+        .metric_valid(CudaMetric::new())
+        .metric_train_numeric(CpuUse::new())
+        .metric_valid_numeric(CpuUse::new())
+        .metric_train_numeric(CpuMemory::new())
+        .metric_valid_numeric(CpuMemory::new())
+        .metric_train_numeric(CpuTemperature::new())
+        .metric_valid_numeric(CpuTemperature::new())
         .metric_train_numeric(LearningRateMetric::new())
         .with_file_checkpointer(CompactRecorder::new())
         .early_stopping(MetricEarlyStoppingStrategy::new(
