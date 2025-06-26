@@ -172,7 +172,7 @@ checksum = "8c3c1a368f70d6cf7302d78f8f7093da241fb8e8807c05cc9e51a125895a6d5b"
 
 [[package]]
 name = "bimm"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "bimm-contracts",
  "burn",
@@ -182,7 +182,7 @@ dependencies = [
 
 [[package]]
 name = "bimm-contracts"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "bincode"
@@ -4249,7 +4249,7 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "swin_tiny"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "bimm",
  "burn",
