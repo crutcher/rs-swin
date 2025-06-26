@@ -20,12 +20,12 @@ double_must_use = "allow"
 
 [workspace.dependencies]
 burn = { version = "^0.17.1" }
-rand = {  version = "0.9.1"  }
 
 bimm = { version = "0.1.0", path = "crates/bimm" }
 bimm-contracts-shapes = { version = "0.1.0", path = "crates/bimm-contracts-shapes" }
 
-# Test and dev dependencies
+# Test and/or Examples dependencies
+rand = {  version = "0.9.1"  }
 num-traits = { version = "^0.2.19" }
 hamcrest = { version = "^0.1.5" }
 
