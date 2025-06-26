@@ -4,7 +4,7 @@ edition.workspace = true
 version.workspace = true
 license.workspace = true
 repository.workspace = true
-
+publish = false
 
 [lints]
 workspace = true
@@ -13,7 +13,7 @@ workspace = true
 burn = { workspace = true, features = ["train", "autodiff", "cuda", "fusion"] }
 
 bimm = { workspace = true } 
-rand = { workspace = true}
+rand = { workspace = true }
 
 rs-cinic-10-index = { version = "^0.1.10" }
 rs-cinic-10-burn = { version = "^0.1.10" }

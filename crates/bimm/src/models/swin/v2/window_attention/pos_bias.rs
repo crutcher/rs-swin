@@ -236,7 +236,7 @@ mod tests {
     use crate::models::swin::v2::window_attention::{
         window_attention_relative_position_index, window_log1p_relative_offset_grid,
     };
-    use bimm_contracts_shapes::{DimExpr, DimMatcher, ShapeContract};
+    use bimm_contracts::{DimExpr, DimMatcher, ShapeContract};
     use burn::backend::NdArray;
 
     #[test]

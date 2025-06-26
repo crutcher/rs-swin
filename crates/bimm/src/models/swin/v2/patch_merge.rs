@@ -1,5 +1,5 @@
 use crate::models::swin::v2::windowing::{window_partition, window_reverse};
-use bimm_contracts_shapes::{DimExpr, DimMatcher, ShapeContract};
+use bimm_contracts::{DimExpr, DimMatcher, ShapeContract};
 use burn::config::Config;
 use burn::module::Module;
 use burn::nn::{LayerNorm, LayerNormConfig, Linear, LinearConfig};

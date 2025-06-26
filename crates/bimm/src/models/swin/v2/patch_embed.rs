@@ -1,4 +1,4 @@
-use bimm_contracts_shapes::{DimExpr, DimMatcher, ShapeContract};
+use bimm_contracts::{DimExpr, DimMatcher, ShapeContract};
 use burn::config::Config;
 use burn::module::Module;
 use burn::nn::conv::{Conv2d, Conv2dConfig};

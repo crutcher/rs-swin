@@ -1,4 +1,4 @@
-use bimm_contracts_shapes::{DimExpr, DimMatcher, ShapeContract};
+use bimm_contracts::{DimExpr, DimMatcher, ShapeContract};
 use burn::prelude::{Backend, Tensor};
 use burn::tensor::BasicOps;
 

@@ -174,14 +174,14 @@ checksum = "8c3c1a368f70d6cf7302d78f8f7093da241fb8e8807c05cc9e51a125895a6d5b"
 name = "bimm"
 version = "0.1.0"
 dependencies = [
- "bimm-contracts-shapes",
+ "bimm-contracts",
  "burn",
  "hamcrest",
  "num-traits",
 ]
 
 [[package]]
-name = "bimm-contracts-shapes"
+name = "bimm-contracts"
 version = "0.1.0"
 
 [[package]]

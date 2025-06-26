@@ -1,5 +1,5 @@
 [package]
-name = "bimm-contracts-shapes"
+name = "bimm-contracts"
 edition.workspace = true
 version.workspace = true
 license.workspace = true

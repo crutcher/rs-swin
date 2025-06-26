@@ -12,8 +12,8 @@ members = [
 [workspace.package]
 edition = "2024"
 version = "0.1.0"
-license = "MIT"
 repository = "https://github.com/crutcher/bimm"
+license = "MIT"
 
 [workspace.lints.clippy]
 double_must_use = "allow"
@@ -22,7 +22,7 @@ double_must_use = "allow"
 burn = { version = "^0.17.1" }
 
 bimm = { version = "0.1.0", path = "crates/bimm" }
-bimm-contracts-shapes = { version = "0.1.0", path = "crates/bimm-contracts-shapes" }
+bimm-contracts = { version = "0.1.0", path = "crates/bimm-contracts" }
 
 # Test and/or Examples dependencies
 rand = {  version = "0.9.1"  }

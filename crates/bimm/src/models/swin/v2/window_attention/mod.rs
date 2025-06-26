@@ -7,7 +7,7 @@ pub use pos_bias::*;
 pub use pos_grid::*;
 
 use crate::compat::linalg::l2_normalize;
-use bimm_contracts_shapes::{DimExpr, DimMatcher, ShapeContract};
+use bimm_contracts::{DimExpr, DimMatcher, ShapeContract};
 use burn::config::Config;
 use burn::module::{Module, Param, ParamId};
 use burn::nn::{Dropout, DropoutConfig, Linear, LinearConfig};

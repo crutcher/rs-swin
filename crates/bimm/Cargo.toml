@@ -8,8 +8,8 @@ license.workspace = true
 workspace = true
 
 [dependencies]
-bimm-contracts-shapes = { workspace = true }
 burn = { workspace = true }
+bimm-contracts = { workspace = true }
 
 [dev-dependencies]
 burn = { workspace = true, features = ["ndarray"] }
