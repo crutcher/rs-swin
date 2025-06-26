@@ -1,6 +1,7 @@
 edition = "2024"
 
 fn_params_layout = "Vertical"
+newline_style = "Unix"
 
 # unstable/nightly
 # format_code_in_doc_comments = true
