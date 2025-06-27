@@ -23,12 +23,14 @@ pub use shape_argument::ShapeArgument;
 /// ## Arguments:
 ///
 /// - `$period`: A literal number indicating how often the code should run.
-/// - `$code': An expression to be executed every nth time.
+/// - `$code`: An expression to be executed every nth time.
 ///
 /// # Usage:
-///  ```rust.no_run
+/// ```rust.no_run
+///  use bimm_contracts::run_every_nth;
+///
 ///  // Run a block of code every 3rd call
-///  run_every_nth!(3, {
+/// run_every_nth!(3, {
 ///       println!("This will run every 3rd time.");
 ///       // Your code here
 ///  });
