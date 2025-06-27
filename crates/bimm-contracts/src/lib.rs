@@ -1,3 +1,5 @@
+//! # BIMM Contracts
+
 #![cfg_attr(all(feature = "nightly", test), feature(test))]
 #[cfg(all(feature = "nightly", test))]
 extern crate test;
@@ -57,27 +59,24 @@ macro_rules! run_every_nth {
     };
 
     (@internal $period:literal, $($tt:tt)*) => {{
-        static PERIOD: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
-        static COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        static __REN_PERIOD: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
+        static __REN_COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
-        let target_period: usize = $period;
-        let period = PERIOD.load(std::sync::atomic::Ordering::Relaxed);
-        let count = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
-        let test_val = count % period;
+        let __ren_period = __REN_PERIOD.load(std::sync::atomic::Ordering::Relaxed);
+        let __ren_count = __REN_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         // Always run on the first call.
-        if test_val == 0 {
+        if (__ren_count % __ren_period) == 0 {
             { $($tt)* }
 
-            if period < target_period {
-                let new_period = (period * 2).clamp(1, target_period);
-                PERIOD.store(new_period, std::sync::atomic::Ordering::Relaxed);
+            if __ren_period < $period {
+                let new_period = (__ren_period * 2).clamp(1, $period);
+                __REN_PERIOD.store(new_period, std::sync::atomic::Ordering::Relaxed);
             }
 
-            if count > target_period * 1000 {
+            if __ren_count > $period * 1000 {
                 // Reset the counter to prevent overflow
-                COUNTER.store(0, std::sync::atomic::Ordering::Relaxed);
+                __REN_COUNTER.store(0, std::sync::atomic::Ordering::Relaxed);
             }
         }
     }};

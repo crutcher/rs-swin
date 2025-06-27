@@ -158,14 +158,7 @@ impl DropPathMeta for DropPath {
 }
 
 impl DropPath {
-    /// Applies the forward pass on the input tensor.
-    ///
-    /// See [DropPath](DropPath) for more information.
-    ///
-    /// # Shapes
-    ///
-    /// - input: `[..., any]`
-    /// - output: `[..., any]`
+    /// Applies `drop_path` pass on the input tensor.
     #[must_use]
     pub fn forward<B: Backend, const D: usize>(
         &self,
