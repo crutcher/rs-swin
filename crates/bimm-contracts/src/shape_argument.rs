@@ -1,7 +1,9 @@
 use burn::prelude::{Backend, Shape, Tensor};
 use burn::tensor::BasicOps;
 
+/// A trait that provides a method to extract the shape from various types.
 pub trait ShapeArgument {
+    /// Extracts the shape from the implementing type.
     fn get_shape(self) -> Shape;
 }
 
