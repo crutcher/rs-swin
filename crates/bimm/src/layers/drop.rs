@@ -16,7 +16,7 @@ use burn::tensor::Distribution;
 #[inline(always)]
 fn check_probability(prob: f64) -> f64 {
     if !(0.0..=1.0).contains(&prob) {
-        panic!("Probability should be between 0 and 1, but got {}", prob);
+        panic!("Probability should be between 0 and 1, but got {prob}");
     }
     prob
 }

@@ -29,3 +29,4 @@ rand = {  version = "0.9.1"  }
 num-traits = { version = "^0.2.19" }
 hamcrest = { version = "^0.1.5" }
 
+rustc_version = "0.4.1"

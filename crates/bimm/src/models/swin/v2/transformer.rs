@@ -232,8 +232,7 @@ impl SwinTransformerV2Config {
         let [last_h, last_w] = output_resolution;
         assert!(
             last_h > 0 && last_w > 0,
-            "Output resolution must be non-zero: {:?}",
-            output_resolution
+            "Output resolution must be non-zero: {output_resolution:?}"
         );
         assert!(
             last_h % self.window_size == 0 && last_w % self.window_size == 0,

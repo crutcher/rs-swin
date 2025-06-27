@@ -182,10 +182,7 @@ pub fn canonicalize_permutation(
 ) -> Vec<usize> {
     let _perm = canonicalize_dims(perm, rank, false);
     if !is_valid_permutation(&_perm, rank) {
-        panic!(
-            "Invalid permutation: expected a permutation of length {}, but got {:?}",
-            rank, perm
-        );
+        panic!("Invalid permutation: expected a permutation of length {rank}, but got {perm:?}");
     }
     _perm
 }

@@ -68,15 +68,11 @@ fn _unchecked_roll_dim_contract(
 ) {
     assert!(
         0 < shift && shift < size,
-        "Expected: 0 < shift < size: found shift={}, size={}",
-        shift,
-        size,
+        "Expected: 0 < shift < size: found shift={shift}, size={size}",
     );
     assert!(
         dim < size,
-        "Expected: dim < size: found dim={}, size={}",
-        dim,
-        size,
+        "Expected: dim < size: found dim={dim}, size={size}",
     );
 }
 
@@ -430,7 +426,7 @@ mod tests {
         let end: f64 = -1.0 - f64::EPSILON;
 
         let actual = float_arange::<NdArray>(start, end, None, &device);
-        println!("{:?}", actual);
+        println!("{actual:?}");
 
         actual
             .to_data()
@@ -445,7 +441,7 @@ mod tests {
         let num: usize = 5;
 
         let actual = float_linspace::<NdArray>(start, end, num, &device);
-        println!("{:?}", actual);
+        println!("{actual:?}");
 
         actual
             .to_data()

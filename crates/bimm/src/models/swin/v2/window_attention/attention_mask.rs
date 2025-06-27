@@ -73,16 +73,12 @@ fn sw_img_mask<B: Backend>(
     assert_eq!(
         h % window_size,
         0,
-        "Height {} is not divisible by window size {}",
-        h,
-        window_size
+        "Height {h} is not divisible by window size {window_size}"
     );
     assert_eq!(
         w % window_size,
         0,
-        "Width {} is not divisible by window size {}",
-        w,
-        window_size
+        "Width {w} is not divisible by window size {window_size}"
     );
 
     let h_slices = [

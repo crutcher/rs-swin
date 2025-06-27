@@ -19,5 +19,6 @@ num-traits = { workspace = true }
 hamcrest = { workspace = true }
 
 [features]
+nightly = []
 burn_0_18_0 = []
 

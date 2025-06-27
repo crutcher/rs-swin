@@ -7,6 +7,7 @@ command = "cargo"
 args = ["fmt", "--", "--emit=files"]
 
 [tasks.lintfix]
+# toolchain = "nightly"
 install_crate = "clippy"
 command = "cargo"
 args = ["clippy", "--fix", "--allow-dirty", "--allow-staged"]
@@ -21,3 +22,8 @@ dependencies = [
     "format",
     "test",
 ]
+
+[tasks.bench]
+toolchain = "nightly"
+command = "cargo"
+args = ["bench", "--features", "nightly"]

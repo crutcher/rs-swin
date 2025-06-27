@@ -325,28 +325,23 @@ impl ShiftedWindowTransformerBlockConfig {
         let [h, w] = self.input_resolution;
         assert!(
             h > 0 && w > 0,
-            "input_resolution must be greater than zero: {:#?}",
-            self
+            "input_resolution must be greater than zero: {self:#?}"
         );
         assert!(
             self.d_input > 0,
-            "d_input must be greater than zero: {:#?}",
-            self
+            "d_input must be greater than zero: {self:#?}"
         );
         assert!(
             self.num_heads > 0,
-            "num_heads must be greater than zero: {:#?}",
-            self
+            "num_heads must be greater than zero: {self:#?}"
         );
         assert!(
             self.window_size > 0,
-            "window_size must be greater than zero: {:#?}",
-            self
+            "window_size must be greater than zero: {self:#?}"
         );
         assert!(
             h % self.window_size == 0 && w % self.window_size == 0,
-            "input_resolution must be divisible by window size: {:#?}",
-            self,
+            "input_resolution must be divisible by window size: {self:#?}",
         );
     }
 

@@ -53,3 +53,29 @@ I'd love help from anyone interested in contributing to this crate.
 
 I generally hang out on the Burn Discord; and development discussions
 should probably be held in the `#vision` channel there.
+
+## Setup
+
+Much dev tooling is done with `cargo-make`, so you'll need to install that:
+
+    cargo install cargo-make
+
+Then, you can run the dev setup script to install the necessary dependencies:
+
+    cargo make setup
+
+## Dev Cycle
+
+Run `rustfmt`, `clippy`, and `test':
+
+    cargo make devtest
+
+## Benchmarks
+
+Benchmarks are run by enabling the nightly toolchain:
+
+    cargo +nightly bench --features nightly
+
+Or just:
+
+    cargo make bench

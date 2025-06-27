@@ -40,7 +40,7 @@ where
             let key = keys[i];
             values[i] = match self.lookup(key) {
                 Some(v) => v,
-                None => panic!("No value for key \"{}\"", key),
+                None => panic!("No value for key \"{key}\""),
             };
         }
         values

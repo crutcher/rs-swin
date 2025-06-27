@@ -1,3 +1,7 @@
+#![cfg_attr(all(feature = "nightly", test), feature(test))]
+#[cfg(all(feature = "nightly", test))]
+extern crate test;
+
 extern crate core;
 
 pub mod bindings;

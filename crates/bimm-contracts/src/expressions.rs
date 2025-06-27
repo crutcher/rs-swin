@@ -27,10 +27,10 @@ impl Display for DimExpr<'_> {
     ) -> std::fmt::Result {
         // TODO: with some lifting, we could elide more of the parentheses.
         match self {
-            DimExpr::Param(param) => write!(f, "{}", param),
-            DimExpr::Negate(negate) => write!(f, "(-{})", negate),
+            DimExpr::Param(param) => write!(f, "{param}"),
+            DimExpr::Negate(negate) => write!(f, "(-{negate})"),
             DimExpr::Pow(base, exponent) => {
-                write!(f, "({})^{}", base, exponent)
+                write!(f, "({base})^{exponent}")
             }
             DimExpr::Sum(values) => {
                 write!(f, "(")?;
@@ -38,7 +38,7 @@ impl Display for DimExpr<'_> {
                     if idx > 0 {
                         write!(f, "+")?;
                     }
-                    write!(f, "{}", expr)?;
+                    write!(f, "{expr}")?;
                 }
                 write!(f, ")")
             }
@@ -48,7 +48,7 @@ impl Display for DimExpr<'_> {
                     if idx > 0 {
                         write!(f, "*")?;
                     }
-                    write!(f, "{}", expr)?;
+                    write!(f, "{expr}")?;
                 }
                 write!(f, ")")
             }

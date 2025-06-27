@@ -19,10 +19,7 @@ pub fn assert_close_to_vec<T>(
         }
     }
     if !pass {
-        panic!(
-            "Expected (+/- {:?}):\n{:?}\nActual:\n{:?}",
-            tolerance, expected, actual
-        );
+        panic!("Expected (+/- {tolerance:?}):\n{expected:?}\nActual:\n{actual:?}");
     }
 }
 

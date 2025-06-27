@@ -23,7 +23,7 @@ impl Display for DimMatcher<'_> {
         match self {
             DimMatcher::Any => write!(f, "_"),
             DimMatcher::Ellipsis => write!(f, "..."),
-            DimMatcher::Expr(expr) => write!(f, "{}", expr),
+            DimMatcher::Expr(expr) => write!(f, "{expr}"),
         }
     }
 }
@@ -48,7 +48,7 @@ impl Display for ShapeContract<'_> {
             if idx > 0 {
                 write!(f, ", ")?;
             }
-            write!(f, "{}", expr)?;
+            write!(f, "{expr}")?;
         }
         write!(f, "]")
     }
@@ -154,15 +154,12 @@ impl<'a> ShapeContract<'a> {
             let bindings = format!(
                 "{{{}}}",
                 env.iter()
-                    .map(|(k, v)| format!("\"{}\": {}", k, v))
+                    .map(|(k, v)| format!("\"{k}\": {v}"))
                     .collect::<Vec<_>>()
                     .join(", ")
             );
 
-            format!(
-                "Shape Error:: {}\n shape:\n  {:?}\n expected:\n  {self}\n  {}",
-                msg, shape, bindings
-            )
+            format!("Shape Error:: {msg}\n shape:\n  {shape:?}\n expected:\n  {self}\n  {bindings}")
         };
         let fail_at = |shape_idx: usize, term_idx: usize, msg: String| -> String {
             fail(format!(
@@ -232,7 +229,7 @@ impl<'a> ShapeContract<'a> {
         match self.ellipsis_pos {
             None => {
                 if rank != k {
-                    Err(format!("Shape rank {} != pattern dim count {}", rank, k,))
+                    Err(format!("Shape rank {rank} != pattern dim count {k}",))
                 } else {
                     Ok((k, 0))
                 }
@@ -241,13 +238,56 @@ impl<'a> ShapeContract<'a> {
                 let non_ellipsis_terms = k - 1;
                 if rank < non_ellipsis_terms {
                     return Err(format!(
-                        "Shape rank {} < non-ellipsis pattern term count {}",
-                        rank, non_ellipsis_terms,
+                        "Shape rank {rank} < non-ellipsis pattern term count {non_ellipsis_terms}",
                     ));
                 }
                 Ok((pos, rank - non_ellipsis_terms))
             }
         }
+    }
+}
+
+#[cfg(all(feature = "nightly", test))]
+mod bench {
+    use crate::{DimExpr, DimMatcher, ShapeContract};
+    use test::Bencher;
+
+    #[bench]
+    fn bench_shape_contract(b: &mut Bencher) {
+        static PATTERN: ShapeContract = ShapeContract::new(&[
+            DimMatcher::Any,
+            DimMatcher::Expr(DimExpr::Param("b")),
+            DimMatcher::Ellipsis,
+            DimMatcher::Expr(DimExpr::Prod(&[DimExpr::Param("h"), DimExpr::Param("p")])),
+            DimMatcher::Expr(DimExpr::Prod(&[DimExpr::Param("w"), DimExpr::Param("p")])),
+            DimMatcher::Expr(DimExpr::Pow(&DimExpr::Param("z"), 3)),
+            DimMatcher::Expr(DimExpr::Param("c")),
+        ]);
+
+        let batch = 2;
+        let height = 3;
+        let width = 2;
+        let padding = 4;
+        let channels = 5;
+        let z = 4;
+
+        let shape = [
+            12,
+            batch,
+            1,
+            2,
+            3,
+            height * padding,
+            width * padding,
+            z * z * z,
+            channels,
+        ];
+        let env = [("p", padding), ("c", channels)];
+        let keys = ["b", "h", "w", "z"];
+
+        b.iter(|| {
+            let _ = PATTERN.unpack_shape(&shape, &keys, &env);
+        });
     }
 }
 
