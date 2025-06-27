@@ -2,6 +2,7 @@ use crate::models::swin::v2::swin_block::{
     ShiftedWindowTransformerBlock, ShiftedWindowTransformerBlockConfig,
     ShiftedWindowTransformerBlockMeta,
 };
+use bimm_contracts::{DimExpr, DimMatcher, ShapeContract, run_every_nth};
 use burn::config::Config;
 use burn::module::Module;
 use burn::prelude::{Backend, Tensor};
@@ -275,10 +276,28 @@ impl<B: Backend> StochasticDepthTransformerBlockSequence<B> {
         &self,
         x: Tensor<B, 3>,
     ) -> Tensor<B, 3> {
+        static CONTRACT: ShapeContract = ShapeContract::new(&[
+            DimMatcher::Expr(DimExpr::Param("batch")),
+            DimMatcher::Expr(DimExpr::Prod(&[
+                DimExpr::Param("height"),
+                DimExpr::Param("width"),
+            ])),
+            DimMatcher::Expr(DimExpr::Param("channels")),
+        ]);
+        let [h, w] = self.input_resolution();
+        let env = [("height", h), ("width", w)];
+
+        run_every_nth!(50, CONTRACT.assert_shape(&x, &env));
+
+        CONTRACT.assert_shape_every_n(&x, &env, 50);
+
         let mut x = x;
         for block in &self.blocks {
             x = block.forward(x);
         }
+
+        run_every_nth!(50, CONTRACT.assert_shape(&x, &env));
+
         x
     }
 }
@@ -286,6 +305,7 @@ impl<B: Backend> StochasticDepthTransformerBlockSequence<B> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use burn::backend::NdArray;
 
     #[test]
     fn test_config() {
@@ -351,5 +371,72 @@ mod tests {
 
         let config = config.with_drop_path_rates(Some(vec![0.1; depth]));
         assert_eq!(config.drop_path_rates(), vec![0.1; depth]);
+    }
+
+    #[test]
+    fn test_module_init() {
+        let d_input = 96;
+        let input_resolution = [56, 56];
+        let depth = 12;
+        let num_heads = 8;
+        let window_size = 7;
+
+        let config = StochasticDepthTransformerBlockSequenceConfig::new(
+            d_input,
+            input_resolution,
+            depth,
+            num_heads,
+            window_size,
+        );
+
+        let device = Default::default();
+        let module = config.init::<NdArray>(&device);
+
+        assert_eq!(module.d_input(), d_input);
+        assert_eq!(module.input_resolution(), input_resolution);
+        assert_eq!(module.depth(), depth);
+        assert_eq!(module.num_heads(), num_heads);
+        assert_eq!(module.window_size(), window_size);
+        assert_eq!(module.mlp_ratio(), 4.0);
+        assert!(module.enable_qkv_bias());
+        assert_eq!(module.drop_rate(), 0.0);
+        assert_eq!(module.attn_drop_rate(), 0.0);
+        assert_eq!(module.drop_path_rates(), vec![0.0; depth]);
+        assert_eq!(module.blocks.len(), depth);
+        for block in &module.blocks {
+            assert_eq!(block.d_input(), d_input);
+            assert_eq!(block.input_resolution(), input_resolution);
+            assert_eq!(block.num_heads(), num_heads);
+            assert_eq!(block.window_size(), window_size);
+            assert_eq!(block.mlp_ratio(), 4.0);
+            assert!(block.enable_qkv_bias());
+            assert_eq!(block.drop_rate(), 0.0);
+            assert_eq!(block.attn_drop_rate(), 0.0);
+        }
+    }
+
+    #[test]
+    fn test_one_window_config() {
+        let d_input = 96;
+        let input_resolution = [56, 56];
+        let depth = 12;
+        let num_heads = 8;
+        let window_size = 56; // One window size
+
+        let config = StochasticDepthTransformerBlockSequenceConfig::new(
+            d_input,
+            input_resolution,
+            depth,
+            num_heads,
+            window_size,
+        );
+
+        assert_eq!(config.window_size(), 56);
+        assert_eq!(config.block_configs().len(), depth);
+
+        // Check that all blocks have the same shift size
+        for block_config in config.block_configs() {
+            assert_eq!(block_config.shift_size(), 0);
+        }
     }
 }
