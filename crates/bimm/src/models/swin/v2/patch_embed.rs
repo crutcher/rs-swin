@@ -188,7 +188,7 @@ impl<B: Backend> PatchEmbed<B> {
             DimMatcher::Expr(DimExpr::Param("width")),
         ]);
         CONTRACT.assert_shape(
-            &x.dims(),
+            &x,
             &[
                 ("height", self.input_height()),
                 ("width", self.input_width()),

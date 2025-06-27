@@ -1,5 +1,6 @@
 use crate::bindings::{MutableStackEnvironment, MutableStackMap, StackEnvironment, StackMap};
 use crate::expressions::{DimExpr, TryMatchResult};
+use crate::shape_argument::ShapeArgument;
 use std::fmt::{Display, Formatter};
 use std::sync::atomic::AtomicUsize;
 
@@ -102,12 +103,14 @@ impl<'a> ShapeContract<'a> {
     /// ## Panics
     ///
     /// If the shape does not match the pattern, or if there is a conflict in the bindings.
-    pub fn assert_shape_every_n(
+    pub fn assert_shape_every_n<S>(
         &'a self,
-        shape: &[usize],
+        shape: S,
         env: StackEnvironment<'a>,
         period: usize,
-    ) {
+    ) where
+        S: ShapeArgument,
+    {
         let count = self
             .counter
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -134,11 +137,13 @@ impl<'a> ShapeContract<'a> {
     ///
     /// If the shape does not match the pattern, or if there is a conflict in the bindings.
     #[inline(always)]
-    pub fn assert_shape(
+    pub fn assert_shape<S>(
         &'a self,
-        shape: &[usize],
+        shape: S,
         env: StackEnvironment<'a>,
-    ) {
+    ) where
+        S: ShapeArgument,
+    {
         let _ignored = self.unpack_shape(shape, &[], env);
     }
 
@@ -160,12 +165,15 @@ impl<'a> ShapeContract<'a> {
     ///
     /// If the shape does not match the pattern, or if there is a conflict in the bindings.
     #[must_use]
-    pub fn unpack_shape<const K: usize>(
+    pub fn unpack_shape<S, const K: usize>(
         &'a self,
-        shape: &[usize],
+        shape: S,
         keys: &[&'a str; K],
         env: StackEnvironment<'a>,
-    ) -> [usize; K] {
+    ) -> [usize; K]
+    where
+        S: ShapeArgument,
+    {
         self.maybe_unpack_shape(shape, keys, env).unwrap()
     }
 
@@ -181,12 +189,17 @@ impl<'a> ShapeContract<'a> {
     ///
     /// Either the list of key values; or an error.
     #[must_use]
-    pub fn maybe_unpack_shape<const K: usize>(
+    pub fn maybe_unpack_shape<S, const K: usize>(
         &'a self,
-        shape: &[usize],
+        shape: S,
         keys: &[&'a str; K],
         env: StackEnvironment<'a>,
-    ) -> Result<[usize; K], String> {
+    ) -> Result<[usize; K], String>
+    where
+        S: ShapeArgument,
+    {
+        let shape = shape.get_shape().dims;
+
         let fail = |msg: String| -> String {
             let bindings = format!(
                 "{{{}}}",
@@ -327,7 +340,7 @@ mod bench {
     }
 
     #[bench]
-    fn bench_shape_contract(b: &mut Bencher) {
+    fn bench_unpack_shape(b: &mut Bencher) {
         static PATTERN: ShapeContract = ShapeContract::new(&[
             DimMatcher::Any,
             DimMatcher::Expr(DimExpr::Param("b")),

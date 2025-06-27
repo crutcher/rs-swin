@@ -128,7 +128,7 @@ impl<B: Backend> PatchMerging<B> {
             DimMatcher::Expr(DimExpr::Param("d_in")),
         ]);
         let [b, h, w] = INPUT_CONTRACT.unpack_shape(
-            &x.dims(),
+            &x,
             &["batch", "height", "width"],
             &[
                 ("height", self.input_height()),
@@ -152,7 +152,7 @@ impl<B: Backend> PatchMerging<B> {
             DimMatcher::Expr(DimExpr::Param("d_out")),
         ]);
         OUTPUT_CONTRACT.assert_shape(
-            &x.dims(),
+            &x,
             &[
                 ("batch", b),
                 ("half_height", self.output_height()),
@@ -196,7 +196,7 @@ where
         DimMatcher::Expr(DimExpr::Param("channels")),
     ]);
     let [b, h, w, c] = INPUT_CONTRACT.unpack_shape(
-        &x.dims(),
+        &x,
         &["batch", "height", "width", "channels"],
         &[("height", h), ("width", w)],
     );
@@ -250,7 +250,7 @@ where
         DimMatcher::Expr(DimExpr::Param("channels")),
     ]);
     let [b, c] = INPUT_CONTRACT.unpack_shape(
-        &x.dims(),
+        &x,
         &["batch", "channels"],
         &[("half_height", h2), ("half_width", w2)],
     );

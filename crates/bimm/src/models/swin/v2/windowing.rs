@@ -33,7 +33,7 @@ where
         DimMatcher::Expr(DimExpr::Param("channels")),
     ]);
     let [b, h_wins, w_wins, c] = CONTRACT.unpack_shape(
-        &tensor.dims(),
+        &tensor,
         &["batch", "h_wins", "w_wins", "channels"],
         &[("window_size", window_size)],
     );
@@ -80,7 +80,7 @@ where
     let w_wins = w / window_size;
 
     let [b, c] = CONTRACT.unpack_shape(
-        &windows.dims(),
+        &windows,
         &["batch", "channels"],
         &[
             ("h_wins", h_wins),

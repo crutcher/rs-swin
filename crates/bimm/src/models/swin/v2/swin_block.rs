@@ -109,12 +109,12 @@ impl<B: Backend> BlockMlp<B> {
     ) -> Tensor<B, D> {
         static INPUT_CONTRACT: ShapeContract =
             ShapeContract::new(&[DimMatcher::Ellipsis, DimMatcher::Expr(DimExpr::Param("in"))]);
-        INPUT_CONTRACT.assert_shape(&x.dims(), &[("in", self.d_input())]);
+        INPUT_CONTRACT.assert_shape_every_n(&x, &[("in", self.d_input())], 50);
 
         let x = self.fc1.forward(x);
         static F_CONTRACT: ShapeContract =
             ShapeContract::new(&[DimMatcher::Ellipsis, DimMatcher::Expr(DimExpr::Param("h"))]);
-        F_CONTRACT.assert_shape(&x.dims(), &[("h", self.d_hidden())]);
+        F_CONTRACT.assert_shape_every_n(&x, &[("h", self.d_hidden())], 50);
 
         let x = self.act.forward(x);
 
@@ -125,7 +125,7 @@ impl<B: Backend> BlockMlp<B> {
             DimMatcher::Ellipsis,
             DimMatcher::Expr(DimExpr::Param("out")),
         ]);
-        OUTPUT_CONTRACT.assert_shape(&x.dims(), &[("out", self.d_output())]);
+        OUTPUT_CONTRACT.assert_shape_every_n(&x, &[("out", self.d_output())], 50);
 
         self.drop.forward(x)
     }

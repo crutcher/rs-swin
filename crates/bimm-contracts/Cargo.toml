@@ -10,7 +10,7 @@ description = "Runtime contracts for the bimm framework"
 workspace = true
 
 [dependencies]
-
+burn = { workspace = true }
 
 [features]
 nightly = []
