@@ -4,6 +4,7 @@ edition.workspace = true
 version.workspace = true
 license.workspace = true
 repository.workspace = true
+documentation = "https://docs.rs/bimm-contracts/latest/"
 description = "Runtime contracts for the bimm framework"
 
 [lints]
