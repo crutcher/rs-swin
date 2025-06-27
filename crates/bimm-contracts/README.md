@@ -8,6 +8,8 @@
 ## Example Usage
 
 ```rust
+use bimm_contracts::{ShapeContract, DimMatcher, DimExpr, run_every_nth};
+
 /// Window Partition
 ///
 /// ## Parameters
@@ -16,11 +18,11 @@
 /// - `window_size`: Window size.
 ///
 /// ## Returns
-/// 
+///
 /// Output tensor of shape (B * h_windows * w_windows, window_size, window_size, C).
-/// 
+///
 /// ## Panics
-/// 
+///
 /// Panics if the input tensor does not have 4 dimensions.
 pub fn window_partition<B: Backend, K>(
     tensor: Tensor<B, 4, K>,
@@ -29,7 +31,7 @@ pub fn window_partition<B: Backend, K>(
 where
     K: BasicOps<B>,
 {
-    static CONTRACT: ShapeContract = ShapeContract::new(&[
+    static INPUT_CONTRACT: ShapeContract = ShapeContract::new(&[
         DimMatcher::Expr(DimExpr::Param("batch")),
         DimMatcher::Expr(DimExpr::Prod(&[
             DimExpr::Param("h_wins"),
@@ -41,16 +43,41 @@ where
         ])),
         DimMatcher::Expr(DimExpr::Param("channels")),
     ]);
-    let [b, h_wins, w_wins, c] = CONTRACT.unpack_shape(
+    let [b, h_wins, w_wins, c] = INPUT_CONTRACT.unpack_shape(
         &tensor.dims(),
         &["batch", "h_wins", "w_wins", "channels"],
         &[("window_size", window_size)],
     );
 
-    tensor
+    let tensor = tensor
         .reshape([b, h_wins, window_size, w_wins, window_size, c])
         .swap_dims(2, 3)
-        .reshape([b * h_wins * w_wins, window_size, window_size, c])
+        .reshape([b * h_wins * w_wins, window_size, window_size, c]);
+    
+    // I'd normally not use a contract here, as the shape is already
+    // very clear from the above operations; but this is an example
+    // of low-overhead periodic shape checking.
+    static OUTPUT_CONTRACT: ShapeContract = ShapeContract::new(&[
+        DimMatcher::Expr(DimExpr::Prod(&[
+            DimExpr::Param("batch"),
+            DimExpr::Param("h_wins"),
+            DimExpr::Param("w_wins"),
+        ])),
+        DimMatcher::Expr(DimExpr::Param("window_size")),
+        DimMatcher::Expr(DimExpr::Param("window_size")),
+        DimMatcher::Expr(DimExpr::Param("channels")),
+    ]);
+    // Run this check periodically on a growing schedule,
+    // up to the default of every 100th call.
+    run_every_nth!(OUTPUT_CONTRACT.assert_shape(&tensor.dims(), &[
+        ("batch", b),
+        ("h_wins", h_wins),
+        ("w_wins", w_wins),
+        ("window_size", window_size),
+        ("channels", c),
+    ]));
+    
+    tensor
 }
 ```
 
@@ -87,6 +114,43 @@ fn bench_shape_contract(b: &mut Bencher) {
 }
 ```
 
+## run_every_nth!
+
+```rust
+fn example() {
+    static PATTERN: ShapeContract = ShapeContract::new(&[
+        DimMatcher::Any,
+        DimMatcher::Expr(DimExpr::Param("b")),
+        DimMatcher::Ellipsis,
+        DimMatcher::Expr(DimExpr::Prod(&[DimExpr::Param("h"), DimExpr::Param("p")])),
+        DimMatcher::Expr(DimExpr::Prod(&[DimExpr::Param("w"), DimExpr::Param("p")])),
+        DimMatcher::Expr(DimExpr::Pow(&DimExpr::Param("z"), 3)),
+        DimMatcher::Expr(DimExpr::Param("c")),
+    ]);
+
+    let batch = 2;
+    let height = 3;
+    let width = 2;
+    let padding = 4;
+    let channels = 5;
+    let z = 4;
+
+    let shape = [
+        12,
+        batch,
+        1,
+        2,
+        3,
+        height * padding,
+        width * padding,
+        z * z * z,
+        channels,
+    ];
+    let env = [("p", padding), ("c", channels)];
+    
+    run_every_nth!(PATTERN.assert_shape(&shape, &env, 10));
+}
+```
 ## assert_shape_every_n
 
 There is also the `assert_shape_every_n` method that that can be used
