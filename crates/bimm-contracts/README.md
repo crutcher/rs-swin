@@ -1,10 +1,15 @@
-# Bimm Shape Contracts
+# bimm-contracts
 
 ![Crates.io Version](https://img.shields.io/crates/v/bimm-contracts)
 [![docs.rs](https://img.shields.io/docsrs/bimm-contracts)](https://docs.rs/bimm-contracts/latest/)
 
+Shape Contracts for Burn Image Models (BIMM).
 
 * static/stack-evaluated runtime shape contracts for tensors.
+
+## Changelog
+
+- **0.1.6**: Removed `assert_shape_every_n` in favor of `run_every_nth!` macro.
 
 ## Example Usage
 
@@ -118,56 +123,13 @@ fn bench_shape_contract(b: &mut Bencher) {
 }
 ```
 
-## run_every_nth!
+## run_every_nth!(CONTRACT.assert_shape(&tensor, &env))
 
-```rust
-fn example() {
-    static PATTERN: ShapeContract = ShapeContract::new(&[
-        DimMatcher::Any,
-        DimMatcher::Expr(DimExpr::Param("b")),
-        DimMatcher::Ellipsis,
-        DimMatcher::Expr(DimExpr::Prod(&[DimExpr::Param("h"), DimExpr::Param("p")])),
-        DimMatcher::Expr(DimExpr::Prod(&[DimExpr::Param("w"), DimExpr::Param("p")])),
-        DimMatcher::Expr(DimExpr::Pow(&DimExpr::Param("z"), 3)),
-        DimMatcher::Expr(DimExpr::Param("c")),
-    ]);
-
-    let batch = 2;
-    let height = 3;
-    let width = 2;
-    let padding = 4;
-    let channels = 5;
-    let z = 4;
-
-    let shape = [
-        12,
-        batch,
-        1,
-        2,
-        3,
-        height * padding,
-        width * padding,
-        z * z * z,
-        channels,
-    ];
-    let env = [("p", padding), ("c", channels)];
-    
-    run_every_nth!(PATTERN.assert_shape(&shape, &env, 10));
-}
-```
-## assert_shape_every_n
-
-There is also the `assert_shape_every_n` method that that can be used
-to assert the shape of a tensor at runtime, but only every `n` calls,
-starting with the first.
-
-Note that this method does not return keys, but only checks the shape.
-
-Benchmark: `20.66 ns/iter (+/- 0.51)`
+Benchmark: `6.42 ns/iter (+/- 0.08)`
 
 ```rust
 #[bench]
-fn bench_assert_shape_every_n(b: &mut Bencher) {
+fn bench_run_every_nth_assert_shape(b: &mut Bencher) {
     static PATTERN: ShapeContract = ShapeContract::new(&[
         DimMatcher::Any,
         DimMatcher::Expr(DimExpr::Param("b")),
@@ -199,7 +161,7 @@ fn bench_assert_shape_every_n(b: &mut Bencher) {
     let env = [("p", padding), ("c", channels)];
 
     b.iter(|| {
-        PATTERN.assert_shape_every_n(&shape, &env, 10);
+        run_every_nth!(PATTERN.assert_shape(&shape, &env));
     });
 }
 ```

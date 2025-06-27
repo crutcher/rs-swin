@@ -2,7 +2,6 @@ use crate::bindings::{MutableStackEnvironment, MutableStackMap, StackEnvironment
 use crate::expressions::{DimExpr, TryMatchResult};
 use crate::shape_argument::ShapeArgument;
 use std::fmt::{Display, Formatter};
-use std::sync::atomic::AtomicUsize;
 
 /// A term in a shape pattern.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,10 +30,8 @@ impl Display for DimMatcher<'_> {
 }
 
 /// A shape pattern, which is a sequence of terms that can match a shape.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShapeContract<'a> {
-    counter: AtomicUsize,
-
     /// The terms in the pattern.
     pub terms: &'a [DimMatcher<'a>],
 
@@ -83,44 +80,8 @@ impl<'a> ShapeContract<'a> {
         }
 
         ShapeContract {
-            counter: AtomicUsize::new(0),
             terms,
             ellipsis_pos,
-        }
-    }
-
-    /// Assert that the shape matches the pattern every `period` calls.
-    ///
-    /// This can reduce the overhead of checking the shape in performance-critical code;
-    /// while still allowing to catch shape mismatches during development.
-    ///
-    /// ## Arguments
-    ///
-    /// - `shape`: the shape to match.
-    /// - `env`: the params which are already bound.
-    /// - `period`: the number of calls after which to check the shape again.
-    ///
-    /// ## Panics
-    ///
-    /// If the shape does not match the pattern, or if there is a conflict in the bindings.
-    pub fn assert_shape_every_n<S>(
-        &'a self,
-        shape: S,
-        env: StackEnvironment<'a>,
-        period: usize,
-    ) where
-        S: ShapeArgument,
-    {
-        let count = self
-            .counter
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        // We want to always run the first time.
-        if count % period == 1 {
-            self.assert_shape(shape, env)
-        }
-        if count > period * 100 {
-            // Reset the counter to avoid overflow.
-            self.counter.store(0, std::sync::atomic::Ordering::Relaxed);
         }
     }
 
@@ -336,43 +297,6 @@ mod bench {
 
         b.iter(|| {
             run_every_nth!(PATTERN.assert_shape(&shape, &env));
-        });
-    }
-
-    #[bench]
-    fn bench_assert_shape_every_n(b: &mut Bencher) {
-        static PATTERN: ShapeContract = ShapeContract::new(&[
-            DimMatcher::Any,
-            DimMatcher::Expr(DimExpr::Param("b")),
-            DimMatcher::Ellipsis,
-            DimMatcher::Expr(DimExpr::Prod(&[DimExpr::Param("h"), DimExpr::Param("p")])),
-            DimMatcher::Expr(DimExpr::Prod(&[DimExpr::Param("w"), DimExpr::Param("p")])),
-            DimMatcher::Expr(DimExpr::Pow(&DimExpr::Param("z"), 3)),
-            DimMatcher::Expr(DimExpr::Param("c")),
-        ]);
-
-        let batch = 2;
-        let height = 3;
-        let width = 2;
-        let padding = 4;
-        let channels = 5;
-        let z = 4;
-
-        let shape = [
-            12,
-            batch,
-            1,
-            2,
-            3,
-            height * padding,
-            width * padding,
-            z * z * z,
-            channels,
-        ];
-        let env = [("p", padding), ("c", channels)];
-
-        b.iter(|| {
-            PATTERN.assert_shape_every_n(&shape, &env, 10);
         });
     }
 
