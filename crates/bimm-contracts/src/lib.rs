@@ -59,25 +59,35 @@ macro_rules! run_every_nth {
     };
 
     (@internal $period:literal, $($tt:tt)*) => {{
-        static __REN_PERIOD: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
-        static __REN_COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        if {
+            static PERIOD: std::sync::atomic::AtomicUsize =
+                std::sync::atomic::AtomicUsize::new(1);
+            static COUNTER: std::sync::atomic::AtomicUsize =
+                std::sync::atomic::AtomicUsize::new(0);
 
-        let __ren_period = __REN_PERIOD.load(std::sync::atomic::Ordering::Relaxed);
-        let __ren_count = __REN_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let effective_period = PERIOD.load(std::sync::atomic::Ordering::Relaxed);
+            let count = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-        // Always run on the first call.
-        if (__ren_count % __ren_period) == 0 {
-            { $($tt)* }
+            if (count % effective_period) == 0 {
+                // Double the period, but do not exceed the specified maximum period.
+                if effective_period < $period {
+                    PERIOD.store(
+                        (effective_period * 2).clamp(1, $period),
+                        std::sync::atomic::Ordering::Relaxed,
+                    );
+                }
 
-            if __ren_period < $period {
-                let new_period = (__ren_period * 2).clamp(1, $period);
-                __REN_PERIOD.store(new_period, std::sync::atomic::Ordering::Relaxed);
-            }
-
-            if __ren_count > $period * 1000 {
                 // Reset the counter to prevent overflow
-                __REN_COUNTER.store(0, std::sync::atomic::Ordering::Relaxed);
+                if count > $period * 1000 {
+                    COUNTER.store(0, std::sync::atomic::Ordering::Relaxed);
+                }
+
+                true
+            } else {
+                false
             }
+        } {
+            $($tt)*
         }
     }};
 }
