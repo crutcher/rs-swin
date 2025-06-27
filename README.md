@@ -8,31 +8,18 @@ It is *very* early in development, and is not yet ready for production use.
 The Burn ecosystem is still missing a number of image-model related features,
 particularly in the area of image datasets and transforms.
 
-## Philosophy
+## Crates
 
-This crate is intended to provide a collection of image models, primarily
-translated from the `timm` library, but also including some original models.
-It is also intended to provide some of the missing image dataset and transform functionality
-that is needed to train these models.
+[bimm](crates/bimm) - the main crate for image models.
 
-This crate will emphasize a few things not commonly found in the torch ecosystem.
+[![Crates.io Version](https://img.shields.io/crates/v/bimm)](https://crates.io/crates/bimm)
+[![docs.rs](https://img.shields.io/docsrs/bimm)](https://docs.rs/bimm/latest/bimm/)
 
-### Composition
+[bimm-contracts](crates/bimm-contracts) - a crate for static shape contracts for tensors.
 
-The `timm` library contains many models that are monolithic,
-despite sharing duplicates of much of the same code.
+[![Crates.io Version](https://img.shields.io/crates/v/bimm-contracts)](https://crates.io/crates/bimm-contracts)
+[![docs.rs](https://img.shields.io/docsrs/bimm-contracts)](https://docs.rs/bimm-contracts/latest/bimm-contracts/)
 
-This crate will focus on providing a set of composable components
-for the internal components of the models, so that larger full models,
-particularly those in the same family,
-can be built from smaller reusable and tested components.
-
-### Shape Contracts
-
-A low-overhead (const, stack-evaluated) shape contract library
-that can be used in-line with the models to both ensure tensor geometry,
-and unpack complex shape components at runtime; coupled with a high-quality
-panic reporting system that provides detailed information about pattern errors.
 
 ## Current Status
 
@@ -79,3 +66,30 @@ Benchmarks are run by enabling the nightly toolchain:
 Or just:
 
     cargo make bench
+
+## Philosophy
+
+This crate is intended to provide a collection of image models, primarily
+translated from the `timm` library, but also including some original models.
+It is also intended to provide some of the missing image dataset and transform functionality
+that is needed to train these models.
+
+This crate will emphasize a few things not commonly found in the torch ecosystem.
+
+### Composition
+
+The `timm` library contains many models that are monolithic,
+despite sharing duplicates of much of the same code.
+
+This crate will focus on providing a set of composable components
+for the internal components of the models, so that larger full models,
+particularly those in the same family,
+can be built from smaller reusable and tested components.
+
+### Shape Contracts
+
+A low-overhead (const, stack-evaluated) shape contract library
+that can be used in-line with the models to both ensure tensor geometry,
+and unpack complex shape components at runtime; coupled with a high-quality
+panic reporting system that provides detailed information about pattern errors.
+

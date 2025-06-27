@@ -1,5 +1,8 @@
 # Bimm Shape Contracts
 
+![Crates.io Version](https://img.shields.io/crates/v/bimm-contracts)
+
+
 * static/stack-evaluated runtime shape contracts for tensors.
 
 ## Example Usage
