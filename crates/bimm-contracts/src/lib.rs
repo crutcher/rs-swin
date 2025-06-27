@@ -17,12 +17,16 @@ pub use shape_argument::ShapeArgument;
 
 /// A macro to run a block of code or an expression every nth time it is called.
 ///
+/// Runs at a doubling rate (1, 2, 4, ...), until it reaches the specified period;
+/// then continues to run at that period.
+///
 /// This macro is useful for scenarios where you want to limit the execution
 /// of code to every nth call, such as logging, sampling, or throttling operations.
 ///
 /// ## Arguments:
 ///
-/// - `$period`: A literal number indicating how often the code should run.
+/// - `$period`: A literal number indicating how often the code should run;
+///    optional, defaults to 100.
 /// - `$code`: An expression to be executed every nth time.
 ///
 /// # Usage:
@@ -36,6 +40,14 @@ pub use shape_argument::ShapeArgument;
 ///  });
 #[macro_export]
 macro_rules! run_every_nth {
+    ($code:expr) => {
+        run_every_nth!(@internal 100, $code)
+    };
+
+    ($lock:block) => {
+        run_every_nth!(@internal 100, $block)
+    };
+
     ($period:literal, $code:expr) => {
         run_every_nth!(@internal $period, $code)
     };
@@ -45,16 +57,28 @@ macro_rules! run_every_nth {
     };
 
     (@internal $period:literal, $($tt:tt)*) => {{
-        let period = $period;
+        static PERIOD: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
         static COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+        let target_period: usize = $period;
+        let period = PERIOD.load(std::sync::atomic::Ordering::Relaxed);
         let count = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let test_val = count % period;
+
         // Always run on the first call.
-        if count % period == 0 {
-            $($tt)*
-        }
-        if count > period * 1000 {
-            // Reset the counter to prevent overflow
-            COUNTER.store(0, std::sync::atomic::Ordering::Relaxed);
+        if test_val == 0 {
+            { $($tt)* }
+
+            if period < target_period {
+                let new_period = (period * 2).clamp(1, target_period);
+                PERIOD.store(new_period, std::sync::atomic::Ordering::Relaxed);
+            }
+
+            if count > target_period * 1000 {
+                // Reset the counter to prevent overflow
+                COUNTER.store(0, std::sync::atomic::Ordering::Relaxed);
+            }
         }
     }};
 }
@@ -66,20 +90,20 @@ mod tests {
     #[test]
     fn test_run_every_nth_block() {
         let mut results = Vec::new();
-        for i in 0..10 {
-            run_every_nth!(2, {
+        for i in 0..350 {
+            run_every_nth!({
                 results.push(i);
             });
         }
-        assert_eq!(results, vec![0, 2, 4, 6, 8]);
+        assert_eq!(results, vec![0, 2, 4, 8, 16, 32, 64, 100, 200, 300]);
     }
 
     #[test]
     fn test_run_every_nth_expr() {
         let mut results = Vec::new();
-        for i in 0..10 {
-            run_every_nth!(2, results.push(i));
+        for i in 0..350 {
+            run_every_nth!(results.push(i));
         }
-        assert_eq!(results, vec![0, 2, 4, 6, 8]);
+        assert_eq!(results, vec![0, 2, 4, 8, 16, 32, 64, 100, 200, 300]);
     }
 }

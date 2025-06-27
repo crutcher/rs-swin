@@ -11,7 +11,7 @@ use burn::nn::{Dropout, DropoutConfig, Gelu, LayerNorm, LayerNormConfig, Linear,
 use burn::prelude::{Backend, Tensor};
 use burn::tensor::BasicOps;
 
-use bimm_contracts::{DimExpr, DimMatcher, ShapeContract};
+use bimm_contracts::{DimExpr, DimMatcher, ShapeContract, run_every_nth};
 
 pub trait BlockMlpMeta {
     fn d_input(&self) -> usize;
@@ -109,12 +109,12 @@ impl<B: Backend> BlockMlp<B> {
     ) -> Tensor<B, D> {
         static INPUT_CONTRACT: ShapeContract =
             ShapeContract::new(&[DimMatcher::Ellipsis, DimMatcher::Expr(DimExpr::Param("in"))]);
-        INPUT_CONTRACT.assert_shape_every_n(&x, &[("in", self.d_input())], 50);
+        run_every_nth!(INPUT_CONTRACT.assert_shape(&x, &[("in", self.d_input())]));
 
         let x = self.fc1.forward(x);
         static F_CONTRACT: ShapeContract =
             ShapeContract::new(&[DimMatcher::Ellipsis, DimMatcher::Expr(DimExpr::Param("h"))]);
-        F_CONTRACT.assert_shape_every_n(&x, &[("h", self.d_hidden())], 50);
+        run_every_nth!(F_CONTRACT.assert_shape(&x, &[("h", self.d_hidden())]));
 
         let x = self.act.forward(x);
 
@@ -125,7 +125,7 @@ impl<B: Backend> BlockMlp<B> {
             DimMatcher::Ellipsis,
             DimMatcher::Expr(DimExpr::Param("out")),
         ]);
-        OUTPUT_CONTRACT.assert_shape_every_n(&x, &[("out", self.d_output())], 50);
+        run_every_nth!(OUTPUT_CONTRACT.assert_shape(&x, &[("out", self.d_output())]));
 
         self.drop.forward(x)
     }
@@ -511,11 +511,11 @@ impl<B: Backend> ShiftedWindowTransformerBlock<B> {
         });
         // b, h * w, c
 
-        CONTRACT.assert_shape_every_n(&x, &env, 50);
+        run_every_nth!(CONTRACT.assert_shape(&x, &env));
 
         let x = self.with_skip(x, |x| self.norm2.forward(self.block_mlp.forward(x)));
 
-        CONTRACT.assert_shape_every_n(&x, &env, 50);
+        run_every_nth!(CONTRACT.assert_shape(&x, &env));
 
         x
     }

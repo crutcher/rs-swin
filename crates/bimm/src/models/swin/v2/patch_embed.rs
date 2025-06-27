@@ -1,4 +1,4 @@
-use bimm_contracts::{DimExpr, DimMatcher, ShapeContract};
+use bimm_contracts::{DimExpr, DimMatcher, ShapeContract, run_every_nth};
 use burn::config::Config;
 use burn::module::Module;
 use burn::nn::conv::{Conv2d, Conv2dConfig};
@@ -187,14 +187,13 @@ impl<B: Backend> PatchEmbed<B> {
             DimMatcher::Expr(DimExpr::Param("height")),
             DimMatcher::Expr(DimExpr::Param("width")),
         ]);
-        CONTRACT.assert_shape_every_n(
+        run_every_nth!(CONTRACT.assert_shape(
             &x,
             &[
                 ("height", self.input_height()),
                 ("width", self.input_width()),
             ],
-            50,
-        );
+        ));
 
         let x = self.projection.forward(x);
         let x = x.flatten(2, 3);

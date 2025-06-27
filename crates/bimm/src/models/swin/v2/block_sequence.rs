@@ -287,16 +287,14 @@ impl<B: Backend> StochasticDepthTransformerBlockSequence<B> {
         let [h, w] = self.input_resolution();
         let env = [("height", h), ("width", w)];
 
-        run_every_nth!(50, CONTRACT.assert_shape(&x, &env));
-
-        CONTRACT.assert_shape_every_n(&x, &env, 50);
+        run_every_nth!(CONTRACT.assert_shape(&x, &env));
 
         let mut x = x;
         for block in &self.blocks {
             x = block.forward(x);
         }
 
-        run_every_nth!(50, CONTRACT.assert_shape(&x, &env));
+        run_every_nth!(CONTRACT.assert_shape(&x, &env));
 
         x
     }

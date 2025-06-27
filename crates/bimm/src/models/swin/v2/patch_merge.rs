@@ -1,5 +1,5 @@
 use crate::models::swin::v2::windowing::{window_partition, window_reverse};
-use bimm_contracts::{DimExpr, DimMatcher, ShapeContract};
+use bimm_contracts::{DimExpr, DimMatcher, ShapeContract, run_every_nth};
 use burn::config::Config;
 use burn::module::Module;
 use burn::nn::{LayerNorm, LayerNormConfig, Linear, LinearConfig};
@@ -151,7 +151,7 @@ impl<B: Backend> PatchMerging<B> {
             ])),
             DimMatcher::Expr(DimExpr::Param("d_out")),
         ]);
-        OUTPUT_CONTRACT.assert_shape_every_n(
+        run_every_nth!(OUTPUT_CONTRACT.assert_shape(
             &x,
             &[
                 ("batch", b),
@@ -159,8 +159,7 @@ impl<B: Backend> PatchMerging<B> {
                 ("half_width", self.output_width()),
                 ("d_out", self.d_output()),
             ],
-            50,
-        );
+        ));
 
         x
     }
