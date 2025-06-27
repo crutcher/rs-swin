@@ -282,3 +282,74 @@ impl<B: Backend> StochasticDepthTransformerBlockSequence<B> {
         x
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_config() {
+        let d_input = 96;
+        let input_resolution = [56, 56];
+        let depth = 12;
+        let num_heads = 8;
+        let window_size = 7;
+
+        let config = StochasticDepthTransformerBlockSequenceConfig::new(
+            d_input,
+            input_resolution,
+            depth,
+            num_heads,
+            window_size,
+        );
+
+        assert_eq!(config.d_input(), d_input);
+        assert_eq!(config.input_resolution(), input_resolution);
+        assert_eq!(config.depth(), depth);
+        assert_eq!(config.num_heads(), num_heads);
+        assert_eq!(config.window_size(), window_size);
+        assert_eq!(config.mlp_ratio(), 4.0);
+        assert!(config.enable_qkv_bias());
+        assert_eq!(config.drop_rate(), 0.0);
+        assert_eq!(config.attn_drop_rate(), 0.0);
+        assert_eq!(config.common_drop_path_rate, 0.0);
+        assert_eq!(config.drop_path_rates(), vec![0.0; depth]);
+        let block_configs = config.block_configs();
+        assert_eq!(block_configs.len(), depth);
+        for block_config in block_configs {
+            assert_eq!(block_config.d_input(), d_input);
+            assert_eq!(block_config.input_resolution(), input_resolution);
+            assert_eq!(block_config.num_heads(), num_heads);
+            assert_eq!(block_config.window_size(), window_size);
+            assert_eq!(block_config.mlp_ratio(), 4.0);
+            assert!(block_config.enable_qkv_bias());
+            assert_eq!(block_config.drop_rate(), 0.0);
+            assert_eq!(block_config.attn_drop_rate(), 0.0);
+        }
+
+        let config = config
+            .with_mlp_ratio(2.0)
+            .with_enable_qkv_bias(false)
+            .with_drop_rate(0.1)
+            .with_attn_drop_rate(0.1)
+            .with_common_drop_path_rate(0.2);
+
+        assert_eq!(config.mlp_ratio(), 2.0);
+        assert!(!config.enable_qkv_bias());
+        assert_eq!(config.drop_rate(), 0.1);
+        assert_eq!(config.attn_drop_rate(), 0.1);
+        assert_eq!(config.common_drop_path_rate, 0.2);
+        assert_eq!(config.drop_path_rates(), vec![0.2; depth]);
+        let block_configs = config.block_configs();
+        assert_eq!(block_configs.len(), depth);
+        for block_config in block_configs {
+            assert_eq!(block_config.mlp_ratio(), 2.0);
+            assert!(!block_config.enable_qkv_bias());
+            assert_eq!(block_config.drop_rate(), 0.1);
+            assert_eq!(block_config.attn_drop_rate(), 0.1);
+        }
+
+        let config = config.with_drop_path_rates(Some(vec![0.1; depth]));
+        assert_eq!(config.drop_path_rates(), vec![0.1; depth]);
+    }
+}
