@@ -489,15 +489,16 @@ impl<B: Backend> ShiftedWindowTransformerBlock<B> {
         x: Tensor<B, 3>,
     ) -> Tensor<B, 3> {
         let [h, w] = self.input_resolution;
-        let [b, l, c] = x.dims();
-        assert_eq!(
-            l,
-            h * w,
-            "Expected input shape (B, H ({}) * W ({}), D), but got {:?}",
-            h,
-            w,
-            x.dims()
-        );
+        static CONTRACT: ShapeContract = ShapeContract::new(&[
+            DimMatcher::Expr(DimExpr::Param("batch")),
+            DimMatcher::Expr(DimExpr::Prod(&[
+                DimExpr::Param("height"),
+                DimExpr::Param("width"),
+            ])),
+            DimMatcher::Expr(DimExpr::Param("channels")),
+        ]);
+        let env = [("height", h), ("width", w)];
+        let [b, c] = CONTRACT.unpack_shape(&x, &["batch", "channels"], &env);
 
         let x = self.with_skip(x, |x| {
             let x = x.reshape([b, h, w, c]);
@@ -510,16 +511,12 @@ impl<B: Backend> ShiftedWindowTransformerBlock<B> {
         });
         // b, h * w, c
 
+        CONTRACT.assert_shape_every_n(&x, &env, 50);
+
         let x = self.with_skip(x, |x| self.norm2.forward(self.block_mlp.forward(x)));
 
-        assert_eq!(
-            l,
-            h * w,
-            "Expected input shape (B, H ({}) * W ({}), D), but got {:?}",
-            h,
-            w,
-            x.dims()
-        );
+        CONTRACT.assert_shape_every_n(&x, &env, 50);
+
         x
     }
 
