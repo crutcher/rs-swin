@@ -355,7 +355,7 @@ mod tests {
             DimMatcher::Expr(DimExpr::Param("channels")),
         ]);
         CONTRACT.assert_shape(
-            &res.shape().dims,
+            &res,
             &[
                 ("batch", b),
                 ("num_windows", num_windows),

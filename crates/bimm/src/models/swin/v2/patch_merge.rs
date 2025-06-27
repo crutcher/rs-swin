@@ -151,7 +151,7 @@ impl<B: Backend> PatchMerging<B> {
             ])),
             DimMatcher::Expr(DimExpr::Param("d_out")),
         ]);
-        OUTPUT_CONTRACT.assert_shape(
+        OUTPUT_CONTRACT.assert_shape_every_n(
             &x,
             &[
                 ("batch", b),
@@ -159,6 +159,7 @@ impl<B: Backend> PatchMerging<B> {
                 ("half_width", self.output_width()),
                 ("d_out", self.d_output()),
             ],
+            50,
         );
 
         x

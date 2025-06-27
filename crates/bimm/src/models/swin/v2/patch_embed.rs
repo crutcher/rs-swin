@@ -187,12 +187,13 @@ impl<B: Backend> PatchEmbed<B> {
             DimMatcher::Expr(DimExpr::Param("height")),
             DimMatcher::Expr(DimExpr::Param("width")),
         ]);
-        CONTRACT.assert_shape(
+        CONTRACT.assert_shape_every_n(
             &x,
             &[
                 ("height", self.input_height()),
                 ("width", self.input_width()),
             ],
+            50,
         );
 
         let x = self.projection.forward(x);
