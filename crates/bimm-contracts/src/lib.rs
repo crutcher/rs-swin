@@ -26,7 +26,7 @@ pub use shape_argument::ShapeArgument;
 /// ## Arguments:
 ///
 /// - `$period`: A literal number indicating how often the code should run;
-///    optional, defaults to 100.
+///   optional, defaults to 100.
 /// - `$code`: An expression to be executed every nth time.
 ///
 /// # Usage:

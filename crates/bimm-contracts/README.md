@@ -44,7 +44,7 @@ where
         DimMatcher::Expr(DimExpr::Param("channels")),
     ]);
     let [b, h_wins, w_wins, c] = INPUT_CONTRACT.unpack_shape(
-        &tensor.dims(),
+        &tensor,
         &["batch", "h_wins", "w_wins", "channels"],
         &[("window_size", window_size)],
     );
@@ -53,7 +53,7 @@ where
         .reshape([b, h_wins, window_size, w_wins, window_size, c])
         .swap_dims(2, 3)
         .reshape([b * h_wins * w_wins, window_size, window_size, c]);
-    
+
     // I'd normally not use a contract here, as the shape is already
     // very clear from the above operations; but this is an example
     // of low-overhead periodic shape checking.
@@ -69,14 +69,17 @@ where
     ]);
     // Run this check periodically on a growing schedule,
     // up to the default of every 100th call.
-    run_every_nth!(OUTPUT_CONTRACT.assert_shape(&tensor.dims(), &[
-        ("batch", b),
-        ("h_wins", h_wins),
-        ("w_wins", w_wins),
-        ("window_size", window_size),
-        ("channels", c),
-    ]));
-    
+    run_every_nth!(OUTPUT_CONTRACT.assert_shape(
+        &tensor,
+        &[
+            ("batch", b),
+            ("h_wins", h_wins),
+            ("w_wins", w_wins),
+            ("window_size", window_size),
+            ("channels", c),
+        ]
+    ));
+
     tensor
 }
 ```
