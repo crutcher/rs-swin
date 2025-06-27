@@ -83,3 +83,52 @@ fn bench_shape_contract(b: &mut Bencher) {
     });
 }
 ```
+
+## assert_shape_every_n
+
+There is also the `assert_shape_every_n` method that that can be used
+to assert the shape of a tensor at runtime, but only every `n` calls,
+starting with the first.
+
+Note that this method does not return keys, but only checks the shape.
+
+Benchmark: `20.66 ns/iter (+/- 0.51)`
+
+```rust
+#[bench]
+fn bench_assert_shape_every_n(b: &mut Bencher) {
+    static PATTERN: ShapeContract = ShapeContract::new(&[
+        DimMatcher::Any,
+        DimMatcher::Expr(DimExpr::Param("b")),
+        DimMatcher::Ellipsis,
+        DimMatcher::Expr(DimExpr::Prod(&[DimExpr::Param("h"), DimExpr::Param("p")])),
+        DimMatcher::Expr(DimExpr::Prod(&[DimExpr::Param("w"), DimExpr::Param("p")])),
+        DimMatcher::Expr(DimExpr::Pow(&DimExpr::Param("z"), 3)),
+        DimMatcher::Expr(DimExpr::Param("c")),
+    ]);
+
+    let batch = 2;
+    let height = 3;
+    let width = 2;
+    let padding = 4;
+    let channels = 5;
+    let z = 4;
+
+    let shape = [
+        12,
+        batch,
+        1,
+        2,
+        3,
+        height * padding,
+        width * padding,
+        z * z * z,
+        channels,
+    ];
+    let env = [("p", padding), ("c", channels)];
+
+    b.iter(|| {
+        PATTERN.assert_shape_every_n(&shape, &env, 10);
+    });
+}
+```
