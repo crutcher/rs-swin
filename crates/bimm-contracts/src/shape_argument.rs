@@ -74,3 +74,62 @@ where
         self.shape()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use burn::prelude::Shape;
+
+    #[test]
+    fn test_shape_argument() {
+        let shape = Shape::from([2, 3, 4]);
+        assert_eq!(shape.clone().get_shape(), shape);
+
+        let shape_ref: &Shape = &shape;
+        assert_eq!(shape_ref.get_shape(), shape);
+
+        {
+            let arr: [usize; 3] = [2, 3, 4];
+            assert_eq!(arr.get_shape(), shape);
+
+            let arr_ref: &[usize] = &arr;
+            assert_eq!(arr_ref.get_shape(), shape);
+        }
+
+        {
+            let arr: [u32; 3] = [2, 3, 4];
+            assert_eq!(arr.get_shape(), shape);
+
+            let arr_ref: &[u32] = &arr;
+            assert_eq!(arr_ref.get_shape(), shape);
+        }
+
+        {
+            let arr: [i32; 3] = [2, 3, 4];
+            assert_eq!(arr.get_shape(), shape);
+
+            let arr_ref: &[i32] = &arr;
+            assert_eq!(arr_ref.get_shape(), shape);
+        }
+
+        {
+            let vec: Vec<usize> = vec![2, 3, 4];
+            assert_eq!(vec.get_shape(), shape);
+
+            let vec_ref: &Vec<usize> = &vec;
+            assert_eq!(vec_ref.get_shape(), shape);
+        }
+
+        {
+            let vec: Vec<u32> = vec![2, 3, 4];
+            assert_eq!(vec.get_shape(), shape);
+
+            let vec_ref: &Vec<u32> = &vec;
+            assert_eq!(vec_ref.get_shape(), shape);
+        }
+
+        let tensor: Tensor<burn::backend::NdArray, 2> = Tensor::zeros([2, 2], &Default::default());
+        let tensor_ref = &tensor;
+        assert_eq!(tensor_ref.get_shape(), Shape::from([2, 2]));
+    }
+}

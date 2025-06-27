@@ -12,5 +12,8 @@ workspace = true
 [dependencies]
 burn = { workspace = true }
 
+[dev-dependencies]
+burn = { workspace = true, features = ["ndarray"] }
+
 [features]
 nightly = []
