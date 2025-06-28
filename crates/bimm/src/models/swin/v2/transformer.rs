@@ -291,7 +291,7 @@ impl SwinTransformerV2Config {
         })
     }
 
-    /// Initialize a new [SwinTransformerV2](SwinTransformerV2) model.
+    /// Initialize a new [SwinTransformerV2] model.
     #[must_use]
     pub fn init<B: Backend>(
         self,

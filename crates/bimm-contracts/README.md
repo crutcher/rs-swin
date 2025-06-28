@@ -75,7 +75,7 @@ where
         DimMatcher::Expr(DimExpr::Param("channels")),
     ]);
     // Run this check periodically on a growing schedule,
-    // up to the default of every 100th call.
+    // up to the default of every 1000th call.
     run_every_nth!(OUTPUT_CONTRACT.assert_shape(
         &tensor,
         &[
@@ -126,7 +126,7 @@ fn bench_shape_contract(b: &mut Bencher) {
 
 ## run_every_nth!(CONTRACT.assert_shape(&tensor, &env))
 
-Benchmark: `6.42 ns/iter (+/- 0.08)`
+Benchmark: `4.37 ns/iter (+/- 0.08)`
 
 ```rust
 #[bench]
