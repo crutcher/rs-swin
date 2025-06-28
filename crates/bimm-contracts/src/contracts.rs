@@ -217,7 +217,11 @@ impl<'a> ShapeContract<'a> {
             }
         }
 
-        Ok(mut_env.export_key_values(keys))
+        if K == 0 {
+            Ok([0; K])
+        } else {
+            Ok(mut_env.export_key_values(keys))
+        }
     }
 
     /// Check if the pattern has an ellipsis.
@@ -264,43 +268,6 @@ mod bench {
     use test::Bencher;
 
     #[bench]
-    fn bench_run_every_nth_assert_shape(b: &mut Bencher) {
-        static PATTERN: ShapeContract = ShapeContract::new(&[
-            DimMatcher::Any,
-            DimMatcher::Expr(DimExpr::Param("b")),
-            DimMatcher::Ellipsis,
-            DimMatcher::Expr(DimExpr::Prod(&[DimExpr::Param("h"), DimExpr::Param("p")])),
-            DimMatcher::Expr(DimExpr::Prod(&[DimExpr::Param("w"), DimExpr::Param("p")])),
-            DimMatcher::Expr(DimExpr::Pow(&DimExpr::Param("z"), 3)),
-            DimMatcher::Expr(DimExpr::Param("c")),
-        ]);
-
-        let batch = 2;
-        let height = 3;
-        let width = 2;
-        let padding = 4;
-        let channels = 5;
-        let z = 4;
-
-        let shape = [
-            12,
-            batch,
-            1,
-            2,
-            3,
-            height * padding,
-            width * padding,
-            z * z * z,
-            channels,
-        ];
-        let env = [("p", padding), ("c", channels)];
-
-        b.iter(|| {
-            run_every_nth!(PATTERN.assert_shape(&shape, &env));
-        });
-    }
-
-    #[bench]
     fn bench_unpack_shape(b: &mut Bencher) {
         static PATTERN: ShapeContract = ShapeContract::new(&[
             DimMatcher::Any,
@@ -335,6 +302,80 @@ mod bench {
 
         b.iter(|| {
             let _ = PATTERN.unpack_shape(&shape, &keys, &env);
+        });
+    }
+    #[bench]
+    fn bench_assert_shape(b: &mut Bencher) {
+        static PATTERN: ShapeContract = ShapeContract::new(&[
+            DimMatcher::Any,
+            DimMatcher::Expr(DimExpr::Param("b")),
+            DimMatcher::Ellipsis,
+            DimMatcher::Expr(DimExpr::Prod(&[DimExpr::Param("h"), DimExpr::Param("p")])),
+            DimMatcher::Expr(DimExpr::Prod(&[DimExpr::Param("w"), DimExpr::Param("p")])),
+            DimMatcher::Expr(DimExpr::Pow(&DimExpr::Param("z"), 3)),
+            DimMatcher::Expr(DimExpr::Param("c")),
+        ]);
+
+        let batch = 2;
+        let height = 3;
+        let width = 2;
+        let padding = 4;
+        let channels = 5;
+        let z = 4;
+
+        let shape = [
+            12,
+            batch,
+            1,
+            2,
+            3,
+            height * padding,
+            width * padding,
+            z * z * z,
+            channels,
+        ];
+        let env = [("p", padding), ("c", channels)];
+
+        b.iter(|| {
+            PATTERN.assert_shape(&shape, &env);
+        });
+    }
+
+
+    #[bench]
+    fn bench_assert_shape_every_nth(b: &mut Bencher) {
+        static PATTERN: ShapeContract = ShapeContract::new(&[
+            DimMatcher::Any,
+            DimMatcher::Expr(DimExpr::Param("b")),
+            DimMatcher::Ellipsis,
+            DimMatcher::Expr(DimExpr::Prod(&[DimExpr::Param("h"), DimExpr::Param("p")])),
+            DimMatcher::Expr(DimExpr::Prod(&[DimExpr::Param("w"), DimExpr::Param("p")])),
+            DimMatcher::Expr(DimExpr::Pow(&DimExpr::Param("z"), 3)),
+            DimMatcher::Expr(DimExpr::Param("c")),
+        ]);
+
+        let batch = 2;
+        let height = 3;
+        let width = 2;
+        let padding = 4;
+        let channels = 5;
+        let z = 4;
+
+        let shape = [
+            12,
+            batch,
+            1,
+            2,
+            3,
+            height * padding,
+            width * padding,
+            z * z * z,
+            channels,
+        ];
+        let env = [("p", padding), ("c", channels)];
+
+        b.iter(|| {
+            run_every_nth!(PATTERN.assert_shape(&shape, &env));
         });
     }
 }
