@@ -1,4 +1,5 @@
 use crate::bindings::StackMap;
+use crate::math::maybe_iroot;
 use std::fmt::{Display, Formatter};
 
 /// A stack/static expression algebra for dimension sizes.
@@ -214,33 +215,29 @@ impl<'a> DimExpr<'a> {
                 }
             }
             DimExpr::Negate(expr) => expr.try_match(-target, env),
-            DimExpr::Pow(base, exp) => match crate::math::maybe_iroot(target, *exp) {
+            DimExpr::Pow(base, exp) => match maybe_iroot(target, *exp) {
                 Some(root) => base.try_match(root, env),
                 None => Err("No integer solution.".to_string()),
             },
             DimExpr::Sum(exprs) => {
-                let (partial_value, rem_expr) =
-                    reduce_children(exprs, env, 0, |acc, value| *acc += value)?;
-                if let Some(expr) = rem_expr {
-                    let target = target - partial_value;
-                    expr.try_match(target, env)
-                } else if partial_value == target {
+                let (value, rem) = reduce_children(exprs, env, 0, |acc, value| *acc += value)?;
+                if let Some(expr) = rem {
+                    expr.try_match(target - value, env)
+                } else if value == target {
                     Ok(TryMatchResult::Match)
                 } else {
                     Ok(TryMatchResult::Conflict)
                 }
             }
             DimExpr::Prod(exprs) => {
-                let (partial_value, rem_expr) =
-                    reduce_children(exprs, env, 1, |acc, value| *acc *= value)?;
-                if let Some(expr) = rem_expr {
-                    if target % partial_value != 0 {
+                let (value, rem) = reduce_children(exprs, env, 1, |acc, value| *acc *= value)?;
+                if let Some(expr) = rem {
+                    if target % value != 0 {
                         // Non-integer solution
                         return Err("No integer solution.".to_string());
                     }
-                    let target = target / partial_value;
-                    expr.try_match(target, env)
-                } else if partial_value == target {
+                    expr.try_match(target / value, env)
+                } else if value == target {
                     Ok(TryMatchResult::Match)
                 } else {
                     Ok(TryMatchResult::Conflict)

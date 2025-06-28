@@ -12,6 +12,7 @@ where
     /// ## Returns
     ///
     /// An `Option<V>` containing the value if found, or `None` if not found.
+    #[must_use]
     fn lookup(
         &self,
         key: &'a str,
@@ -30,6 +31,7 @@ where
     /// ## Panics
     ///
     /// Panics if any key is not found in the local bindings.
+    #[must_use]
     fn export_key_values<const K: usize>(
         &self,
         keys: &'a [&str; K],
@@ -51,12 +53,17 @@ where
 pub type StackEnvironment<'a> = &'a [(&'a str, usize)];
 
 impl<'a> StackMap<'a, usize> for StackEnvironment<'a> {
+    #[inline]
     fn lookup(
         &self,
         key: &'a str,
     ) -> Option<usize> {
-        self.iter()
-            .find_map(|(k, v)| if k == &key { Some(*v) } else { None })
+        for &(k, v) in self.iter() {
+            if k == key {
+                return Some(v);
+            }
+        }
+        None
     }
 }
 
@@ -68,6 +75,9 @@ where
     V: Default + Copy,
 {
     /// Inserts a key-value pair into the stack.
+    ///
+    /// It is an error to bind a key which is already present;
+    /// but this is only checked when `debug_assertions` are on.
     ///
     /// ## Arguments
     ///
@@ -91,30 +101,71 @@ pub struct MutableStackEnvironment<'a> {
     pub updates: Vec<(&'a str, usize)>,
 }
 
+impl<'a> MutableStackEnvironment<'a> {
+    #[inline]
+    #[must_use]
+    fn lookup_bindings_first(
+        &self,
+        key: &'a str,
+    ) -> Option<usize> {
+        let result = (&self.updates.as_slice()).lookup(key);
+        if result.is_some() {
+            result
+        } else {
+            self.backing.lookup(key)
+        }
+    }
+}
+
 impl<'a> StackMap<'a, usize> for MutableStackEnvironment<'a> {
+    #[inline]
     fn lookup(
         &self,
         key: &str,
     ) -> Option<usize> {
-        (&self.updates.as_slice()).lookup(key).or_else(|| {
-            // If not found in local, check the static bindings
-            self.backing.lookup(key)
-        })
+        let result = self.backing.lookup(key);
+        if result.is_some() {
+            result
+        } else {
+            (&self.updates.as_slice()).lookup(key)
+        }
+    }
+
+    #[inline]
+    fn export_key_values<const K: usize>(
+        &self,
+        keys: &'a [&str; K],
+    ) -> [usize; K] {
+        let mut values: [usize; K] = [Default::default(); K];
+
+        for i in 0..K {
+            let key = keys[i];
+            values[i] = match self.lookup_bindings_first(key) {
+                Some(v) => v,
+                None => panic!("No value for key \"{key}\""),
+            };
+        }
+        values
     }
 }
 
 impl<'a> MutableStackMap<'a, usize> for MutableStackEnvironment<'a> {
+    #[inline]
     fn bind(
         &mut self,
         key: &'a str,
         value: usize,
     ) {
+        #[cfg(debug_assertions)]
+        assert!(self.lookup(key).is_none(), "double-bind: {key}");
+
         self.updates.push((key, value))
     }
 }
 
 impl<'a> MutableStackEnvironment<'a> {
     /// Creates a new `MutableStackEnvironment` with the given backing bindings.
+    #[inline(always)]
     pub fn new(bindings: StackEnvironment<'a>) -> Self {
         MutableStackEnvironment {
             backing: bindings,
@@ -169,6 +220,14 @@ mod tests {
     fn test_export_key_values_panic() {
         let env = MutableStackEnvironment::new(&[("a", 1), ("b", 2)]);
         let keys = ["a", "b", "d"]; // 'd' does not exist
-        env.export_key_values(&keys); // This should panic
+        let _ = env.export_key_values(&keys); // This should panic
+    }
+
+    #[should_panic(expected = "double-bind: a")]
+    #[test]
+    #[cfg(debug_assertions)]
+    fn test_double_bind_panic() {
+        let mut env = MutableStackEnvironment::new(&[("a", 1), ("b", 2)]);
+        env.bind("a", 3);
     }
 }

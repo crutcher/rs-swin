@@ -212,24 +212,22 @@ impl<'a> ShapeContract<'a> {
     where
         S: ShapeArgument,
     {
-        let shape = shape.get_shape().dims;
+        let shape = &shape.get_shape().dims;
 
-        let fail = |msg: String| -> String {
-            let bindings = format!(
-                "{{{}}}",
+        let fail = |msg| -> String {
+            format!(
+                "Shape Error:: {msg}\n shape:\n  {shape:?}\n expected:\n  {self}\n  {{{}}}",
                 env.backing
                     .iter()
                     .map(|(k, v)| format!("\"{k}\": {v}"))
                     .collect::<Vec<_>>()
                     .join(", ")
-            );
-
-            format!("Shape Error:: {msg}\n shape:\n  {shape:?}\n expected:\n  {self}\n  {bindings}")
+            )
         };
-        let fail_at = |shape_idx: usize, term_idx: usize, msg: String| -> String {
+        let fail_at = |shape_idx, term_idx, msg| -> String {
             fail(format!(
-                "{} !~ {} :: {}",
-                shape[shape_idx], self.terms[term_idx], msg
+                "{} !~ {} :: {msg}",
+                shape[shape_idx], self.terms[term_idx]
             ))
         };
 
