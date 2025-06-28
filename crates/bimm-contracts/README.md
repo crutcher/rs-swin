@@ -9,8 +9,10 @@ Shape Contracts for Burn Image Models (BIMM).
 
 ## Changelog
 
-- **0.1.7**: Removed `assert_shape_every_n` in favor of `run_every_nth!` macro.
-- **0.1.6**: Added `run_every_nth!` macro.
+### **0.1.7**
+
+* Removed `assert_shape_every_n` in favor of `run_every_nth!` macro.
+* Improved isolation of `run_every_nth!`.
 
 ## Example Usage
 
