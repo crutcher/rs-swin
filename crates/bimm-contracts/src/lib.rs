@@ -13,6 +13,9 @@ pub mod macros;
 pub mod math;
 pub mod shape_argument;
 
+#[cfg(all(feature = "nightly", test))]
+mod benchmarks;
+
 pub use bindings::StackEnvironment;
 pub use contracts::{DimMatcher, ShapeContract};
 pub use expressions::DimExpr;
