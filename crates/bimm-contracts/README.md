@@ -93,7 +93,8 @@ where
 
 ## Performance
 
-Benchmark: `214.11 ns/iter (+/- 4.71)`
+Benchmark: `230.51 ns/iter (+/- 5.22)`
+
 ```rust
 #[bench]
 fn bench_shape_contract(b: &mut Bencher) {
@@ -126,7 +127,7 @@ fn bench_shape_contract(b: &mut Bencher) {
 
 ## run_every_nth!(CONTRACT.assert_shape(&tensor, &env))
 
-Benchmark: `4.37 ns/iter (+/- 0.08)`
+Benchmark: `4.38 ns/iter (+/- 0.03)`
 
 ```rust
 #[bench]

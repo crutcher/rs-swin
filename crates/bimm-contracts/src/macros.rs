@@ -1,7 +1,7 @@
 /// A macro to run a block of code or an expression every nth time it is called.
 ///
-/// Runs at a doubling rate (1, 2, 4, ...), until it reaches the specified period;
-/// then continues to run at that period.
+/// Runs the first 10 times, then doubles the period on each subsequent call,
+/// until it reaches the specified period, after which it continues to run at that period.
 ///
 /// This macro is useful for scenarios where you want to limit the execution
 /// of code to every nth call, such as logging, sampling, or throttling operations.
@@ -48,7 +48,10 @@ macro_rules! run_every_nth {
             let effective_period = PERIOD.load(std::sync::atomic::Ordering::Relaxed);
             let count = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-            if (count % effective_period) == 0 {
+            if effective_period == 1 && count < 10 {
+                true
+
+            } else if (count % effective_period) == 0 {
                 // Double the period, but do not exceed the specified maximum period.
                 if effective_period < $period {
                     PERIOD.store(
@@ -62,6 +65,7 @@ macro_rules! run_every_nth {
                     COUNTER.store(1, std::sync::atomic::Ordering::Relaxed);
                 }
                 true
+
             } else {
                 false
             }
@@ -76,7 +80,9 @@ mod tests {
 
     #[test]
     fn test_run_every_nth() {
-        let expected = vec![0, 2, 6, 14, 30, 62, 126, 254, 510, 1022, 2022];
+        let expected = vec![
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 16, 24, 40, 72, 136, 264, 520, 1032, 2032,
+        ];
 
         // Block.
         {
