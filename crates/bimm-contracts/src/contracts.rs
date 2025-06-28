@@ -87,8 +87,6 @@ impl<'a> ShapeContract<'a> {
 
     /// Assert that the shape matches the pattern.
     ///
-    /// Wraps `unpack_shape`, without extracting keys.
-    ///
     /// ## Arguments
     ///
     /// - `shape`: the shape to match.
@@ -105,7 +103,32 @@ impl<'a> ShapeContract<'a> {
     ) where
         S: ShapeArgument,
     {
-        let _ignored = self.unpack_shape(shape, &[], env);
+        self.maybe_assert_shape(shape, env).unwrap();
+    }
+
+    /// Assert that the shape matches the pattern.
+    ///
+    /// ## Arguments
+    ///
+    /// - `shape`: the shape to match.
+    /// - `env`: the params which are already bound.
+    ///
+    /// ## Returns
+    ///
+    /// - `Ok(())`: if the shape matches the pattern.
+    /// - `Err(String)`: if the shape does not match the pattern, with an error message.
+    #[inline(always)]
+    pub fn maybe_assert_shape<S>(
+        &'a self,
+        shape: S,
+        env: StackEnvironment<'a>,
+    ) -> Result<(), String>
+    where
+        S: ShapeArgument,
+    {
+        let mut mut_env = MutableStackEnvironment::new(env);
+
+        self.resolve_match(shape, &mut mut_env)
     }
 
     /// Match and unpack a shape pattern.
@@ -126,6 +149,7 @@ impl<'a> ShapeContract<'a> {
     ///
     /// If the shape does not match the pattern, or if there is a conflict in the bindings.
     #[must_use]
+    #[inline(always)]
     pub fn unpack_shape<S, const K: usize>(
         &'a self,
         shape: S,
@@ -150,6 +174,7 @@ impl<'a> ShapeContract<'a> {
     ///
     /// Either the list of key values; or an error.
     #[must_use]
+    #[inline(always)]
     pub fn maybe_unpack_shape<S, const K: usize>(
         &'a self,
         shape: S,
@@ -159,12 +184,41 @@ impl<'a> ShapeContract<'a> {
     where
         S: ShapeArgument,
     {
+        let mut mut_env = MutableStackEnvironment::new(env);
+
+        self.resolve_match(shape, &mut mut_env)?;
+
+        Ok(mut_env.export_key_values(keys))
+    }
+
+    /// Resolve the match for the shape against the pattern.
+    ///
+    /// ## Arguments
+    ///
+    /// - `shape`: the shape to match.
+    /// - `env`: the mutable environment to bind parameters.
+    ///
+    /// ## Returns
+    ///
+    /// - `Ok(())`: if the shape matches the pattern.
+    /// - `Err(String)`: if the shape does not match the pattern, with an error message.
+    #[must_use]
+    #[inline(always)]
+    fn resolve_match<S>(
+        &'a self,
+        shape: S,
+        env: &mut MutableStackEnvironment<'a>,
+    ) -> Result<(), String>
+    where
+        S: ShapeArgument,
+    {
         let shape = shape.get_shape().dims;
 
         let fail = |msg: String| -> String {
             let bindings = format!(
                 "{{{}}}",
-                env.iter()
+                env.backing
+                    .iter()
                     .map(|(k, v)| format!("\"{k}\": {v}"))
                     .collect::<Vec<_>>()
                     .join(", ")
@@ -180,8 +234,6 @@ impl<'a> ShapeContract<'a> {
         };
 
         let rank = shape.len();
-
-        let mut mut_env: MutableStackEnvironment<'a> = MutableStackEnvironment::new(env);
 
         let (e_start, e_size) = match self.check_ellipsis_split(rank) {
             Ok((e_start, e_size)) => (e_start, e_size),
@@ -205,23 +257,19 @@ impl<'a> ShapeContract<'a> {
                 DimMatcher::Expr(expr) => expr,
             };
 
-            match expr.try_match(dim_size as isize, &mut_env) {
+            match expr.try_match(dim_size as isize, env) {
                 Ok(TryMatchResult::Match) => continue,
                 Ok(TryMatchResult::Conflict) => {
                     return Err(fail_at(shape_idx, term_idx, "Value MissMatch".to_string()));
                 }
                 Ok(TryMatchResult::ParamConstraint(param_name, value)) => {
-                    mut_env.bind(param_name, value as usize);
+                    env.bind(param_name, value as usize);
                 }
                 Err(msg) => return Err(fail_at(shape_idx, term_idx, msg)),
             }
         }
 
-        if K == 0 {
-            Ok([0; K])
-        } else {
-            Ok(mut_env.export_key_values(keys))
-        }
+        Ok(())
     }
 
     /// Check if the pattern has an ellipsis.
@@ -340,7 +388,6 @@ mod bench {
             PATTERN.assert_shape(&shape, &env);
         });
     }
-
 
     #[bench]
     fn bench_assert_shape_every_nth(b: &mut Bencher) {
