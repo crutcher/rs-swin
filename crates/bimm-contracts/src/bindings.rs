@@ -104,7 +104,7 @@ pub struct MutableStackEnvironment<'a> {
 impl<'a> MutableStackEnvironment<'a> {
     #[inline]
     #[must_use]
-    fn lookup_bindings_first(
+    fn updates_first_lookup(
         &self,
         key: &'a str,
     ) -> Option<usize> {
@@ -140,7 +140,7 @@ impl<'a> StackMap<'a, usize> for MutableStackEnvironment<'a> {
 
         for i in 0..K {
             let key = keys[i];
-            values[i] = match self.lookup_bindings_first(key) {
+            values[i] = match self.updates_first_lookup(key) {
                 Some(v) => v,
                 None => panic!("No value for key \"{key}\""),
             };
