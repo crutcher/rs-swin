@@ -37,7 +37,6 @@ where
         keys: &'a [&str; K],
     ) -> [V; K] {
         let mut values: [V; K] = [Default::default(); K];
-
         for i in 0..K {
             let key = keys[i];
             values[i] = match self.lookup(key) {
@@ -102,18 +101,29 @@ pub struct MutableStackEnvironment<'a> {
 }
 
 impl<'a> MutableStackEnvironment<'a> {
+    /// Looks up a value associated with the given key in the updates first.
+    ///
+    /// This is useful when exporting values, as the newly bound values
+    /// tend to be the keys being exported.
+    ///
+    /// ## Arguments
+    ///
+    /// * `key`: The key to look up.
+    ///
+    /// ## Returns
+    ///
+    /// An `Option<usize>` containing the value if found in updates,
+    /// or `None` if not found.
     #[inline]
     #[must_use]
     fn updates_first_lookup(
         &self,
         key: &'a str,
     ) -> Option<usize> {
-        let result = (&self.updates.as_slice()).lookup(key);
-        if result.is_some() {
-            result
-        } else {
-            self.backing.lookup(key)
-        }
+        self.updates
+            .as_slice()
+            .lookup(key)
+            .or_else(|| self.backing.lookup(key))
     }
 }
 
@@ -123,12 +133,9 @@ impl<'a> StackMap<'a, usize> for MutableStackEnvironment<'a> {
         &self,
         key: &str,
     ) -> Option<usize> {
-        let result = self.backing.lookup(key);
-        if result.is_some() {
-            result
-        } else {
-            (&self.updates.as_slice()).lookup(key)
-        }
+        self.backing
+            .lookup(key)
+            .or_else(|| self.updates.as_slice().lookup(key))
     }
 
     #[inline]
@@ -137,7 +144,6 @@ impl<'a> StackMap<'a, usize> for MutableStackEnvironment<'a> {
         keys: &'a [&str; K],
     ) -> [usize; K] {
         let mut values: [usize; K] = [Default::default(); K];
-
         for i in 0..K {
             let key = keys[i];
             values[i] = match self.updates_first_lookup(key) {

@@ -34,9 +34,8 @@ fn bench_unpack_shape(b: &mut Bencher) {
     let env = [("p", PADDING), ("c", CHANNELS)];
 
     b.iter(|| {
-        let [b, h, w, c] =
-            PATTERN.unpack_shape(&shape, &["b", "h", "w", "z"], &env);
-        
+        let [b, h, w, c] = PATTERN.unpack_shape(&shape, &["b", "h", "w", "z"], &env);
+
         assert_eq!(b, BATCH);
         assert_eq!(h, HEIGHT);
         assert_eq!(w, WIDTH);
@@ -58,7 +57,7 @@ fn bench_assert_shape(b: &mut Bencher) {
         CHANNELS,
     ];
     let env = [("p", PADDING), ("c", CHANNELS)];
-    
+
     b.iter(|| {
         PATTERN.assert_shape(&shape, &env);
     });
