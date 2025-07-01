@@ -2,7 +2,7 @@ use crate::models::swin::v2::swin_block::{
     ShiftedWindowTransformerBlock, ShiftedWindowTransformerBlockConfig,
     ShiftedWindowTransformerBlockMeta,
 };
-use bimm_contracts::{DimExpr, DimMatcher, ShapeContract, run_every_nth};
+use bimm_contracts::{ShapeContract, run_every_nth, shape_contract};
 use burn::config::Config;
 use burn::module::Module;
 use burn::prelude::{Backend, Tensor};
@@ -276,14 +276,7 @@ impl<B: Backend> StochasticDepthTransformerBlockSequence<B> {
         &self,
         x: Tensor<B, 3>,
     ) -> Tensor<B, 3> {
-        static CONTRACT: ShapeContract = ShapeContract::new(&[
-            DimMatcher::Expr(DimExpr::Param("batch")),
-            DimMatcher::Expr(DimExpr::Prod(&[
-                DimExpr::Param("height"),
-                DimExpr::Param("width"),
-            ])),
-            DimMatcher::Expr(DimExpr::Param("channels")),
-        ]);
+        static CONTRACT: ShapeContract = shape_contract!("batch", "height" * "width", "channels");
         let [h, w] = self.input_resolution();
         let env = [("height", h), ("width", w)];
 

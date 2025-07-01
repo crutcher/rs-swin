@@ -11,7 +11,7 @@ members = [
 
 [workspace.package]
 edition = "2024"
-version = "0.1.7"
+version = "0.1.8"
 repository = "https://github.com/crutcher/bimm"
 license = "MIT"
 
@@ -21,8 +21,14 @@ double_must_use = "allow"
 [workspace.dependencies]
 burn = { version = "^0.17.1" }
 
-bimm = { version = "0.1.7", path = "crates/bimm" }
-bimm-contracts = { version = "0.1.7", path = "crates/bimm-contracts" }
+bimm = { version = "0.1.8", path = "crates/bimm" }
+bimm-contracts = { version = "0.1.8", path = "crates/bimm-contracts" }
+bimm-contracts-macros = { version = "0.1.8", path = "crates/bimm-contracts-macros" }
+
+# macro dependencies
+proc-macro2 = { version = "^1.0.95" }
+syn = { version = "^2.0.104" }
+quote = { version = "^1.0.40" }
 
 # Test and/or Examples dependencies
 rand = {  version = "^0.9.1"  }

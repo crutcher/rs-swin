@@ -1,4 +1,4 @@
-use bimm_contracts::{DimExpr, DimMatcher, ShapeContract, run_every_nth};
+use bimm_contracts::{ShapeContract, run_every_nth, shape_contract};
 use burn::config::Config;
 use burn::module::Module;
 use burn::nn::conv::{Conv2d, Conv2dConfig};
@@ -181,12 +181,7 @@ impl<B: Backend> PatchEmbed<B> {
         &self,
         x: Tensor<B, 4>,
     ) -> Tensor<B, 3> {
-        static CONTRACT: ShapeContract = ShapeContract::new(&[
-            DimMatcher::Expr(DimExpr::Param("batch")),
-            DimMatcher::Expr(DimExpr::Param("channels")),
-            DimMatcher::Expr(DimExpr::Param("height")),
-            DimMatcher::Expr(DimExpr::Param("width")),
-        ]);
+        static CONTRACT: ShapeContract = shape_contract!("batch", "channels", "height", "width");
         run_every_nth!(CONTRACT.assert_shape(
             &x,
             &[

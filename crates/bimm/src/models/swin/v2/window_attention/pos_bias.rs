@@ -236,7 +236,7 @@ mod tests {
     use crate::models::swin::v2::window_attention::{
         window_attention_relative_position_index, window_log1p_relative_offset_grid,
     };
-    use bimm_contracts::{DimExpr, DimMatcher, ShapeContract};
+    use bimm_contracts::{ShapeContract, shape_contract};
     use burn::backend::NdArray;
 
     #[test]
@@ -268,11 +268,7 @@ mod tests {
         let table = rpb.forward();
         // heads, h*w, h*w
 
-        static CONTRACT: ShapeContract = ShapeContract::new(&[
-            DimMatcher::Expr(DimExpr::Param("heads")),
-            DimMatcher::Expr(DimExpr::Prod(&[DimExpr::Param("h"), DimExpr::Param("w")])),
-            DimMatcher::Expr(DimExpr::Prod(&[DimExpr::Param("h"), DimExpr::Param("w")])),
-        ]);
+        static CONTRACT: ShapeContract = shape_contract!("heads", "h" * "w", "h" * "w");
         CONTRACT.assert_shape(
             &table.dims(),
             &[

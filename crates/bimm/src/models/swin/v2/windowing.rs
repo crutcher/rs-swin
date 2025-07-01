@@ -1,4 +1,4 @@
-use bimm_contracts::{DimExpr, DimMatcher, ShapeContract};
+use bimm_contracts::{ShapeContract, shape_contract};
 use burn::prelude::{Backend, Tensor};
 use burn::tensor::BasicOps;
 
@@ -20,18 +20,12 @@ pub fn window_partition<B: Backend, K>(
 where
     K: BasicOps<B>,
 {
-    static CONTRACT: ShapeContract = ShapeContract::new(&[
-        DimMatcher::Expr(DimExpr::Param("batch")),
-        DimMatcher::Expr(DimExpr::Prod(&[
-            DimExpr::Param("h_wins"),
-            DimExpr::Param("window_size"),
-        ])),
-        DimMatcher::Expr(DimExpr::Prod(&[
-            DimExpr::Param("w_wins"),
-            DimExpr::Param("window_size"),
-        ])),
-        DimMatcher::Expr(DimExpr::Param("channels")),
-    ]);
+    static CONTRACT: ShapeContract = shape_contract!(
+        "batch",
+        "h_wins" * "window_size",
+        "w_wins" * "window_size",
+        "channels"
+    );
     let [b, h_wins, w_wins, c] = CONTRACT.unpack_shape(
         &tensor,
         &["batch", "h_wins", "w_wins", "channels"],
@@ -65,16 +59,12 @@ pub fn window_reverse<B: Backend, K>(
 where
     K: BasicOps<B>,
 {
-    static CONTRACT: ShapeContract = ShapeContract::new(&[
-        DimMatcher::Expr(DimExpr::Prod(&[
-            DimExpr::Param("batch"),
-            DimExpr::Param("h_wins"),
-            DimExpr::Param("w_wins"),
-        ])),
-        DimMatcher::Expr(DimExpr::Param("window_size")),
-        DimMatcher::Expr(DimExpr::Param("window_size")),
-        DimMatcher::Expr(DimExpr::Param("channels")),
-    ]);
+    static CONTRACT: ShapeContract = shape_contract!(
+        "batch" * "h_wins" * "w_wins",
+        "window_size",
+        "window_size",
+        "channels"
+    );
 
     let h_wins = h / window_size;
     let w_wins = w / window_size;

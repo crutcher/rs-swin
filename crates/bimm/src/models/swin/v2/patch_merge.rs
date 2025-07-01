@@ -1,5 +1,5 @@
 use crate::models::swin::v2::windowing::{window_partition, window_reverse};
-use bimm_contracts::{DimExpr, DimMatcher, ShapeContract, run_every_nth};
+use bimm_contracts::{ShapeContract, run_every_nth, shape_contract};
 use burn::config::Config;
 use burn::module::Module;
 use burn::nn::{LayerNorm, LayerNormConfig, Linear, LinearConfig};
@@ -119,14 +119,7 @@ impl<B: Backend> PatchMerging<B> {
         &self,
         x: Tensor<B, 3>,
     ) -> Tensor<B, 3> {
-        static INPUT_CONTRACT: ShapeContract = ShapeContract::new(&[
-            DimMatcher::Expr(DimExpr::Param("batch")),
-            DimMatcher::Expr(DimExpr::Prod(&[
-                DimExpr::Param("height"),
-                DimExpr::Param("width"),
-            ])),
-            DimMatcher::Expr(DimExpr::Param("d_in")),
-        ]);
+        static INPUT_CONTRACT: ShapeContract = shape_contract!("batch", "height" * "width", "d_in");
         let [b, h, w] = INPUT_CONTRACT.unpack_shape(
             &x,
             &["batch", "height", "width"],
@@ -143,14 +136,8 @@ impl<B: Backend> PatchMerging<B> {
 
         let x = self.norm.forward(x);
 
-        static OUTPUT_CONTRACT: ShapeContract = ShapeContract::new(&[
-            DimMatcher::Expr(DimExpr::Param("batch")),
-            DimMatcher::Expr(DimExpr::Prod(&[
-                DimExpr::Param("half_height"),
-                DimExpr::Param("half_width"),
-            ])),
-            DimMatcher::Expr(DimExpr::Param("d_out")),
-        ]);
+        static OUTPUT_CONTRACT: ShapeContract =
+            shape_contract!("batch", "half_height" * "half_width", "d_out");
         run_every_nth!(OUTPUT_CONTRACT.assert_shape(
             &x,
             &[
@@ -187,14 +174,7 @@ pub fn collate_patches<B: Backend, K>(
 where
     K: BasicOps<B>,
 {
-    static INPUT_CONTRACT: ShapeContract = ShapeContract::new(&[
-        DimMatcher::Expr(DimExpr::Param("batch")),
-        DimMatcher::Expr(DimExpr::Prod(&[
-            DimExpr::Param("height"),
-            DimExpr::Param("width"),
-        ])),
-        DimMatcher::Expr(DimExpr::Param("channels")),
-    ]);
+    static INPUT_CONTRACT: ShapeContract = shape_contract!("batch", "height" * "width", "channels");
     let [b, h, w, c] = INPUT_CONTRACT.unpack_shape(
         &x,
         &["batch", "height", "width", "channels"],
@@ -241,14 +221,8 @@ where
     let h2 = h / 2;
     let w2 = w / 2;
 
-    static INPUT_CONTRACT: ShapeContract = ShapeContract::new(&[
-        DimMatcher::Expr(DimExpr::Param("batch")),
-        DimMatcher::Expr(DimExpr::Prod(&[
-            DimExpr::Param("half_height"),
-            DimExpr::Param("half_width"),
-        ])),
-        DimMatcher::Expr(DimExpr::Param("channels")),
-    ]);
+    static INPUT_CONTRACT: ShapeContract =
+        shape_contract!("batch", "half_height" * "half_width", "channels");
     let [b, c] = INPUT_CONTRACT.unpack_shape(
         &x,
         &["batch", "channels"],

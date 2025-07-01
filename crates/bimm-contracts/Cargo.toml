@@ -12,9 +12,13 @@ workspace = true
 
 [dependencies]
 burn = { workspace = true }
+bimm-contracts-macros = { workspace = true, optional = true }
 
 [dev-dependencies]
 burn = { workspace = true, features = ["ndarray"] }
 
 [features]
+default = ["macros"]
+macros = ["bimm-contracts-macros"]
+
 nightly = []

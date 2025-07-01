@@ -7,7 +7,7 @@ pub use pos_bias::*;
 pub use pos_grid::*;
 
 use crate::compat::linalg::l2_normalize;
-use bimm_contracts::{DimExpr, DimMatcher, ShapeContract};
+use bimm_contracts::{ShapeContract, shape_contract};
 use burn::config::Config;
 use burn::module::{Module, Param, ParamId};
 use burn::nn::{Dropout, DropoutConfig, Linear, LinearConfig};
@@ -144,11 +144,7 @@ impl<B: Backend> WindowAttention<B> {
         x: Tensor<B, 3>,
         mask: Option<Tensor<B, 3>>,
     ) -> Tensor<B, 3> {
-        static CONTRACT: ShapeContract = ShapeContract::new(&[
-            DimMatcher::Expr(DimExpr::Param("b_nw")),
-            DimMatcher::Expr(DimExpr::Param("n")),
-            DimMatcher::Expr(DimExpr::Param("c")),
-        ]);
+        static CONTRACT: ShapeContract = shape_contract!("b_nw", "n", "c");
         let [b_nw, n, c] = CONTRACT.unpack_shape(&x.shape().dims, &["b_nw", "n", "c"], &[]);
 
         // n = ws * ws
@@ -314,6 +310,7 @@ impl WindowAttentionConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bimm_contracts::shape_contract;
     use burn::backend::NdArray;
     use burn::prelude::Tensor;
     use burn::tensor::Distribution;
@@ -346,14 +343,8 @@ mod tests {
         );
 
         let res = attn_mod.forward(input, None);
-        static CONTRACT: ShapeContract = ShapeContract::new(&[
-            DimMatcher::Expr(DimExpr::Prod(&[
-                DimExpr::Param("batch"),
-                DimExpr::Param("num_windows"),
-            ])),
-            DimMatcher::Expr(DimExpr::Pow(&DimExpr::Param("window_size"), 2)),
-            DimMatcher::Expr(DimExpr::Param("channels")),
-        ]);
+        static CONTRACT: ShapeContract =
+            shape_contract!("batch" * "num_windows", "window_size" ^ 2, "channels");
         CONTRACT.assert_shape(
             &res,
             &[

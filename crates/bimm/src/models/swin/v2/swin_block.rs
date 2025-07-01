@@ -11,7 +11,7 @@ use burn::nn::{Dropout, DropoutConfig, Gelu, LayerNorm, LayerNormConfig, Linear,
 use burn::prelude::{Backend, Tensor};
 use burn::tensor::BasicOps;
 
-use bimm_contracts::{DimExpr, DimMatcher, ShapeContract, run_every_nth};
+use bimm_contracts::{ShapeContract, run_every_nth, shape_contract};
 
 pub trait BlockMlpMeta {
     fn d_input(&self) -> usize;
@@ -107,13 +107,11 @@ impl<B: Backend> BlockMlp<B> {
         &self,
         x: Tensor<B, D>,
     ) -> Tensor<B, D> {
-        static INPUT_CONTRACT: ShapeContract =
-            ShapeContract::new(&[DimMatcher::Ellipsis, DimMatcher::Expr(DimExpr::Param("in"))]);
+        static INPUT_CONTRACT: ShapeContract = shape_contract!(..., "in");
         run_every_nth!(INPUT_CONTRACT.assert_shape(&x, &[("in", self.d_input())]));
 
         let x = self.fc1.forward(x);
-        static F_CONTRACT: ShapeContract =
-            ShapeContract::new(&[DimMatcher::Ellipsis, DimMatcher::Expr(DimExpr::Param("h"))]);
+        static F_CONTRACT: ShapeContract = shape_contract!(..., "h");
         run_every_nth!(F_CONTRACT.assert_shape(&x, &[("h", self.d_hidden())]));
 
         let x = self.act.forward(x);
@@ -121,10 +119,7 @@ impl<B: Backend> BlockMlp<B> {
         let x = self.drop.forward(x);
 
         let x = self.fc2.forward(x);
-        static OUTPUT_CONTRACT: ShapeContract = ShapeContract::new(&[
-            DimMatcher::Ellipsis,
-            DimMatcher::Expr(DimExpr::Param("out")),
-        ]);
+        static OUTPUT_CONTRACT: ShapeContract = shape_contract!(..., "out");
         run_every_nth!(OUTPUT_CONTRACT.assert_shape(&x, &[("out", self.d_output())]));
 
         self.drop.forward(x)
@@ -489,14 +484,7 @@ impl<B: Backend> ShiftedWindowTransformerBlock<B> {
         x: Tensor<B, 3>,
     ) -> Tensor<B, 3> {
         let [h, w] = self.input_resolution;
-        static CONTRACT: ShapeContract = ShapeContract::new(&[
-            DimMatcher::Expr(DimExpr::Param("batch")),
-            DimMatcher::Expr(DimExpr::Prod(&[
-                DimExpr::Param("height"),
-                DimExpr::Param("width"),
-            ])),
-            DimMatcher::Expr(DimExpr::Param("channels")),
-        ]);
+        static CONTRACT: ShapeContract = shape_contract!("batch", "height" * "width", "channels");
         let env = [("height", h), ("width", w)];
         let [b, c] = CONTRACT.unpack_shape(&x, &["batch", "channels"], &env);
 
