@@ -6,6 +6,7 @@ use burn::module::Module;
 use burn::nn;
 use burn::prelude::{Backend, Int, Tensor};
 // use burn::tensor::BasicOps;
+use bimm_contracts::{ShapeContract, run_every_nth, shape_contract};
 use burn::tensor::activation::sigmoid;
 
 /// Common introspection interface for relative position bias modules.
@@ -126,7 +127,21 @@ impl<B: Backend> OffsetGridRelativePositionBias<B> {
         let hw = h * w;
 
         let lookup_table = self.cbp.forward(self.rel_coords_table.clone());
-        // 2*h-1, 2*w-1, heads
+        run_every_nth!({
+            // 2*h-1, 2*w-1, heads
+            static CONTRACT: ShapeContract =
+                shape_contract!("two" * "height" - "clip", "two" * "width" - "clip", "heads");
+            CONTRACT.assert_shape(
+                &lookup_table.dims(),
+                &[
+                    ("two", 2),
+                    ("clip", 1),
+                    ("height", self.window_height()),
+                    ("width", self.window_width()),
+                    ("heads", self.num_heads()),
+                ],
+            );
+        });
 
         let rpb_table = lookup_table.reshape([-1, self.num_heads as i32]);
         // 2*((h-1) * (w-1)), heads
@@ -141,8 +156,21 @@ impl<B: Backend> OffsetGridRelativePositionBias<B> {
         let rpb = rpb.permute([2, 0, 1]);
         // heads, h*w, h*w
 
-        sigmoid(rpb).mul_scalar(2.0 * self.base)
-        // heads, h*w, h*w
+        let x = sigmoid(rpb).mul_scalar(2.0 * self.base);
+        run_every_nth!({
+            static CONTRACT: ShapeContract =
+                shape_contract!("heads", "height" * "width", "height" * "width");
+            CONTRACT.assert_shape(
+                &x.dims(),
+                &[
+                    ("heads", self.num_heads()),
+                    ("height", self.window_height()),
+                    ("width", self.window_width()),
+                ],
+            );
+        });
+
+        x
     }
 }
 
@@ -240,6 +268,30 @@ mod tests {
     use burn::backend::NdArray;
 
     #[test]
+    fn test_rpb_meta() {
+        let config = RelativePositionBiasConfig {
+            base: 8.0,
+            num_heads: 12,
+            window_shape: [3, 2],
+        };
+
+        assert_eq!(config.base(), 8.0);
+        assert_eq!(config.num_heads(), 12);
+        assert_eq!(config.window_shape(), [3, 2]);
+        assert_eq!(config.window_height(), 3);
+        assert_eq!(config.window_width(), 2);
+
+        let device = Default::default();
+        let rpb = config.init_offset_grid_rpb::<NdArray>(&device);
+
+        assert_eq!(rpb.base(), 8.0);
+        assert_eq!(rpb.num_heads(), 12);
+        assert_eq!(rpb.window_shape(), [3, 2]);
+        assert_eq!(rpb.window_height(), 3);
+        assert_eq!(rpb.window_width(), 2);
+    }
+
+    #[test]
     fn test_og_rpb() {
         let device = Default::default();
 
@@ -277,5 +329,22 @@ mod tests {
                 ("w", window_shape[1]),
             ],
         );
+    }
+
+    #[test]
+    fn test_cpb_mlp_meta() {
+        let config = ContinuousPositionBiasMlpConfig {
+            d_hidden: 512,
+            num_heads: 8,
+        };
+
+        assert_eq!(config.d_hidden(), 512);
+        assert_eq!(config.num_heads(), 8);
+
+        let device = Default::default();
+        let mlp = config.init::<NdArray>(&device);
+
+        assert_eq!(mlp.d_hidden(), 512);
+        assert_eq!(mlp.num_heads(), 8);
     }
 }
