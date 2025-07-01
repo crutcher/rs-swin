@@ -118,7 +118,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::compat::grid::{IndexPos, meshgrid_stack};
+    use crate::compat::grid::{
+        GridIndexing, GridOptions, GridSparsity, IndexPos, meshgrid, meshgrid_stack,
+    };
     use burn::backend::NdArray;
     use burn::prelude::{Int, Tensor, TensorData};
 
@@ -141,5 +143,27 @@ mod tests {
             &TensorData::from([[[0, 0], [0, 1]], [[1, 0], [1, 1]], [[2, 0], [2, 1]]]),
             false,
         );
+    }
+
+    #[test]
+    fn test_swap_dims() {
+        let device = Default::default();
+        let tensors = [
+            Tensor::arange_step(0..3, 1, &device),
+            Tensor::arange_step(0..2, 1, &device),
+        ];
+
+        let options = GridOptions {
+            indexing: GridIndexing::Cartesian,
+            sparsity: GridSparsity::Dense,
+        };
+
+        let result: [Tensor<NdArray, 2, Int>; 2] = meshgrid(&tensors, options);
+        result[0]
+            .to_data()
+            .assert_eq(&TensorData::from([[0, 1, 2], [0, 1, 2]]), false);
+        result[1]
+            .to_data()
+            .assert_eq(&TensorData::from([[0, 0, 0], [1, 1, 1]]), false);
     }
 }

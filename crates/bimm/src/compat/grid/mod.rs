@@ -59,6 +59,25 @@ mod compat {
             }
         }
     }
+
+    #[cfg(test)]
+    mod test {
+        use super::*;
+
+        #[test]
+        fn test_grid_options_from_indexing() {
+            let options: GridOptions = GridIndexing::Matrix.into();
+            assert_eq!(options.indexing, GridIndexing::Matrix);
+            assert_eq!(options.sparsity, GridSparsity::Dense);
+        }
+
+        #[test]
+        fn test_grid_options_from_sparsity() {
+            let options: GridOptions = GridSparsity::Sparse.into();
+            assert_eq!(options.indexing, GridIndexing::Matrix);
+            assert_eq!(options.sparsity, GridSparsity::Sparse);
+        }
+    }
 }
 
 #[cfg(not(feature = "burn_0_18_0"))]
