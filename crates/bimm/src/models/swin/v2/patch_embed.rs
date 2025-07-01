@@ -47,9 +47,7 @@ pub trait PatchEmbedMeta {
     }
 
     /// Output feature dimension size.
-    fn d_output(&self) -> usize {
-        self.d_input()
-    }
+    fn d_output(&self) -> usize;
 
     /// Enable patch normalization.
     fn enable_patch_norm(&self) -> bool;
@@ -181,22 +179,140 @@ impl<B: Backend> PatchEmbed<B> {
         &self,
         x: Tensor<B, 4>,
     ) -> Tensor<B, 3> {
-        static CONTRACT: ShapeContract = shape_contract!("batch", "channels", "height", "width");
-        run_every_nth!(CONTRACT.assert_shape(
-            &x,
-            &[
-                ("height", self.input_height()),
-                ("width", self.input_width()),
-            ],
-        ));
+        run_every_nth!({
+            static INPUT_CONTRACT: ShapeContract =
+                shape_contract!("batch", "d_input", "height", "width");
+            INPUT_CONTRACT.assert_shape(
+                &x,
+                &[
+                    ("d_input", self.d_input()),
+                    ("height", self.input_height()),
+                    ("width", self.input_width()),
+                ],
+            );
+        });
 
         let x = self.projection.forward(x);
         let x = x.flatten(2, 3);
         let x = x.swap_dims(1, 2);
 
-        match self.norm {
+        let x = match self.norm {
             None => x,
             Some(ref norm) => norm.forward(x),
-        }
+        };
+        run_every_nth!({
+            static OUTPUT_CONTRACT: ShapeContract =
+                shape_contract!("batch", "num_patches", "d_output");
+            OUTPUT_CONTRACT.assert_shape(
+                &x,
+                &[
+                    ("num_patches", self.num_patches()),
+                    ("d_output", self.d_output()),
+                ],
+            );
+        });
+
+        x
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use burn::backend::NdArray;
+    use burn::tensor::TensorData;
+
+    #[test]
+    fn test_patch_embed_meta() {
+        let config = PatchEmbedConfig {
+            input_resolution: [224, 224],
+            patch_size: 16,
+            d_input: 3,
+            d_output: 768,
+            enable_patch_norm: true,
+        };
+
+        assert_eq!(config.input_resolution(), [224, 224]);
+        assert_eq!(config.patch_size(), 16);
+        assert_eq!(config.d_input(), 3);
+        assert_eq!(config.d_output(), 768);
+        assert!(config.enable_patch_norm());
+        assert_eq!(config.patches_resolution(), [14, 14]);
+        assert_eq!(config.patches_height(), 14);
+        assert_eq!(config.patches_width(), 14);
+        assert_eq!(config.num_patches(), 196);
+        assert_eq!(config.d_output(), 768);
+        assert!(config.enable_patch_norm());
+
+        let device = Default::default();
+        let patch_embed = config.init::<NdArray>(&device);
+
+        assert_eq!(patch_embed.input_resolution(), [224, 224]);
+        assert_eq!(patch_embed.patch_size(), 16);
+        assert_eq!(patch_embed.d_input(), 3);
+        assert_eq!(patch_embed.d_output(), 768);
+        assert!(patch_embed.enable_patch_norm());
+        assert_eq!(patch_embed.patches_resolution(), [14, 14]);
+        assert_eq!(patch_embed.patches_height(), 14);
+        assert_eq!(patch_embed.patches_width(), 14);
+        assert_eq!(patch_embed.num_patches(), 196);
+        assert_eq!(patch_embed.d_output(), 768);
+        assert!(patch_embed.enable_patch_norm());
+    }
+
+    #[should_panic(expected = "Input resolution must be divisible by patch size")]
+    #[test]
+    fn test_patch_embed_invalid_resolution() {
+        let config = PatchEmbedConfig {
+            input_resolution: [224, 223], // Invalid resolution
+            patch_size: 16,
+            d_input: 3,
+            d_output: 768,
+            enable_patch_norm: true,
+        };
+        let device = Default::default();
+        let _d = config.init::<NdArray>(&device);
+    }
+
+    #[test]
+    fn test_patch_embed_forward() {
+        let config = PatchEmbedConfig {
+            input_resolution: [224, 224],
+            patch_size: 16,
+            d_input: 3,
+            d_output: 768,
+            enable_patch_norm: true,
+        };
+        let device = Default::default();
+        let patch_embed = config.init::<NdArray>(&device);
+
+        let input = Tensor::<NdArray, 4>::from_data(
+            TensorData::new(vec![1.0; 3 * 224 * 224], [1, 3, 224, 224]),
+            &device,
+        );
+
+        let output = patch_embed.forward(input);
+        assert_eq!(output.dims(), [1, 196, 768]);
+    }
+
+    #[test]
+    fn test_patch_embed_without_norm() {
+        let config = PatchEmbedConfig {
+            input_resolution: [224, 224],
+            patch_size: 16,
+            d_input: 3,
+            d_output: 768,
+            enable_patch_norm: false,
+        };
+        let device = Default::default();
+        let patch_embed = config.init::<NdArray>(&device);
+
+        let input = Tensor::<NdArray, 4>::from_data(
+            TensorData::new(vec![1.0; 3 * 224 * 224], [1, 3, 224, 224]),
+            &device,
+        );
+
+        let output = patch_embed.forward(input);
+        assert_eq!(output.dims(), [1, 196, 768]);
     }
 }

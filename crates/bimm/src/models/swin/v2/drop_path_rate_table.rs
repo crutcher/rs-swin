@@ -157,6 +157,8 @@ mod tests {
         let depths = vec![2, 3, 4];
         let dpr_table = DropPathRateDepthTable::new(0.1, &depths);
 
+        assert_eq!(dpr_table.total_depth(), 9);
+
         assert_that!(
             &dpr_table.layer_depths().to_vec(),
             contains(depths.clone()).exactly()
@@ -172,6 +174,15 @@ mod tests {
         assert_close_to_vec(&rates[0], &[0.0, 0.0125], 0.001);
         assert_close_to_vec(&rates[1], &[0.025, 0.0375, 0.05], 0.001);
         assert_close_to_vec(&rates[2], &[0.0625, 0.075, 0.0875, 0.1], 0.001);
+    }
+
+    #[should_panic(expected = "Layer index 3 out of bounds for 3 layers")]
+    #[test]
+    fn test_layer_dprs_out_of_bounds() {
+        let depths = vec![2, 3, 4];
+        let dpr_table = DropPathRateDepthTable::new(0.1, &depths);
+        // This should panic because there are only 3 layers (0, 1, 2)
+        let _d = dpr_table.layer_dprs(3);
     }
 
     #[test]

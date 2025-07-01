@@ -103,7 +103,10 @@ impl<'a> ShapeContract<'a> {
     ) where
         S: ShapeArgument,
     {
-        self.maybe_assert_shape(shape, env).unwrap();
+        let result = self.maybe_assert_shape(shape, env);
+        if result.is_err() {
+            panic!("{}", result.unwrap_err());
+        }
     }
 
     /// Assert that the shape matches the pattern.
@@ -159,7 +162,10 @@ impl<'a> ShapeContract<'a> {
     where
         S: ShapeArgument,
     {
-        self.maybe_unpack_shape(shape, keys, env).unwrap()
+        match self.maybe_unpack_shape(shape, keys, env) {
+            Ok(values) => values,
+            Err(msg) => panic!("{msg}"),
+        }
     }
 
     /// Match and unpack a shape pattern.

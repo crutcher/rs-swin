@@ -432,7 +432,7 @@ mod tests {
         let num: usize = 1;
 
         let actual = float_linspace::<NdArray>(start, end, num, &device);
-        println!("{actual:?}");
+        // println!("{actual:?}");
 
         actual.to_data().assert_eq(&TensorData::from([0.0]), false);
     }
