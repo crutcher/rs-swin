@@ -67,6 +67,20 @@ impl PatchMergingMeta for PatchMergingConfig {
 }
 
 impl PatchMergingConfig {
+    /// Create a new PatchMerging configuration.
+    ///
+    /// ## Arguments
+    ///
+    /// - `device`: The backend device to initialize the module on.
+    ///
+    /// ## Returns
+    ///
+    /// A new `PatchMerging` module initialized with the given configuration.
+    ///
+    /// ## Panics
+    ///
+    /// If the config is invalid.
+    #[must_use]
     pub fn init<B: Backend>(
         &self,
         device: &B::Device,
@@ -135,18 +149,19 @@ impl<B: Backend> PatchMerging<B> {
         let x = self.reduction.forward(x);
 
         let x = self.norm.forward(x);
-
-        static OUTPUT_CONTRACT: ShapeContract =
-            shape_contract!("batch", "half_height" * "half_width", "d_out");
-        run_every_nth!(OUTPUT_CONTRACT.assert_shape(
-            &x,
-            &[
-                ("batch", b),
-                ("half_height", self.output_height()),
-                ("half_width", self.output_width()),
-                ("d_out", self.d_output()),
-            ],
-        ));
+        run_every_nth!({
+            static OUTPUT_CONTRACT: ShapeContract =
+                shape_contract!("batch", "half_height" * "half_width", "d_out");
+            OUTPUT_CONTRACT.assert_shape(
+                &x,
+                &[
+                    ("batch", b),
+                    ("half_height", self.output_height()),
+                    ("half_width", self.output_width()),
+                    ("d_out", self.d_output()),
+                ],
+            );
+        });
 
         x
     }
@@ -263,6 +278,41 @@ mod tests {
         decollate_patches(y.clone(), h, w)
             .into_data()
             .assert_eq(&x.into_data(), true);
+    }
+
+    #[test]
+    fn test_patch_merging_meta() {
+        let config = PatchMergingConfig {
+            input_resolution: [12, 8],
+            d_input: 3,
+        };
+
+        assert_eq!(config.input_resolution(), [12, 8]);
+        assert_eq!(config.d_input(), 3);
+        assert_eq!(config.d_output(), 6);
+        assert_eq!(config.output_resolution(), [6, 4]);
+        assert_eq!(config.output_height(), 6);
+        assert_eq!(config.output_width(), 4);
+
+        let patch_merging = config.init::<NdArray>(&Default::default());
+
+        assert_eq!(patch_merging.input_resolution(), [12, 8]);
+        assert_eq!(patch_merging.d_input(), 3);
+        assert_eq!(patch_merging.d_output(), 6);
+        assert_eq!(patch_merging.output_resolution(), [6, 4]);
+        assert_eq!(patch_merging.output_height(), 6);
+        assert_eq!(patch_merging.output_width(), 4);
+    }
+
+    #[should_panic(expected = "Input resolution must be divisible by 2")]
+    #[test]
+    fn test_patch_merging_invalid_resolution() {
+        let config = PatchMergingConfig {
+            input_resolution: [13, 8], // Invalid height
+            d_input: 3,
+        };
+        let device = Default::default();
+        let _d = config.init::<NdArray>(&device);
     }
 
     #[test]
