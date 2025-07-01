@@ -107,20 +107,26 @@ impl<B: Backend> BlockMlp<B> {
         &self,
         x: Tensor<B, D>,
     ) -> Tensor<B, D> {
-        static INPUT_CONTRACT: ShapeContract = shape_contract!(..., "in");
-        run_every_nth!(INPUT_CONTRACT.assert_shape(&x, &[("in", self.d_input())]));
+        run_every_nth!({
+            static INPUT_CONTRACT: ShapeContract = shape_contract!(..., "in");
+            INPUT_CONTRACT.assert_shape(&x, &[("in", self.d_input())]);
+        });
 
         let x = self.fc1.forward(x);
-        static F_CONTRACT: ShapeContract = shape_contract!(..., "h");
-        run_every_nth!(F_CONTRACT.assert_shape(&x, &[("h", self.d_hidden())]));
+        run_every_nth!({
+            static F_CONTRACT: ShapeContract = shape_contract!(..., "h");
+            F_CONTRACT.assert_shape(&x, &[("h", self.d_hidden())]);
+        });
 
         let x = self.act.forward(x);
 
         let x = self.drop.forward(x);
 
         let x = self.fc2.forward(x);
-        static OUTPUT_CONTRACT: ShapeContract = shape_contract!(..., "out");
-        run_every_nth!(OUTPUT_CONTRACT.assert_shape(&x, &[("out", self.d_output())]));
+        run_every_nth!({
+            static OUTPUT_CONTRACT: ShapeContract = shape_contract!(..., "out");
+            OUTPUT_CONTRACT.assert_shape(&x, &[("out", self.d_output())]);
+        });
 
         self.drop.forward(x)
     }
@@ -317,11 +323,6 @@ impl ShiftedWindowTransformerBlockMeta for ShiftedWindowTransformerBlockConfig {
 impl ShiftedWindowTransformerBlockConfig {
     #[inline(always)]
     fn check(&self) {
-        let [h, w] = self.input_resolution;
-        assert!(
-            h > 0 && w > 0,
-            "input_resolution must be greater than zero: {self:#?}"
-        );
         assert!(
             self.d_input > 0,
             "d_input must be greater than zero: {self:#?}"
@@ -333,6 +334,11 @@ impl ShiftedWindowTransformerBlockConfig {
         assert!(
             self.window_size > 0,
             "window_size must be greater than zero: {self:#?}"
+        );
+        let [h, w] = self.input_resolution;
+        assert!(
+            h > 0 && w > 0,
+            "input_resolution must be greater than zero: {self:#?}"
         );
         assert!(
             h % self.window_size == 0 && w % self.window_size == 0,
@@ -568,7 +574,7 @@ mod tests {
     use burn::tensor::Distribution;
 
     #[test]
-    fn test_mlpconfig() {
+    fn test_block_mlp_meta() {
         {
             let d_input = 4;
             let config = BlockMlpConfig::new(d_input);
@@ -668,21 +674,113 @@ mod tests {
     }
 
     #[test]
-    fn test_config() {
+    fn test_shifted_window_transformer_block_meta() {
         let d_input = 128;
         let num_heads = 4;
-        let input_resolution = [32, 32];
+        let input_resolution = [14, 14];
 
         let config = ShiftedWindowTransformerBlockConfig::new(d_input, input_resolution, num_heads);
 
-        assert_eq!(config.d_input, d_input);
-        assert_eq!(config.input_resolution, input_resolution);
-        assert_eq!(config.num_heads, num_heads);
-        assert_eq!(config.window_size, 7);
-        assert_eq!(config.shift_size, 0);
-        assert_eq!(config.mlp_ratio, 4.0);
-        assert!(config.enable_qkv_bias);
-        assert_eq!(config.drop_path_rate, 0.0);
+        assert_eq!(config.d_input(), d_input);
+        assert_eq!(config.input_resolution(), input_resolution);
+        assert_eq!(config.input_height(), 14);
+        assert_eq!(config.input_width(), 14);
+        assert_eq!(config.d_output(), d_input);
+        assert_eq!(config.output_resolution(), input_resolution);
+        assert_eq!(config.output_height(), 14);
+        assert_eq!(config.output_width(), 14);
+        assert_eq!(config.num_heads(), num_heads);
+        assert_eq!(config.window_size(), 7);
+        assert_eq!(config.shift_size(), 0);
+        assert!(!config.swa_enabled());
+        assert!(config.enable_qkv_bias());
+        assert_eq!(config.drop_rate(), 0.0);
+        assert_eq!(config.attn_drop_rate(), 0.0);
+        assert_eq!(config.mlp_ratio(), 4.0);
+        assert_eq!(config.drop_path_rate(), 0.0);
+
+        let device = Default::default();
+        let block = config.init::<NdArray>(&device);
+
+        assert_eq!(block.d_input(), d_input);
+        assert_eq!(block.input_resolution(), input_resolution);
+        assert_eq!(block.input_height(), 14);
+        assert_eq!(block.input_width(), 14);
+        assert_eq!(block.d_output(), d_input);
+        assert_eq!(block.output_resolution(), input_resolution);
+        assert_eq!(block.output_height(), 14);
+        assert_eq!(block.output_width(), 14);
+        assert_eq!(block.num_heads(), num_heads);
+        assert_eq!(block.window_size(), 7);
+        assert_eq!(block.shift_size(), 0);
+        assert!(!block.swa_enabled());
+        assert!(block.enable_qkv_bias());
+        assert_eq!(block.drop_rate(), 0.0);
+        assert_eq!(block.attn_drop_rate(), 0.0);
+        assert_eq!(block.mlp_ratio(), 4.0);
+        assert_eq!(block.drop_path_rate(), 0.0);
+    }
+
+    #[should_panic(expected = "input_resolution must be greater than zero")]
+    #[test]
+    fn test_shifted_window_transformer_block_config_zero_resolution() {
+        let d_input = 128;
+        let num_heads = 4;
+        let input_resolution = [0, 14];
+
+        let config = ShiftedWindowTransformerBlockConfig::new(d_input, input_resolution, num_heads);
+
+        let _d = config.init::<NdArray>(&Default::default());
+    }
+
+    #[should_panic(expected = "input_resolution must be divisible by window size")]
+    #[test]
+    fn test_shifted_window_transformer_block_config_invalid_resolution() {
+        let d_input = 128;
+        let num_heads = 4;
+        let input_resolution = [15, 14]; // Not divisible by default window size of 7
+
+        let config = ShiftedWindowTransformerBlockConfig::new(d_input, input_resolution, num_heads);
+
+        let _d = config.init::<NdArray>(&Default::default());
+    }
+
+    #[should_panic(expected = "d_input must be greater than zero")]
+    #[test]
+    fn test_shifted_window_transformer_block_config_zero_d_input() {
+        let d_input = 0; // Invalid d_input
+        let num_heads = 4;
+        let input_resolution = [14, 14];
+
+        let config = ShiftedWindowTransformerBlockConfig::new(d_input, input_resolution, num_heads);
+
+        let _d = config.init::<NdArray>(&Default::default());
+    }
+
+    #[should_panic(expected = "num_heads must be greater than zero")]
+    #[test]
+    fn test_shifted_window_transformer_block_config_zero_num_heads() {
+        let d_input = 128;
+        let num_heads = 0; // Invalid num_heads
+        let input_resolution = [14, 14];
+
+        let config = ShiftedWindowTransformerBlockConfig::new(d_input, input_resolution, num_heads);
+
+        let _d = config.init::<NdArray>(&Default::default());
+    }
+
+    #[should_panic(expected = "window_size must be greater than zero")]
+    #[test]
+    fn test_shifted_window_transformer_block_config_zero_window_size() {
+        let d_input = 128;
+        let num_heads = 4;
+        let input_resolution = [14, 14];
+        let window_size = 0; // Invalid window size
+
+        let config = ShiftedWindowTransformerBlockConfig::new(d_input, input_resolution, num_heads)
+            .with_window_size(window_size);
+
+        let _d = config.init::<NdArray>(&Default::default());
     }
 
     #[test]
@@ -701,7 +799,6 @@ mod tests {
             .with_window_size(window_size);
 
         let device = Default::default();
-
         let block = config.init::<NdArray>(&device);
 
         let distribution = burn::tensor::Distribution::Uniform(0.0, 1.0);

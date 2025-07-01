@@ -31,8 +31,7 @@ pub trait PatchMergingMeta {
 
     /// Output resolution (height, width).
     fn output_resolution(&self) -> [usize; 2] {
-        let [h, w] = self.input_resolution();
-        [h / 2, w / 2]
+        [self.output_height(), self.output_width()]
     }
 
     /// Output height.
