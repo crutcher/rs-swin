@@ -450,7 +450,7 @@ mod tests {
     use burn::tensor::Distribution;
 
     #[test]
-    fn test_swin_transformer_v2_config() {
+    fn test_swin_transformer_v2_meta() {
         let config = SwinTransformerV2Config {
             input_resolution: [224, 224],
             patch_size: 4,
@@ -481,19 +481,22 @@ mod tests {
             enable_patch_norm: true,
         };
 
-        assert_eq!(config.input_resolution, [224, 224]);
-        assert_eq!(config.patch_size, 4);
-        assert_eq!(config.d_input, 3);
-        assert_eq!(config.num_classes, 1000);
-        assert_eq!(config.d_embed, 96);
-        assert_eq!(config.window_size, 7);
-        assert_eq!(config.mlp_ratio, 4.0);
-        assert!(config.enable_qkv_bias);
-        assert_eq!(config.drop_rate, 0.0);
-        assert_eq!(config.attn_drop_rate, 0.0);
-        assert_eq!(config.drop_path_rate, 0.1);
-        assert!(config.enable_ape);
-        assert!(config.enable_patch_norm);
+        assert_eq!(config.input_resolution(), [224, 224]);
+        assert_eq!(config.patch_size(), 4);
+        assert_eq!(config.d_input(), 3);
+        assert_eq!(config.num_classes(), 1000);
+        assert_eq!(config.d_embed(), 96);
+        assert_eq!(config.window_size(), 7);
+        assert_eq!(config.mlp_ratio(), 4.0);
+        assert!(config.enable_qkv_bias());
+        assert_eq!(config.drop_rate(), 0.0);
+        assert_eq!(config.attn_drop_rate(), 0.0);
+        assert_eq!(config.drop_path_rate(), 0.1);
+        assert!(config.enable_ape());
+        assert!(config.enable_patch_norm());
+
+        // TODO: meta check for the model
+        todo!("attn_drop_rate seems to be not used?");
     }
 
     #[test]
