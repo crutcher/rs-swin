@@ -88,7 +88,6 @@ where
             "Expected: dim < num_dims: found dim={dim}, num_dims={size}",
         );
     }
-    let size = x.shape().dims[dim];
 
     let mut parts = x.split_with_sizes(vec![shift, size - shift], dim);
     parts.rotate_right(1);
