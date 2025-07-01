@@ -7,7 +7,7 @@ pub use pos_bias::*;
 pub use pos_grid::*;
 
 use crate::compat::linalg::l2_normalize;
-use bimm_contracts::{ShapeContract, shape_contract};
+use bimm_contracts::{ShapeContract, run_every_nth, shape_contract};
 use burn::config::Config;
 use burn::module::{Module, Param, ParamId};
 use burn::nn::{Dropout, DropoutConfig, Linear, LinearConfig};
@@ -42,7 +42,7 @@ pub trait WindowAttentionMeta {
 pub struct WindowAttentionConfig {
     pub d_input: usize,
 
-    pub window_size: [usize; 2],
+    pub window_shape: [usize; 2],
 
     pub num_heads: usize,
 
@@ -62,7 +62,7 @@ impl WindowAttentionMeta for WindowAttentionConfig {
     }
 
     fn window_shape(&self) -> [usize; 2] {
-        self.window_size
+        self.window_shape
     }
 
     fn num_heads(&self) -> usize {
@@ -216,7 +216,22 @@ impl<B: Backend> WindowAttention<B> {
         };
 
         // (b_nw, num_heads, Wh*Ww, Wh*Ww)
-        softmax(attn, 3)
+        let attn = softmax(attn, 3);
+        run_every_nth!({
+            static CONTRACT: ShapeContract =
+                shape_contract!("b_nw", "num_heads", "Wh" * "Ww", "Wh" * "Ww");
+            CONTRACT.assert_shape(
+                &attn,
+                &[
+                    ("b_nw", b_nw),
+                    ("num_heads", self.num_heads()),
+                    ("Wh", self.window_shape()[0]),
+                    ("Ww", self.window_shape()[1]),
+                ],
+            );
+        });
+
+        attn
     }
 
     /// Get the learnable logit scale.
@@ -314,6 +329,32 @@ mod tests {
     use burn::backend::NdArray;
     use burn::prelude::Tensor;
     use burn::tensor::Distribution;
+
+    #[test]
+    fn test_window_attention_meta() {
+        let window_shape = [4, 4];
+        let num_heads = 8;
+        let channels = num_heads * 3; // Assuming cph = 3
+
+        let config = WindowAttentionConfig::new(channels, window_shape, num_heads);
+
+        assert_eq!(config.d_input(), channels);
+        assert_eq!(config.window_shape(), window_shape);
+        assert_eq!(config.num_heads(), num_heads);
+        assert!(config.enable_qkv_bias());
+        assert_eq!(config.attn_drop(), 0.0);
+        assert_eq!(config.proj_drop(), 0.0);
+
+        let device = Default::default();
+        let attn_mod = config.init::<NdArray>(&device);
+
+        assert_eq!(attn_mod.d_input(), channels);
+        assert_eq!(attn_mod.window_shape(), window_shape);
+        assert_eq!(attn_mod.num_heads(), num_heads);
+        assert!(attn_mod.enable_qkv_bias());
+        assert_eq!(attn_mod.attn_drop(), 0.0);
+        assert_eq!(attn_mod.proj_drop(), 0.0);
+    }
 
     #[test]
     fn test_wa() {

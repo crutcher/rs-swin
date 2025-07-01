@@ -151,6 +151,20 @@ mod tests {
     use burn::backend::NdArray;
     use burn::prelude::{Tensor, TensorData, s};
 
+    #[should_panic(expected = "Height 5 is not divisible by window size 2")]
+    #[test]
+    fn test_sw_img_mask_height_not_divisible() {
+        let device = Default::default();
+        let _d = sw_img_mask::<NdArray>([5, 4], 2, 1, &device);
+    }
+
+    #[should_panic(expected = "Width 5 is not divisible by window size 2")]
+    #[test]
+    fn test_sw_img_mask_width_not_divisible() {
+        let device = Default::default();
+        let _d = sw_img_mask::<NdArray>([4, 5], 2, 1, &device);
+    }
+
     #[test]
     fn test_apply_attention_mask() {
         let b = 2;
