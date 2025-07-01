@@ -277,9 +277,10 @@ impl SwinTransformerV2Config {
                         cfg.num_heads,
                         self.window_size,
                     )
-                    .with_mlp_ratio(self.mlp_ratio)
-                    .with_enable_qkv_bias(self.enable_qkv_bias)
+                    .with_mlp_ratio(self.mlp_ratio())
+                    .with_enable_qkv_bias(self.enable_qkv_bias())
                     .with_drop_path_rates(Some(dpr_layer_rates[layer_i].clone()))
+                    .with_attn_drop_rate(self.attn_drop_rate())
                 })
                 .collect();
 
@@ -342,6 +343,9 @@ impl SwinTransformerV2Config {
             grid_output_features,
             head_avgpool: AdaptiveAvgPool1dConfig::new(1).init(),
             head: LinearConfig::new(grid_output_features, self.num_classes).init(device),
+            drop_rate: self.drop_rate,
+            attn_drop_rate: self.attn_drop_rate,
+            drop_path_rate: self.drop_path_rate,
         }
     }
 }
@@ -357,6 +361,74 @@ pub struct SwinTransformerV2<B: Backend> {
     pub grid_output_features: usize,
     pub head_avgpool: AdaptiveAvgPool1d,
     pub head: Linear<B>,
+
+    pub drop_rate: f64,
+    pub attn_drop_rate: f64,
+    pub drop_path_rate: f64,
+}
+
+impl<B: Backend> SwinTransformerV2Meta for SwinTransformerV2<B> {
+    fn input_resolution(&self) -> [usize; 2] {
+        self.patch_embed.input_resolution()
+    }
+
+    fn patch_size(&self) -> usize {
+        self.patch_embed.patch_size()
+    }
+
+    fn d_input(&self) -> usize {
+        self.patch_embed.d_input()
+    }
+
+    fn num_classes(&self) -> usize {
+        self.head.weight.dims()[1]
+    }
+
+    fn d_embed(&self) -> usize {
+        self.patch_embed.d_output()
+    }
+
+    fn window_size(&self) -> usize {
+        self.grid_transformer_block_sequences[0].window_size()
+    }
+
+    fn layer_configs(&self) -> Vec<LayerConfig> {
+        self.grid_transformer_block_sequences
+            .iter()
+            .map(|b| LayerConfig {
+                depth: b.depth(),
+                num_heads: b.num_heads(),
+            })
+            .collect()
+    }
+
+    fn mlp_ratio(&self) -> f64 {
+        self.grid_transformer_block_sequences[0].mlp_ratio()
+    }
+
+    fn enable_qkv_bias(&self) -> bool {
+        self.grid_transformer_block_sequences[0].enable_qkv_bias()
+    }
+
+    fn drop_rate(&self) -> f64 {
+        self.drop_rate
+    }
+
+    fn attn_drop_rate(&self) -> f64 {
+        self.attn_drop_rate
+    }
+
+    fn drop_path_rate(&self) -> f64 {
+        self.drop_path_rate
+    }
+
+    fn enable_ape(&self) -> bool {
+        self.patch_ape.is_some()
+    }
+
+    fn enable_patch_norm(&self) -> bool {
+        self.patch_embed.enable_patch_norm()
+    }
 }
 
 impl<B: Backend> SwinTransformerV2<B> {
@@ -495,8 +567,22 @@ mod tests {
         assert!(config.enable_ape());
         assert!(config.enable_patch_norm());
 
-        // TODO: meta check for the model
-        todo!("attn_drop_rate seems to be not used?");
+        let device = Default::default();
+        let model = config.init::<NdArray>(&device);
+
+        assert_eq!(model.input_resolution(), [224, 224]);
+        assert_eq!(model.patch_size(), 4);
+        assert_eq!(model.d_input(), 3);
+        assert_eq!(model.num_classes(), 1000);
+        assert_eq!(model.d_embed(), 96);
+        assert_eq!(model.window_size(), 7);
+        assert_eq!(model.mlp_ratio(), 4.0);
+        assert!(model.enable_qkv_bias());
+        assert_eq!(model.drop_rate(), 0.0);
+        assert_eq!(model.attn_drop_rate(), 0.0);
+        assert_eq!(model.drop_path_rate(), 0.1);
+        assert!(model.enable_ape());
+        assert!(model.enable_patch_norm());
     }
 
     #[test]

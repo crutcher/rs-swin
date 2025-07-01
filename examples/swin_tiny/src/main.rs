@@ -19,6 +19,7 @@ use burn::tensor::backend::AutodiffBackend;
 use burn::train::metric::store::{Aggregate, Direction, Split};
 use burn::train::metric::{
     AccuracyMetric, CpuMemory, CpuTemperature, CpuUse, CudaMetric, LearningRateMetric, LossMetric,
+    TopKAccuracyMetric,
 };
 use burn::train::{
     ClassificationOutput, LearnerBuilder, MetricEarlyStoppingStrategy, StoppingCondition,
@@ -178,6 +179,8 @@ pub fn train<B: AutodiffBackend>(
         .metric_valid_numeric(LossMetric::new())
         .metric_train_numeric(AccuracyMetric::new())
         .metric_valid_numeric(AccuracyMetric::new())
+        .metric_train_numeric(TopKAccuracyMetric::new(2))
+        .metric_valid_numeric(TopKAccuracyMetric::new(2))
         .metric_train(CudaMetric::new())
         .metric_valid(CudaMetric::new())
         .metric_train_numeric(CpuUse::new())
@@ -237,6 +240,7 @@ fn main() {
         ],
     )
     .with_window_size(window_size)
+    .with_attn_drop_rate(0.2)
     .with_drop_rate(0.2);
 
     let training_config = TrainingConfig::new(
