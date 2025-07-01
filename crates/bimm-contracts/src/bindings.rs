@@ -201,7 +201,19 @@ mod tests {
             assert_eq!(ENV.lookup("a"), Some(1));
             assert_eq!(ENV.lookup("b"), Some(2));
             assert_eq!(ENV.lookup("c"), None);
+
+            // Exporting values
+            let keys = ["b", "a"];
+            assert_eq!(ENV.export_key_values(&keys), [2, 1]);
         }
+    }
+
+    #[should_panic(expected = "No value for key \"d\"")]
+    #[test]
+    fn test_stack_env_export_key_values_panic() {
+        let env: StackEnvironment = &[("a", 1), ("b", 2)];
+        let keys = ["a", "b", "d"]; // 'd' does not exist
+        let _ = env.export_key_values(&keys); // This should panic
     }
 
     #[test]
@@ -223,7 +235,7 @@ mod tests {
 
     #[should_panic(expected = "No value for key \"d\"")]
     #[test]
-    fn test_export_key_values_panic() {
+    fn test_muttable_stack_env_export_key_values_panic() {
         let env = MutableStackEnvironment::new(&[("a", 1), ("b", 2)]);
         let keys = ["a", "b", "d"]; // 'd' does not exist
         let _ = env.export_key_values(&keys); // This should panic
