@@ -13,7 +13,7 @@ use burn::nn::{
 };
 use burn::prelude::{Backend, Tensor};
 
-#[derive(Config, Debug)]
+#[derive(Config, Debug, PartialEq, Eq)]
 pub struct LayerConfig {
     pub depth: usize,
     pub num_heads: usize,
@@ -554,6 +554,8 @@ mod tests {
         };
 
         assert_eq!(config.input_resolution(), [224, 224]);
+        assert_eq!(config.input_height(), 224);
+        assert_eq!(config.input_width(), 224);
         assert_eq!(config.patch_size(), 4);
         assert_eq!(config.d_input(), 3);
         assert_eq!(config.num_classes(), 1000);
@@ -566,11 +568,30 @@ mod tests {
         assert_eq!(config.drop_path_rate(), 0.1);
         assert!(config.enable_ape());
         assert!(config.enable_patch_norm());
+        assert_eq!(
+            config.layer_configs(),
+            vec![
+                LayerConfig {
+                    depth: 2,
+                    num_heads: 3,
+                },
+                LayerConfig {
+                    depth: 2,
+                    num_heads: 6,
+                },
+                LayerConfig {
+                    depth: 18,
+                    num_heads: 12,
+                },
+            ]
+        );
 
         let device = Default::default();
         let model = config.init::<NdArray>(&device);
 
         assert_eq!(model.input_resolution(), [224, 224]);
+        assert_eq!(model.input_height(), 224);
+        assert_eq!(model.input_width(), 224);
         assert_eq!(model.patch_size(), 4);
         assert_eq!(model.d_input(), 3);
         assert_eq!(model.num_classes(), 1000);
@@ -583,6 +604,23 @@ mod tests {
         assert_eq!(model.drop_path_rate(), 0.1);
         assert!(model.enable_ape());
         assert!(model.enable_patch_norm());
+        assert_eq!(
+            model.layer_configs(),
+            vec![
+                LayerConfig {
+                    depth: 2,
+                    num_heads: 3,
+                },
+                LayerConfig {
+                    depth: 2,
+                    num_heads: 6,
+                },
+                LayerConfig {
+                    depth: 18,
+                    num_heads: 12,
+                },
+            ]
+        );
     }
 
     #[test]
