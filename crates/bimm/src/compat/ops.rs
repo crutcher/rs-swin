@@ -7,9 +7,9 @@ use std::f64;
 ///
 /// ## Parameters
 ///
-/// - `x`: The input tensor.
-/// - `dim`: The dimension to roll; supports negative indexing.
+/// - `tensor`: The input tensor.
 /// - `shift`: The number of positions to shift; supports negative values and wraps around.
+/// - `dim`: The dimension to roll; supports negative indexing.
 ///
 /// ## Returns
 ///
@@ -17,63 +17,42 @@ use std::f64;
 #[must_use]
 #[cfg(not(feature = "burn_0_18_0"))]
 pub fn roll_dim<B: Backend, const D: usize, K, I>(
-    x: Tensor<B, D, K>,
-    dim: I,
+    tensor: Tensor<B, D, K>,
     shift: I,
+    dim: I,
 ) -> Tensor<B, D, K>
 where
     K: BasicOps<B>,
     I: AsIndex,
 {
     let dim = canonicalize_dim(dim, D, false);
-    let size = x.shape().dims[dim];
-    let shift = wrap_idx(shift, size);
-
-    if size == 0 || shift == 0 {
-        return x;
+    let size = tensor.shape().dims[dim];
+    if size == 0 {
+        // If the dimension is empty, return the tensor as is.
+        return tensor;
     }
 
-    _unchecked_roll_dim(x, dim, shift)
+    let shift = wrap_idx(shift, size);
+    if shift == 0 {
+        // If the shift is zero, return the tensor as is.
+        return tensor;
+    }
+
+    _unchecked_roll_dim(tensor, shift, dim)
 }
+
 #[must_use]
 #[cfg(feature = "burn_0_18_0")]
 pub fn roll_dim<B: Backend, const D: usize, K, I>(
     x: Tensor<B, D, K>,
-    dim: I,
     shift: I,
+    dim: I,
 ) -> Tensor<B, D, K>
 where
     K: BasicOps<B>,
     I: AsIndex,
 {
-    x.roll_dim(dim, shift)
-}
-
-/// Contract for the `_unchecked_roll_dim` operation.
-///
-/// ## Parameters
-///
-/// - `dim`: The dimension to roll; must be a valid index for the tensor's shape.
-/// - `size`: The size of the dimension to roll; must be greater than 0.
-/// - `shift`: The number of positions to shift; must be (0 < shift < size).
-///
-/// ## Panics
-///
-/// Panics if the contract conditions are not met.
-#[inline(always)]
-fn _unchecked_roll_dim_contract(
-    dim: usize,
-    size: usize,
-    shift: usize,
-) {
-    assert!(
-        0 < shift && shift < size,
-        "Expected: 0 < shift < size: found shift={shift}, size={size}",
-    );
-    assert!(
-        dim < size,
-        "Expected: dim < size: found dim={dim}, size={size}",
-    );
+    x.roll_dim(shift, dim)
 }
 
 /// Internal implementation of `roll_dim` that does not canonicalize dimensions or shifts.
@@ -81,8 +60,8 @@ fn _unchecked_roll_dim_contract(
 /// ## Parameters
 ///
 /// - `x`: The input tensor.
-/// - `dim`: The dimension to roll; must be a valid index for the tensor's shape.
 /// - `shift`: The number of positions to shift; must be (0 < shift < size).
+/// - `dim`: The dimension to roll; must be a valid index for the tensor's shape.
 ///
 /// ## Returns
 ///
@@ -91,16 +70,25 @@ fn _unchecked_roll_dim_contract(
 #[must_use]
 fn _unchecked_roll_dim<B: Backend, const D: usize, K>(
     x: Tensor<B, D, K>,
-    dim: usize,
     shift: usize,
+    dim: usize,
 ) -> Tensor<B, D, K>
 where
     K: BasicOps<B>,
 {
     let size = x.shape().dims[dim];
-
     #[cfg(debug_assertions)]
-    _unchecked_roll_dim_contract(dim, size, shift);
+    {
+        assert!(
+            0 < shift && shift < size,
+            "Expected: 0 < shift < size: found shift={shift}, size={size}",
+        );
+        assert!(
+            dim < x.shape().num_dims(),
+            "Expected: dim < num_dims: found dim={dim}, num_dims={size}",
+        );
+    }
+    let size = x.shape().dims[dim];
 
     let mut parts = x.split_with_sizes(vec![shift, size - shift], dim);
     parts.rotate_right(1);
@@ -117,9 +105,9 @@ where
 /// ## Parameters
 ///
 /// - `x`: The input tensor.
-/// - `dims`: A slice of dimensions to roll; supports negative indexing.
 /// - `shifts`: A slice of shifts corresponding to each dimension;
 ///   supports negative values and wraps around.
+/// - `dims`: A slice of dimensions to roll; supports negative indexing.
 ///
 /// ## Returns
 ///
@@ -127,9 +115,9 @@ where
 #[must_use]
 #[cfg(not(feature = "burn_0_18_0"))]
 pub fn roll<B: Backend, const D: usize, K, I>(
-    x: Tensor<B, D, K>,
-    dims: &[I],
+    tensor: Tensor<B, D, K>,
     shifts: &[I],
+    dims: &[I],
 ) -> Tensor<B, D, K>
 where
     K: BasicOps<B>,
@@ -138,9 +126,7 @@ where
     assert_eq!(
         dims.len(),
         shifts.len(),
-        "Dimensions and shifts must align; found {} dims and {} shifts",
-        dims.len(),
-        shifts.len()
+        "Dimensions and shifts must align; found dims={dims:#?}, shifts={shifts:#?}",
     );
 
     // This is a fair amount of complexity, which could be replaced
@@ -151,77 +137,75 @@ where
 
     let item_count = dims.len();
 
-    let shape = x.shape().dims;
+    let shape = tensor.shape().dims;
 
     // Accumulate the effective shifts for each dimension.
-    let mut shift_accum: Vec<isize> = vec![0; shape.len()];
+    let mut accumulated_shifts: Vec<isize> = vec![0; shape.len()];
     for i in 0..item_count {
-        let self1 = &dims[i];
-        let dim = canonicalize_dim(*self1, D, false);
-        shift_accum[dim] += shifts[i].index();
+        let dim = canonicalize_dim(dims[i], D, false);
+        accumulated_shifts[dim] += shifts[i].index();
     }
 
     // Do this after we've checked the validity of `dims` and `shifts`.
-    if x.shape().num_elements() == 0 {
+    if tensor.shape().num_elements() == 0 {
         // If the tensor is empty, return it as is.
-        return x;
+        return tensor;
     }
 
-    let sizes = x.shape().dims;
-
     // Wrap the accumulated shifts, and filter out empty dimensions.
-    let mut _dims: Vec<usize> = Vec::with_capacity(item_count);
-    let mut _shifts: Vec<usize> = Vec::with_capacity(item_count);
-    for dim in 0..item_count {
-        let self1 = &shift_accum[dim];
-        let size = sizes[dim];
-        let shift = wrap_idx(*self1, size);
-        if shift != 0 {
-            _shifts.push(shift);
-            _dims.push(dim);
+    let mut effective_dims: Vec<usize> = Vec::with_capacity(item_count);
+    let mut effective_shifts: Vec<usize> = Vec::with_capacity(item_count);
+    for dim in 0..shape.len() {
+        // `wrap_index` should inline, and has a fast-exit path for zero shifts.
+        let shift = wrap_idx(accumulated_shifts[dim], shape[dim]);
+        if shift == 0 {
+            continue;
         }
+
+        effective_dims.push(dim);
+        effective_shifts.push(shift);
     }
 
     // If no shifts are needed, return the original tensor.
-    if _shifts.is_empty() {
-        return x;
+    if effective_shifts.is_empty() {
+        return tensor;
     }
 
     // At this point:
-    // - the roll is non-trivial (i.e., at least one accumulated shift is non-zero),
     // - `dims` contains the effective dimensions to roll, in index order,
     // - `shifts` contains the effective usize shifts for each dimension.
-    _unchecked_roll(x, &_dims, &_shifts)
+    // - Every shift is non-zero, and less than the size of the corresponding dimension.
+    _unchecked_roll(tensor, &effective_shifts, &effective_dims)
 }
 #[must_use]
 #[cfg(feature = "burn_0_18_0")]
 pub fn roll<B: Backend, const D: usize, K, I>(
     x: Tensor<B, D, K>,
-    dims: &[I],
     shifts: &[I],
+    dims: &[I],
 ) -> Tensor<B, D, K>
 where
     K: BasicOps<B>,
     I: AsIndex,
 {
-    x.roll(dims, shifts)
+    x.roll(shifts, dims)
 }
 
 /// Contract for the `_unchecked_roll` operation.
 ///
 /// ## Parameters
 ///
+/// - `shifts`: A slice of shifts corresponding to each dimension; must not be empty.
 /// - `dims`: A slice of dimensions to roll; must be the same length as `shifts`,
 ///   and must not contain repeats.
-/// - `shifts`: A slice of shifts corresponding to each dimension; must not be empty.
 ///
 /// ## Panics
 ///
 /// Panics if the shifts and dimensions do not align, or if dimensions contain repeats.
 #[inline(always)]
 fn _unchecked_roll_contract(
-    dims: &[usize],
     shifts: &[usize],
+    dims: &[usize],
 ) {
     assert!(!shifts.is_empty());
     assert_eq!(
@@ -248,11 +232,11 @@ fn _unchecked_roll_contract(
 ///
 /// ## Parameters
 ///
-/// - `x`: The input tensor.
-/// - `dims`: indices for `shifts`. Must be the same length as `shifts`,
-///   must not contain repeats.
+/// - `tensor`: The input tensor.
 /// - `shifts`: per-dimension shifts; must be non-empty,
 ///   and contain only non-zero values.
+/// - `dims`: indices for `shifts`. Must be the same length as `shifts`,
+///   must not contain repeats.
 ///
 /// ## Returns
 ///
@@ -260,26 +244,43 @@ fn _unchecked_roll_contract(
 #[inline(always)]
 #[must_use]
 fn _unchecked_roll<B: Backend, const D: usize, K>(
-    x: Tensor<B, D, K>,
-    dims: &[usize],
+    tensor: Tensor<B, D, K>,
     shifts: &[usize],
+    dims: &[usize],
 ) -> Tensor<B, D, K>
 where
     K: BasicOps<B>,
 {
     #[cfg(debug_assertions)]
-    _unchecked_roll_contract(dims, shifts);
+    {
+        assert!(!shifts.is_empty());
+        assert_eq!(
+            shifts.len(),
+            dims.len(),
+            "Shifts and dimensions must align; found {} shifts and {} dims",
+            shifts.len(),
+            dims.len()
+        );
 
-    if dims.is_empty() {
-        return x;
+        let mut unique_dims = dims.to_vec();
+        unique_dims.dedup();
+
+        assert_eq!(
+            unique_dims.len(),
+            dims.len(),
+            "Dimensions must not contain repeats; found {} unique dims and {} total dims",
+            unique_dims.len(),
+            dims.len()
+        )
     }
 
-    let x = _unchecked_roll_dim(x, dims[0], shifts[0]);
+    let tensor = _unchecked_roll_dim(tensor, shifts[0], dims[0]);
+
     if dims.len() == 1 {
-        return x;
+        tensor
+    } else {
+        _unchecked_roll(tensor, &shifts[1..], &dims[1..])
     }
-
-    _unchecked_roll(x, &dims[1..], &shifts[1..])
 }
 
 /// Create a vector with evenly spaced floating point values.
@@ -416,7 +417,7 @@ pub fn float_linspace<B: Backend>(
 mod tests {
     use super::*;
     use burn::backend::NdArray;
-    use burn::prelude::{Int, TensorData};
+    use burn::prelude::TensorData;
     use burn::tensor::Tensor;
 
     #[test]
@@ -449,32 +450,82 @@ mod tests {
     }
 
     #[test]
-    fn test_roll_empty() {
-        let device = Default::default();
-        let input: Tensor<NdArray, 2, Int> = Tensor::zeros([12, 0], &device);
-
-        // Rolling an empty tensor should return the same empty tensor
-        roll(input.clone(), &[0, 1], &[1, 2])
-            .to_data()
-            .assert_eq(&input.to_data(), false);
-    }
-
-    #[test]
     fn test_roll() {
-        let device = Default::default();
-        let input: Tensor<NdArray, 2, Int> = Tensor::arange(0..6, &device).reshape::<2, _>([2, 3]);
+        let input = Tensor::<NdArray, 2>::from([[0, 1, 2], [3, 4, 5]]);
 
         // No-op shift:
-        roll(input.clone(), &[0, 1], &[0, 0])
+        roll(input.clone(), &[0, 0], &[0, 1])
             .to_data()
             .assert_eq(&input.clone().to_data(), false);
 
-        roll(input.clone(), &[0, 1], &[1, -1])
+        roll(input.clone(), &[1, -1], &[0, 1])
             .to_data()
             .assert_eq(&TensorData::from([[5, 3, 4], [2, 0, 1]]), false);
 
-        roll(input.clone(), &[0, 1], &[2 * 32 + 1, 3 * (-400) - 1])
+        roll(input.clone(), &[-1, 1], &[1, 0])
             .to_data()
             .assert_eq(&TensorData::from([[5, 3, 4], [2, 0, 1]]), false);
+
+        roll(input.clone(), &[2 * 32 + 1, 3 * (-400) - 1], &[0, 1])
+            .to_data()
+            .assert_eq(&TensorData::from([[5, 3, 4], [2, 0, 1]]), false);
+    }
+
+    #[should_panic]
+    #[test]
+    fn test_roll_dim_too_big() {
+        let input = Tensor::<NdArray, 2>::from([[0, 1, 2], [3, 4, 5]]);
+
+        // Attempting to roll on a dimension that doesn't exist should panic
+        let _d = roll(input.clone(), &[1], &[-3]);
+    }
+
+    #[should_panic]
+    #[test]
+    fn test_roll_dim_too_small() {
+        let input = Tensor::<NdArray, 2>::from([[0, 1, 2], [3, 4, 5]]);
+
+        // Attempting to roll on a dimension that doesn't exist should panic
+        let _d = roll(input.clone(), &[1], &[2]);
+    }
+
+    #[should_panic]
+    #[test]
+    fn test_roll_shift_size_mismatch() {
+        let input = Tensor::<NdArray, 2>::from([[0, 1, 2], [3, 4, 5]]);
+
+        // Attempting to roll with a shift size that doesn't match the number of dimensions should panic
+        let _d = roll(input.clone(), &[1, 2], &[0]);
+    }
+
+    #[test]
+    fn test_roll_dim() {
+        let input = Tensor::<NdArray, 2>::from([[0, 1, 2], [3, 4, 5]]);
+
+        roll_dim(input.clone(), 1, 0)
+            .to_data()
+            .assert_eq(&TensorData::from([[3, 4, 5], [0, 1, 2]]), false);
+
+        roll_dim(input.clone(), -1, 1)
+            .to_data()
+            .assert_eq(&TensorData::from([[2, 0, 1], [5, 3, 4]]), false);
+    }
+
+    #[should_panic]
+    #[test]
+    fn test_roll_dim_dim_too_big() {
+        let input = Tensor::<NdArray, 2>::from([[0, 1, 2], [3, 4, 5]]);
+
+        // Attempting to roll on a dimension that doesn't exist should panic
+        let _d = roll_dim(input.clone(), 1, 2);
+    }
+
+    #[should_panic]
+    #[test]
+    fn test_roll_dim_dim_too_small() {
+        let input = Tensor::<NdArray, 2>::from([[0, 1, 2], [3, 4, 5]]);
+
+        // Attempting to roll on a dimension that doesn't exist should panic
+        let _d = roll_dim(input.clone(), 1, -3);
     }
 }
