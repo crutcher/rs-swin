@@ -191,43 +191,6 @@ where
     x.roll(shifts, dims)
 }
 
-/// Contract for the `_unchecked_roll` operation.
-///
-/// ## Parameters
-///
-/// - `shifts`: A slice of shifts corresponding to each dimension; must not be empty.
-/// - `dims`: A slice of dimensions to roll; must be the same length as `shifts`,
-///   and must not contain repeats.
-///
-/// ## Panics
-///
-/// Panics if the shifts and dimensions do not align, or if dimensions contain repeats.
-#[inline(always)]
-fn _unchecked_roll_contract(
-    shifts: &[usize],
-    dims: &[usize],
-) {
-    assert!(!shifts.is_empty());
-    assert_eq!(
-        shifts.len(),
-        dims.len(),
-        "Shifts and dimensions must align; found {} shifts and {} dims",
-        shifts.len(),
-        dims.len()
-    );
-
-    let mut _dims = dims.to_vec();
-    _dims.dedup();
-
-    assert_eq!(
-        _dims.len(),
-        dims.len(),
-        "Dimensions must not contain repeats; found {} unique dims and {} total dims",
-        _dims.len(),
-        dims.len()
-    )
-}
-
 /// `roll` internal implementation.
 ///
 /// ## Parameters
@@ -427,7 +390,6 @@ mod tests {
         let end: f64 = -1.0 - f64::EPSILON;
 
         let actual = float_arange::<NdArray>(start, end, None, &device);
-        println!("{actual:?}");
 
         actual
             .to_data()
@@ -435,18 +397,58 @@ mod tests {
     }
 
     #[test]
-    fn test_float_linspace() {
+    fn test_float_vec_linspace_int_step() {
         let device = Default::default();
         let start: f64 = 0.0;
         let end: f64 = 1.0;
         let num: usize = 5;
 
         let actual = float_linspace::<NdArray>(start, end, num, &device);
-        println!("{actual:?}");
 
         actual
             .to_data()
             .assert_eq(&TensorData::from([0.0, 0.25, 0.5, 0.75, 1.0]), false);
+    }
+
+    #[test]
+    fn test_float_vec_linspace_neg_float_step() {
+        let device = Default::default();
+        let start: f64 = 1.0;
+        let end: f64 = -0.2;
+        let num: usize = 5;
+
+        let actual = float_linspace::<NdArray>(start, end, num, &device);
+
+        actual
+            .to_data()
+            .assert_eq(&TensorData::from([1.0, 0.7, 0.4, 0.1, -0.2]), false);
+    }
+
+    #[test]
+    fn test_float_vec_linspace_n1() {
+        let device = Default::default();
+        let start: f64 = 0.0;
+        let end: f64 = 1.0;
+        let num: usize = 1;
+
+        let actual = float_linspace::<NdArray>(start, end, num, &device);
+        println!("{actual:?}");
+
+        actual.to_data().assert_eq(&TensorData::from([0.0]), false);
+    }
+
+    #[ignore = "0 size resources are not yet supported"]
+    #[test]
+    fn test_roll_empty() {
+        let device = Default::default();
+        let input = Tensor::<NdArray, 2>::zeros([12, 0], &device);
+
+        let result = roll(input.clone(), &[1, 2], &[0, 1]);
+
+        assert_eq!(result.shape().dims, &[12, 0]);
+
+        // TODO: Rolling an empty tensor should return the same empty tensor;
+        // but we have no way to compare tensor references yet.
     }
 
     #[test]
