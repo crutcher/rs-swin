@@ -5,6 +5,9 @@
 
 #### Recent Changes
 
+* **0.1.9**
+   * Improved docs and examples.
+   * Internal refactoring for labeled DimMatchers (not supported by macro yet).
 * **0.1.8**
    * Added `shape_contract!` macro for easier contract definition.
 * **0.1.7**
