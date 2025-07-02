@@ -7,13 +7,52 @@ use std::fmt::{Display, Formatter};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DimMatcher<'a> {
     /// Matches any dimension size.
-    Any,
+    Any { label: Option<&'a str> },
 
     /// Matches a variable number of dimensions (ellipsis).
-    Ellipsis,
+    Ellipsis { label: Option<&'a str> },
 
     /// A dimension size expression that must match a specific value.
-    Expr(DimExpr<'a>),
+    Expr {
+        label: Option<&'a str>,
+        expr: DimExpr<'a>,
+    },
+}
+
+impl<'a> DimMatcher<'a> {
+    pub const fn any() -> Self {
+        DimMatcher::Any { label: None }
+    }
+
+    pub const fn ellipsis() -> Self {
+        DimMatcher::Ellipsis { label: None }
+    }
+
+    pub const fn expr(expr: DimExpr<'a>) -> Self {
+        DimMatcher::Expr { label: None, expr }
+    }
+
+    pub const fn label(&self) -> Option<&'a str> {
+        match self {
+            DimMatcher::Any { label } => *label,
+            DimMatcher::Ellipsis { label } => *label,
+            DimMatcher::Expr { label, .. } => *label,
+        }
+    }
+
+    pub const fn with_label(
+        self,
+        label: Option<&'a str>,
+    ) -> Self {
+        match self {
+            DimMatcher::Any { .. } => DimMatcher::Any { label },
+            DimMatcher::Ellipsis { .. } => DimMatcher::Ellipsis { label },
+            DimMatcher::Expr { expr, .. } => DimMatcher::Expr {
+                label,
+                expr,
+            },
+        }
+    }
 }
 
 impl Display for DimMatcher<'_> {
@@ -21,10 +60,13 @@ impl Display for DimMatcher<'_> {
         &self,
         f: &mut Formatter<'_>,
     ) -> std::fmt::Result {
+        if let Some(label) = self.label() {
+            write!(f, "{label}: ")?;
+        }
         match self {
-            DimMatcher::Any => write!(f, "_"),
-            DimMatcher::Ellipsis => write!(f, "..."),
-            DimMatcher::Expr(expr) => write!(f, "{expr}"),
+            DimMatcher::Any { label: _ } => write!(f, "_"),
+            DimMatcher::Ellipsis { label: _ } => write!(f, "..."),
+            DimMatcher::Expr { label: _, expr } => write!(f, "{expr}"),
         }
     }
 }
@@ -70,7 +112,7 @@ impl<'a> ShapeContract<'a> {
         let mut ellipsis_pos: Option<usize> = None;
 
         while i < terms.len() {
-            if matches!(terms[i], DimMatcher::Ellipsis) {
+            if matches!(terms[i], DimMatcher::Ellipsis { label: _ }) {
                 match ellipsis_pos {
                     Some(_) => panic!("Multiple ellipses in pattern"),
                     None => ellipsis_pos = Some(i),
@@ -254,11 +296,11 @@ impl<'a> ShapeContract<'a> {
             };
 
             let expr = match &self.terms[term_idx] {
-                DimMatcher::Any => continue,
-                DimMatcher::Ellipsis => {
+                DimMatcher::Any { label: _ } => continue,
+                DimMatcher::Ellipsis { label: _ } => {
                     unreachable!("Ellipsis should have been handled before");
                 }
-                DimMatcher::Expr(expr) => expr,
+                DimMatcher::Expr { label: _, expr } => expr,
             };
 
             match expr.try_match(dim_size as isize, env) {
@@ -323,36 +365,40 @@ mod tests {
     #[test]
     fn test_bad_new() {
         // Multiple ellipses in pattern should panic.
-        let _ = ShapeContract::new(&[DimMatcher::Any, DimMatcher::Ellipsis, DimMatcher::Ellipsis]);
+        let _ = ShapeContract::new(&[
+            DimMatcher::any(),
+            DimMatcher::ellipsis(),
+            DimMatcher::ellipsis(),
+        ]);
     }
     #[test]
     fn test_check_ellipsis_split() {
         {
             // With ellipsis.
-            let pattern = ShapeContract::new(&[
-                DimMatcher::Any,
-                DimMatcher::Ellipsis,
-                DimMatcher::Expr(DimExpr::Param("b")),
+            static PATTERN: ShapeContract = ShapeContract::new(&[
+                DimMatcher::any(),
+                DimMatcher::ellipsis(),
+                DimMatcher::expr(DimExpr::Param("b")),
             ]);
 
-            assert_eq!(pattern.check_ellipsis_split(2), Ok((1, 0)));
-            assert_eq!(pattern.check_ellipsis_split(3), Ok((1, 1)));
-            assert_eq!(pattern.check_ellipsis_split(4), Ok((1, 2)));
+            assert_eq!(PATTERN.check_ellipsis_split(2), Ok((1, 0)));
+            assert_eq!(PATTERN.check_ellipsis_split(3), Ok((1, 1)));
+            assert_eq!(PATTERN.check_ellipsis_split(4), Ok((1, 2)));
 
             assert_eq!(
-                pattern.check_ellipsis_split(1),
+                PATTERN.check_ellipsis_split(1),
                 Err("Shape rank 1 < non-ellipsis pattern term count 2".to_string())
             );
         }
         {
             // Without ellipsis.
-            let pattern =
-                ShapeContract::new(&[DimMatcher::Any, DimMatcher::Expr(DimExpr::Param("b"))]);
+            static PATTERN: ShapeContract =
+                ShapeContract::new(&[DimMatcher::any(), DimMatcher::expr(DimExpr::Param("b"))]);
 
-            assert_eq!(pattern.check_ellipsis_split(2), Ok((2, 0)));
+            assert_eq!(PATTERN.check_ellipsis_split(2), Ok((2, 0)));
 
             assert_eq!(
-                pattern.check_ellipsis_split(1),
+                PATTERN.check_ellipsis_split(1),
                 Err("Shape rank 1 != pattern dim count 2".to_string())
             );
         }
@@ -360,30 +406,32 @@ mod tests {
 
     #[test]
     fn test_format_pattern() {
-        let pattern = ShapeContract::new(&[
-            DimMatcher::Any,
-            DimMatcher::Ellipsis,
-            DimMatcher::Expr(DimExpr::Param("b")),
-            DimMatcher::Expr(DimExpr::Prod(&[
+        static PATTERN: ShapeContract = ShapeContract::new(&[
+            DimMatcher::any(),
+            DimMatcher::ellipsis(),
+            DimMatcher::expr(DimExpr::Param("b")),
+            DimMatcher::expr(DimExpr::Prod(&[
                 DimExpr::Param("h"),
                 DimExpr::Sum(&[DimExpr::Param("a"), DimExpr::Negate(&DimExpr::Param("b"))]),
             ])),
-            DimMatcher::Expr(DimExpr::Pow(&DimExpr::Param("h"), 2)),
+            DimMatcher::expr(DimExpr::Pow(&DimExpr::Param("h"), 2)),
         ]);
 
-        assert_eq!(pattern.to_string(), "[_, ..., b, (h*(a+(-b))), (h)^2]");
+        assert_eq!(PATTERN.to_string(), "[_, ..., b, (h*(a+(-b))), (h)^2]");
     }
 
     #[test]
     fn test_panic_msg() {
         static CONTRACT: ShapeContract = ShapeContract::new(&[
-            DimMatcher::Any,
-            DimMatcher::Expr(DimExpr::Param("b")),
-            DimMatcher::Ellipsis,
-            DimMatcher::Expr(DimExpr::Prod(&[DimExpr::Param("h"), DimExpr::Param("p")])),
-            DimMatcher::Expr(DimExpr::Prod(&[DimExpr::Param("w"), DimExpr::Param("p")])),
-            DimMatcher::Expr(DimExpr::Pow(&DimExpr::Param("z"), 3)),
-            DimMatcher::Expr(DimExpr::Param("c")),
+            DimMatcher::any(),
+            DimMatcher::expr(DimExpr::Param("b")),
+            DimMatcher::ellipsis(),
+            DimMatcher::expr(DimExpr::Prod(&[DimExpr::Param("h"), DimExpr::Param("p")]))
+                .with_label(Some("height")),
+            DimMatcher::expr(DimExpr::Prod(&[DimExpr::Param("w"), DimExpr::Param("p")]))
+                .with_label(Some("width")),
+            DimMatcher::expr(DimExpr::Pow(&DimExpr::Param("z"), 3)),
+            DimMatcher::expr(DimExpr::Param("c")),
         ]);
 
         let b = 2;
@@ -406,7 +454,7 @@ Shape Error:: 65 !~ (z)^3 :: No integer solution.
  shape:
   [12, 2, 1, 2, 3, 12, 8, 65, 5]
  expected:
-  [_, b, ..., (h*p), (w*p), (z)^3, c]
+  [_, b, ..., height: (h*p), width: (w*p), (z)^3, c]
   {\"p\": 4, \"c\": 5}"
         );
     }
@@ -414,13 +462,13 @@ Shape Error:: 65 !~ (z)^3 :: No integer solution.
     #[test]
     fn test_unpack_shape() {
         static CONTRACT: ShapeContract = ShapeContract::new(&[
-            DimMatcher::Any,
-            DimMatcher::Expr(DimExpr::Param("b")),
-            DimMatcher::Ellipsis,
-            DimMatcher::Expr(DimExpr::Prod(&[DimExpr::Param("h"), DimExpr::Param("p")])),
-            DimMatcher::Expr(DimExpr::Prod(&[DimExpr::Param("w"), DimExpr::Param("p")])),
-            DimMatcher::Expr(DimExpr::Pow(&DimExpr::Param("z"), 3)),
-            DimMatcher::Expr(DimExpr::Param("c")),
+            DimMatcher::any(),
+            DimMatcher::expr(DimExpr::Param("b")),
+            DimMatcher::ellipsis(),
+            DimMatcher::expr(DimExpr::Prod(&[DimExpr::Param("h"), DimExpr::Param("p")])),
+            DimMatcher::expr(DimExpr::Prod(&[DimExpr::Param("w"), DimExpr::Param("p")])),
+            DimMatcher::expr(DimExpr::Pow(&DimExpr::Param("z"), 3)),
+            DimMatcher::expr(DimExpr::Param("c")),
         ]);
 
         let b = 2;
@@ -447,35 +495,36 @@ Shape Error:: 65 !~ (z)^3 :: No integer solution.
     #[test]
     fn test_shape_mismatch_no_ellipsis() {
         // This should panic because the shape does not match the pattern.
-        let pattern = ShapeContract::new(&[DimMatcher::Expr(DimExpr::Param("a"))]);
+        static PATTERN: ShapeContract =
+            ShapeContract::new(&[DimMatcher::expr(DimExpr::Param("a"))]);
         let shape = [1, 2, 3];
-        pattern.assert_shape(&shape, &[]);
+        PATTERN.assert_shape(&shape, &[]);
     }
 
     #[should_panic(expected = "Shape rank 3 < non-ellipsis pattern term count 4")]
     #[test]
     fn test_shape_mismatch_with_ellipsis() {
         // This should panic because the shape does not match the pattern.
-        let pattern = ShapeContract::new(&[
-            DimMatcher::Any,
-            DimMatcher::Any,
-            DimMatcher::Ellipsis,
-            DimMatcher::Expr(DimExpr::Param("b")),
-            DimMatcher::Expr(DimExpr::Param("c")),
+        static PATTERN: ShapeContract = ShapeContract::new(&[
+            DimMatcher::any(),
+            DimMatcher::any(),
+            DimMatcher::ellipsis(),
+            DimMatcher::expr(DimExpr::Param("b")),
+            DimMatcher::expr(DimExpr::Param("c")),
         ]);
         let shape = [1, 2, 3];
-        pattern.assert_shape(&shape, &[]);
+        PATTERN.assert_shape(&shape, &[]);
     }
 
     #[should_panic(expected = "Value MissMatch")]
     #[test]
     fn test_shape_mismatch_value() {
         // This should panic because the value does not match the constraint.
-        let pattern = ShapeContract::new(&[
-            DimMatcher::Expr(DimExpr::Param("a")),
-            DimMatcher::Expr(DimExpr::Param("b")),
+        static PATTERN: ShapeContract = ShapeContract::new(&[
+            DimMatcher::expr(DimExpr::Param("a")),
+            DimMatcher::expr(DimExpr::Param("b")),
         ]);
         let shape = [2, 3];
-        pattern.assert_shape(&shape, &[("a", 2), ("b", 4)]);
+        PATTERN.assert_shape(&shape, &[("a", 2), ("b", 4)]);
     }
 }

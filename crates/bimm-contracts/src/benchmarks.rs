@@ -2,13 +2,13 @@ use crate::{DimExpr, DimMatcher, ShapeContract, run_every_nth};
 use test::Bencher;
 
 static PATTERN: ShapeContract = ShapeContract::new(&[
-    DimMatcher::Any,
-    DimMatcher::Expr(DimExpr::Param("b")),
-    DimMatcher::Ellipsis,
-    DimMatcher::Expr(DimExpr::Prod(&[DimExpr::Param("h"), DimExpr::Param("p")])),
-    DimMatcher::Expr(DimExpr::Prod(&[DimExpr::Param("w"), DimExpr::Param("p")])),
-    DimMatcher::Expr(DimExpr::Pow(&DimExpr::Param("z"), 3)),
-    DimMatcher::Expr(DimExpr::Param("c")),
+    DimMatcher::any(),
+    DimMatcher::expr(DimExpr::Param("b")),
+    DimMatcher::ellipsis(),
+    DimMatcher::expr(DimExpr::Prod(&[DimExpr::Param("h"), DimExpr::Param("p")])),
+    DimMatcher::expr(DimExpr::Prod(&[DimExpr::Param("w"), DimExpr::Param("p")])),
+    DimMatcher::expr(DimExpr::Pow(&DimExpr::Param("z"), 3)),
+    DimMatcher::expr(DimExpr::Param("c")),
 ]);
 
 static BATCH: usize = 2;

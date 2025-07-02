@@ -27,21 +27,23 @@ fn parse_shape_contract_terms(input: ParseStream) -> SynResult<ShapeContract> {
 
 /// Parse a single contract dim term from tokens.
 fn parse_dim_matcher_tokens(input: ParseStream) -> SynResult<DimMatcher> {
+    let label = None;
+    
     // Check for "_" (underscore) for Any
     if input.peek(Token![_]) {
         input.parse::<Token![_]>()?;
-        return Ok(DimMatcher::Any);
+        return Ok(DimMatcher::Any{label});
     }
 
     // Check for ellipsis "..."
     if input.peek(Token![...]) {
         input.parse::<Token![...]>()?;
-        return Ok(DimMatcher::Ellipsis);
+        return Ok(DimMatcher::Ellipsis{label});
     }
 
     // Otherwise, parse as expression
     let expr = parse_expr_tokens(input)?;
-    Ok(DimMatcher::Expr(expr))
+    Ok(DimMatcher::Expr{label, expr})
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -55,9 +57,9 @@ enum ExprNode {
 
 #[derive(Debug, Clone, PartialEq)]
 enum DimMatcher {
-    Any,
-    Ellipsis,
-    Expr(ExprNode),
+    Any{label: Option<String>},
+    Ellipsis{label: Option<String>},
+    Expr{label: Option<String>, expr: ExprNode},
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -206,15 +208,30 @@ impl ExprNode {
 impl DimMatcher {
     fn to_tokens(&self) -> TokenStream2 {
         match self {
-            DimMatcher::Any => {
-                quote! { bimm_contracts::DimMatcher::Any }
+            DimMatcher::Any{label} => {
+                let base = quote! { bimm_contracts::DimMatcher::any() };
+                if label.is_some() {
+                    quote! { #base.with_label(#label) }
+                } else {
+                    base
+                }
             }
-            DimMatcher::Ellipsis => {
-                quote! { bimm_contracts::DimMatcher::Ellipsis }
+            DimMatcher::Ellipsis{label} => {
+                let base = quote! { bimm_contracts::DimMatcher::ellipsis() };
+                if label.is_some() {
+                    quote! { #base.with_label(#label) }
+                } else {
+                    base
+                }
             }
-            DimMatcher::Expr(expr) => {
+            DimMatcher::Expr{label, expr} => {
                 let expr_tokens = expr.to_tokens();
-                quote! { bimm_contracts::DimMatcher::Expr(#expr_tokens) }
+                let base = quote! { bimm_contracts::DimMatcher::expr(#expr_tokens) };
+                if label.is_some() {
+                    quote! { #base.with_label(#label) }
+                } else {
+                    base
+                }
             }
         }
     }
@@ -239,6 +256,8 @@ impl ShapeContract {
 /// - a dim expression.
 ///
 /// ```bnf
+/// ShapeContract => <LabeledExpr> { ',' <LabeledExpr> }* ','?
+/// LabeledExpr => {Param ":"}? <Expr>
 /// Expr => <Term> { <AddOp> <Term> }
 /// Term => <Power> { <MulOp> <Power> }
 /// Power => <Factor> [ ^ <usize> ]
@@ -376,15 +395,15 @@ mod tests {
         let contract = input.contract;
 
         assert_eq!(contract.terms.len(), 4);
-        assert_eq!(contract.terms[0], DimMatcher::Any);
+        assert_eq!(contract.terms[0], DimMatcher::Any{label: None});
         assert_eq!(
             contract.terms[1],
-            DimMatcher::Expr(ExprNode::Param("x".to_string()))
+            DimMatcher::Expr{label: None, expr: ExprNode::Param("x".to_string())}
         );
-        assert_eq!(contract.terms[2], DimMatcher::Ellipsis);
+        assert_eq!(contract.terms[2], DimMatcher::Ellipsis{label: None});
         assert_eq!(
             contract.terms[3],
-            DimMatcher::Expr(ExprNode::Sum(vec![
+            DimMatcher::Expr{label: None, expr: ExprNode::Sum(vec![
                 ExprNode::Param("y".to_string()),
                 ExprNode::Pow(
                     Box::new(ExprNode::Prod(vec![
@@ -393,15 +412,16 @@ mod tests {
                     ])),
                     2
                 ),
-            ]))
+            ])}
         );
 
         assert_eq!(
             contract.to_tokens().to_string(),
-            "bimm_contracts :: ShapeContract :: new (& [bimm_contracts :: DimMatcher :: Any , \
-bimm_contracts :: DimMatcher :: Expr (bimm_contracts :: DimExpr :: Param (\"x\")) , \
-bimm_contracts :: DimMatcher :: Ellipsis , \
-bimm_contracts :: DimMatcher :: Expr (bimm_contracts :: DimExpr :: Sum (& [bimm_contracts :: DimExpr :: Param (\"y\") , \
+            "bimm_contracts :: ShapeContract :: new (& [\
+bimm_contracts :: DimMatcher :: any () , \
+bimm_contracts :: DimMatcher :: expr (bimm_contracts :: DimExpr :: Param (\"x\")) , \
+bimm_contracts :: DimMatcher :: ellipsis () , \
+bimm_contracts :: DimMatcher :: expr (bimm_contracts :: DimExpr :: Sum (& [bimm_contracts :: DimExpr :: Param (\"y\") , \
 bimm_contracts :: DimExpr :: Pow (& bimm_contracts :: DimExpr :: Prod (& [bimm_contracts :: DimExpr :: Param (\"z\") , \
 bimm_contracts :: DimExpr :: Param (\"w\")\
 ]) , 2usize)]))])",
