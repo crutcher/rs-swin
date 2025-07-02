@@ -1,8 +1,8 @@
+use crate::layers::drop::path::rate_table::DropPathRateDepthTable;
 use crate::models::swin::v2::block_sequence::{
     StochasticDepthTransformerBlockSequence, StochasticDepthTransformerBlockSequenceConfig,
     StochasticDepthTransformerBlockSequenceMeta,
 };
-use crate::models::swin::v2::drop_path_rate_table::DropPathRateDepthTable;
 use crate::models::swin::v2::patch_embed::{PatchEmbed, PatchEmbedConfig, PatchEmbedMeta};
 use crate::models::swin::v2::patch_merge::{PatchMerging, PatchMergingConfig};
 use burn::config::Config;

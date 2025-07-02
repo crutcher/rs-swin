@@ -12,6 +12,8 @@ use burn::module::Module;
 use burn::prelude::{Backend, Tensor};
 use burn::tensor::Distribution;
 
+pub mod rate_table;
+
 /// Checks if the given probability is within the valid range [0, 1].
 #[inline(always)]
 fn check_probability(prob: f64) -> f64 {
@@ -196,8 +198,10 @@ impl DropPath {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+
+    use crate::layers::drop::path::{_drop_path_sample, DropPathConfig, DropPathMeta};
     use burn::backend::NdArray;
+    use burn::prelude::Tensor;
     use burn::tensor::Distribution;
 
     #[test]

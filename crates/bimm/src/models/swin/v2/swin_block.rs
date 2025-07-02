@@ -1,5 +1,4 @@
 use crate::compat::ops::roll;
-use crate::layers::drop::{DropPath, DropPathConfig};
 use crate::models::swin::v2::window_attention::sw_attn_mask;
 use crate::models::swin::v2::window_attention::{
     WindowAttention, WindowAttentionConfig, WindowAttentionMeta,
@@ -11,6 +10,7 @@ use burn::nn::{Dropout, DropoutConfig, Gelu, LayerNorm, LayerNormConfig, Linear,
 use burn::prelude::{Backend, Tensor};
 use burn::tensor::BasicOps;
 
+use crate::layers::drop::path::{DropPath, DropPathConfig};
 use bimm_contracts::{ShapeContract, run_every_nth, shape_contract};
 
 pub trait BlockMlpMeta {
