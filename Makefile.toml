@@ -26,4 +26,4 @@ dependencies = [
 [tasks.bench]
 toolchain = "nightly"
 command = "cargo"
-args = ["bench", "--features", "nightly", "--benches"]
+args = ["bench", "--features", "nightly", "--benches", "-p", "bimm-contracts"]

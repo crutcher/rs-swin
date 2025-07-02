@@ -47,10 +47,7 @@ impl<'a> DimMatcher<'a> {
         match self {
             DimMatcher::Any { .. } => DimMatcher::Any { label },
             DimMatcher::Ellipsis { .. } => DimMatcher::Ellipsis { label },
-            DimMatcher::Expr { expr, .. } => DimMatcher::Expr {
-                label,
-                expr,
-            },
+            DimMatcher::Expr { expr, .. } => DimMatcher::Expr { label, expr },
         }
     }
 }

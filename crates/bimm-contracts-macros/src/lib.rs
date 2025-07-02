@@ -28,22 +28,22 @@ fn parse_shape_contract_terms(input: ParseStream) -> SynResult<ShapeContract> {
 /// Parse a single contract dim term from tokens.
 fn parse_dim_matcher_tokens(input: ParseStream) -> SynResult<DimMatcher> {
     let label = None;
-    
+
     // Check for "_" (underscore) for Any
     if input.peek(Token![_]) {
         input.parse::<Token![_]>()?;
-        return Ok(DimMatcher::Any{label});
+        return Ok(DimMatcher::Any { label });
     }
 
     // Check for ellipsis "..."
     if input.peek(Token![...]) {
         input.parse::<Token![...]>()?;
-        return Ok(DimMatcher::Ellipsis{label});
+        return Ok(DimMatcher::Ellipsis { label });
     }
 
     // Otherwise, parse as expression
     let expr = parse_expr_tokens(input)?;
-    Ok(DimMatcher::Expr{label, expr})
+    Ok(DimMatcher::Expr { label, expr })
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -57,9 +57,16 @@ enum ExprNode {
 
 #[derive(Debug, Clone, PartialEq)]
 enum DimMatcher {
-    Any{label: Option<String>},
-    Ellipsis{label: Option<String>},
-    Expr{label: Option<String>, expr: ExprNode},
+    Any {
+        label: Option<String>,
+    },
+    Ellipsis {
+        label: Option<String>,
+    },
+    Expr {
+        label: Option<String>,
+        expr: ExprNode,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -208,7 +215,7 @@ impl ExprNode {
 impl DimMatcher {
     fn to_tokens(&self) -> TokenStream2 {
         match self {
-            DimMatcher::Any{label} => {
+            DimMatcher::Any { label } => {
                 let base = quote! { bimm_contracts::DimMatcher::any() };
                 if label.is_some() {
                     quote! { #base.with_label(#label) }
@@ -216,7 +223,7 @@ impl DimMatcher {
                     base
                 }
             }
-            DimMatcher::Ellipsis{label} => {
+            DimMatcher::Ellipsis { label } => {
                 let base = quote! { bimm_contracts::DimMatcher::ellipsis() };
                 if label.is_some() {
                     quote! { #base.with_label(#label) }
@@ -224,7 +231,7 @@ impl DimMatcher {
                     base
                 }
             }
-            DimMatcher::Expr{label, expr} => {
+            DimMatcher::Expr { label, expr } => {
                 let expr_tokens = expr.to_tokens();
                 let base = quote! { bimm_contracts::DimMatcher::expr(#expr_tokens) };
                 if label.is_some() {
@@ -395,24 +402,30 @@ mod tests {
         let contract = input.contract;
 
         assert_eq!(contract.terms.len(), 4);
-        assert_eq!(contract.terms[0], DimMatcher::Any{label: None});
+        assert_eq!(contract.terms[0], DimMatcher::Any { label: None });
         assert_eq!(
             contract.terms[1],
-            DimMatcher::Expr{label: None, expr: ExprNode::Param("x".to_string())}
+            DimMatcher::Expr {
+                label: None,
+                expr: ExprNode::Param("x".to_string())
+            }
         );
-        assert_eq!(contract.terms[2], DimMatcher::Ellipsis{label: None});
+        assert_eq!(contract.terms[2], DimMatcher::Ellipsis { label: None });
         assert_eq!(
             contract.terms[3],
-            DimMatcher::Expr{label: None, expr: ExprNode::Sum(vec![
-                ExprNode::Param("y".to_string()),
-                ExprNode::Pow(
-                    Box::new(ExprNode::Prod(vec![
-                        ExprNode::Param("z".to_string()),
-                        ExprNode::Param("w".to_string())
-                    ])),
-                    2
-                ),
-            ])}
+            DimMatcher::Expr {
+                label: None,
+                expr: ExprNode::Sum(vec![
+                    ExprNode::Param("y".to_string()),
+                    ExprNode::Pow(
+                        Box::new(ExprNode::Prod(vec![
+                            ExprNode::Param("z".to_string()),
+                            ExprNode::Param("w".to_string())
+                        ])),
+                        2
+                    ),
+                ])
+            }
         );
 
         assert_eq!(
