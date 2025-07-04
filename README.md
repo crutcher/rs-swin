@@ -10,15 +10,88 @@ particularly in the area of image datasets and transforms.
 
 ## Crates
 
-[bimm](crates/bimm) - the main crate for image models.
+### [bimm](crates/bimm) - the main crate for image models.
 
 [![Crates.io Version](https://img.shields.io/crates/v/bimm)](https://crates.io/crates/bimm)
 [![docs.rs](https://img.shields.io/docsrs/bimm)](https://docs.rs/bimm/latest/bimm/)
 
-[bimm-contracts](crates/bimm-contracts) - a crate for static shape contracts for tensors.
+This crate provides a collection of image models, and their constituent sub-components.
+
+The goal is to incrementally clone `timm`'s coverage of the SOTA image models,
+while focusing on decomposing the models into reusable, fully tested components.
+
+### [bimm-contracts](crates/bimm-contracts) - a crate for static shape contracts for tensors.
 
 [![Crates.io Version](https://img.shields.io/crates/v/bimm-contracts)](https://crates.io/crates/bimm-contracts)
 [![docs.rs](https://img.shields.io/docsrs/bimm-contracts)](https://docs.rs/bimm-contracts/latest/bimm-contracts/)
+
+This crate provides a stand-alone library for defining and enforcing tensor shape contracts
+in-line with the Burn framework modules and methods.
+
+This includes:
+- A macro for defining shape contracts.
+- static shape contracts.
+- stack-checked (minimizing heap usage) shape assertions.
+- an interface for unpacking tensor shapes into their components,
+  allowing for parameterized dimensions; and nice error messages
+  when the shape does not match the contract.
+- a macro for running shape checks periodically,
+  amortizing the cost of checks over multiple calls.
+
+```rust
+use bimm_contracts::{ShapeContract, shape_contract, run_every_nth};
+
+pub fn window_partition<B: Backend, K>(
+    tensor: Tensor<B, 4, K>,
+    window_size: usize,
+) -> Tensor<B, 4, K>
+where
+    K: BasicOps<B>,
+{
+    static INPUT_CONTRACT: ShapeContract = shape_contract![
+        "batch",
+        "h_wins" * "window_size",
+        "w_wins" * "window_size",
+        "channels"
+    ];
+    let [b, h_wins, w_wins, c] = INPUT_CONTRACT.unpack_shape(
+        &tensor,
+        &["batch", "h_wins", "w_wins", "channels"],
+        &[("window_size", window_size)],
+    );
+
+    let tensor = tensor
+        .reshape([b, h_wins, window_size, w_wins, window_size, c])
+        .swap_dims(2, 3)
+        .reshape([b * h_wins * w_wins, window_size, window_size, c]);
+
+    // Run this check periodically on a doubling schedule,
+    // up to the default of every 1000th call.
+    run_every_nth!({
+        // I'd normally not use a contract here, as the shape is already
+        // very clear from the above operations; but this is an example
+        // of low-overhead periodic shape checking.
+        static OUTPUT_CONTRACT: ShapeContract = shape_contract![
+            "batch" * "h_wins" * "w_wins",
+            "window_size",
+            "window_size",
+            "channels"
+        ];
+        OUTPUT_CONTRACT.assert_shape(
+            &tensor,
+            &[
+                ("batch", b),
+                ("h_wins", h_wins),
+                ("w_wins", w_wins),
+                ("window_size", window_size),
+                ("channels", c),
+            ]
+        );
+    });
+    
+    tensor
+}
+```
 
 
 ## Current Status
@@ -26,70 +99,7 @@ particularly in the area of image datasets and transforms.
 There is a largely complete implementation of the Swin Transformer V2,
 and a training example using the CINIC-10 dataset.
 
+
 ## Contributing
 
-I (crutcher) am relatively new to Rust, and am still learning the idioms of the language;
-*particularly* in relation to what makes a good crate.
-
-I believe strongly in tooling (like `clippy` and `rustfmt`),
-and 100% test coverage; but I don't have strong knowledge of
-how to write idiomatic Rust code yet, particularly in relation to
-that tooling.
-
-I'd love help from anyone interested in contributing to this crate.
-
-I generally hang out on the Burn Discord; and development discussions
-should probably be held in the `#vision` channel there.
-
-## Setup
-
-Much dev tooling is done with `cargo-make`, so you'll need to install that:
-
-    cargo install cargo-make
-
-Then, you can run the dev setup script to install the necessary dependencies:
-
-    cargo make setup
-
-## Dev Cycle
-
-Run `rustfmt`, `clippy`, and `test':
-
-    cargo make devtest
-
-## Benchmarks
-
-Benchmarks are run by enabling the nightly toolchain:
-
-    cargo +nightly bench --features nightly
-
-Or just:
-
-    cargo make bench
-
-## Philosophy
-
-This crate is intended to provide a collection of image models, primarily
-translated from the `timm` library, but also including some original models.
-It is also intended to provide some of the missing image dataset and transform functionality
-that is needed to train these models.
-
-This crate will emphasize a few things not commonly found in the torch ecosystem.
-
-### Composition
-
-The `timm` library contains many models that are monolithic,
-despite sharing duplicates of much of the same code.
-
-This crate will focus on providing a set of composable components
-for the internal components of the models, so that larger full models,
-particularly those in the same family,
-can be built from smaller reusable and tested components.
-
-### Shape Contracts
-
-A low-overhead (const, stack-evaluated) shape contract library
-that can be used in-line with the models to both ensure tensor geometry,
-and unpack complex shape components at runtime; coupled with a high-quality
-panic reporting system that provides detailed information about pattern errors.
-
+See the [CONTRIBUTING](CONTRIBUTING.md) guide for build and contribution instructions.
