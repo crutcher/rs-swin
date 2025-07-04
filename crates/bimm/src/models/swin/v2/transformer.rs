@@ -1,9 +1,9 @@
 use crate::layers::drop::path::rate_table::DropPathRateDepthTable;
+use crate::layers::patching::patch_embed::{PatchEmbed, PatchEmbedConfig, PatchEmbedMeta};
 use crate::models::swin::v2::block_sequence::{
     StochasticDepthTransformerBlockSequence, StochasticDepthTransformerBlockSequenceConfig,
     StochasticDepthTransformerBlockSequenceMeta,
 };
-use crate::models::swin::v2::patch_embed::{PatchEmbed, PatchEmbedConfig, PatchEmbedMeta};
 use crate::models::swin::v2::patch_merge::{PatchMerging, PatchMergingConfig};
 use bimm_contracts::{ShapeContract, run_every_nth, shape_contract};
 use burn::config::Config;

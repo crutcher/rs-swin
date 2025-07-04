@@ -254,7 +254,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::swin::v2::patch_embed::{PatchEmbedConfig, PatchEmbedMeta};
+    use crate::layers::patching::patch_embed::{PatchEmbedConfig, PatchEmbedMeta};
     use burn::backend::NdArray;
     use burn::prelude::Backend;
     use burn::tensor::Distribution;
