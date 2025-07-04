@@ -20,6 +20,12 @@ This crate provides a collection of image models, and their constituent sub-comp
 The goal is to incrementally clone `timm`'s coverage of the SOTA image models,
 while focusing on decomposing the models into reusable, fully tested components.
 
+Currently, this has `SWIN Transformer V2`.
+
+The current work surface is focused on extending the dataloader framework to support
+more flexible image datasets and transforms, and the kind of composable image augmentation
+that is common in the torch ecosystem library.
+
 ### [bimm-contracts](crates/bimm-contracts) - a crate for static shape contracts for tensors.
 
 [![Crates.io Version](https://img.shields.io/crates/v/bimm-contracts)](https://crates.io/crates/bimm-contracts)
@@ -92,12 +98,6 @@ where
     tensor
 }
 ```
-
-
-## Current Status
-
-There is a largely complete implementation of the Swin Transformer V2,
-and a training example using the CINIC-10 dataset.
 
 
 ## Contributing
