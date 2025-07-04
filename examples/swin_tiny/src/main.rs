@@ -240,7 +240,7 @@ fn main() {
         ],
     )
     .with_window_size(window_size)
-    .with_attn_drop_rate(0.2)
+    .with_attn_drop_rate(0.1)
     .with_drop_rate(0.2);
 
     let training_config = TrainingConfig::new(
@@ -250,11 +250,14 @@ fn main() {
             .with_grad_clipping(Some(GradientClippingConfig::Norm(0.25))),
     )
     .with_learning_rate(1.0e-3)
-    .with_num_epochs(100)
+    .with_num_epochs(40)
     .with_batch_size(512)
-    .with_num_workers(1);
+    .with_num_workers(4);
 
     let devices = vec![Default::default()];
+    // This always crashes on the transition from train to valid step,
+    // and I've not debugged it yet.
+    // let devices = vec![CudaDevice{index:0}, CudaDevice{index:1}];
 
     train::<B>("/tmp/swin_tiny_cinic10", training_config, devices);
 }

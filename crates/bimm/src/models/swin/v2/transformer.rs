@@ -535,21 +535,6 @@ impl<B: Backend> SwinTransformerV2<B> {
         });
 
         let x = self.apply_stack(x);
-        run_every_nth!({
-            static STACK_CONTRACT: ShapeContract =
-                shape_contract!("batch", "num_patches", "grid_output_features");
-            STACK_CONTRACT.assert_shape(
-                &x,
-                &[
-                    (
-                        "num_patches",
-                        self.patch_embed.num_patches() / self.patch_size(),
-                    ),
-                    ("grid_output_features", self.grid_output_features),
-                ],
-            );
-        });
-
         let x = self.aggregate_grid(x);
         run_every_nth!({
             static AGGREGATE_CONTRACT: ShapeContract =

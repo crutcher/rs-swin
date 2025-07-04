@@ -217,9 +217,8 @@ impl<B: Backend> PatchEmbed<B> {
                 &x,
                 &[
                     ("batch", batch),
+                    ("num_patches", self.num_patches()),
                     ("d_output", self.d_output()),
-                    ("height", self.input_height()),
-                    ("width", self.input_width()),
                 ],
             );
         });
