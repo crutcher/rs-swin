@@ -13,9 +13,11 @@ workspace = true
 [dependencies]
 burn = { workspace = true }
 bimm-contracts = { workspace = true }
+serde = { version = "1.0.219", features = ["derive"] }
 
 [dev-dependencies]
 burn = { workspace = true, features = ["ndarray"] }
+serde_json = { workspace = true }
 
 num-traits = { workspace = true }
 hamcrest = { workspace = true }
