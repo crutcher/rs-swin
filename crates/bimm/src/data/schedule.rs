@@ -1,6 +1,7 @@
 use burn::serde::Serialize;
 use serde::Deserialize;
 use std::fmt::Debug;
+use std::hash::Hash;
 
 /// A fixed schedule for loading data items.
 ///
@@ -17,10 +18,10 @@ use std::fmt::Debug;
 /// constraints; but the expectation is that additional metadata will be added
 /// to the schedule in the future (such as block size, or item load cost estimates).
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(bound = "M: ScheduleItem")]
+#[serde(bound = "M: DataLoadMetaDataItem")]
 pub struct DataLoadSchedule<M>
 where
-    M: ScheduleItem,
+    M: DataLoadMetaDataItem,
 {
     pub items: Vec<M>,
 }
@@ -38,20 +39,20 @@ where
 /// - `PartialEq` and `Eq`: the schedule must be comparable for equality.
 /// - `Send` and `Sync`: the schedule must be thread-safe.
 /// - `Serialize` and `Deserialize`: the schedule must be serializable and deserializable.
-pub trait ScheduleItem:
-    Debug + Clone + PartialEq + Eq + Send + Sync + Serialize + for<'de> Deserialize<'de>
+pub trait DataLoadMetaDataItem:
+    Debug + Clone + Hash + PartialEq + Eq + Send + Sync + Serialize + for<'de> Deserialize<'de>
 {
 }
 
 /// Blanket implementation of `ScheduleItem` for any type that meets the requirements.
-impl<T> ScheduleItem for T where
-    T: Debug + Clone + PartialEq + Eq + Send + Sync + Serialize + for<'de> Deserialize<'de>
+impl<T> DataLoadMetaDataItem for T where
+    T: Debug + Clone + Hash + PartialEq + Eq + Send + Sync + Serialize + for<'de> Deserialize<'de>
 {
 }
 
 impl<M> Debug for DataLoadSchedule<M>
 where
-    M: ScheduleItem,
+    M: DataLoadMetaDataItem,
 {
     fn fmt(
         &self,
@@ -73,7 +74,7 @@ where
 
 impl<M> DataLoadSchedule<M>
 where
-    M: ScheduleItem,
+    M: DataLoadMetaDataItem,
 {
     /// Creates a new empty `DataLoadSchedule`.
     pub fn new() -> Self {
@@ -87,13 +88,13 @@ where
 
     /// Checks if the schedule is empty.
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
+        self.items.is_empty()
     }
 }
 
 impl<M> From<Vec<M>> for DataLoadSchedule<M>
 where
-    M: ScheduleItem,
+    M: DataLoadMetaDataItem,
 {
     fn from(items: Vec<M>) -> Self {
         Self { items }
@@ -102,10 +103,10 @@ where
 
 impl<M> Default for DataLoadSchedule<M>
 where
-    M: ScheduleItem,
+    M: DataLoadMetaDataItem,
 {
     fn default() -> Self {
-        Self { items: Vec::new() }
+        Self::new()
     }
 }
 
@@ -154,7 +155,7 @@ DataLoadSchedule {
         }
     }
 
-    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+    #[derive(Debug, Clone, Hash, Serialize, Deserialize, PartialEq, Eq)]
     pub struct ExampleItem {
         path: String,
     }
