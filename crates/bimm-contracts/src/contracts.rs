@@ -7,31 +7,52 @@ use std::fmt::{Display, Formatter};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DimMatcher<'a> {
     /// Matches any dimension size.
-    Any { label: Option<&'a str> },
+    Any {
+        /// An optional label for the matcher.
+        label: Option<&'a str>,
+    },
 
     /// Matches a variable number of dimensions (ellipsis).
-    Ellipsis { label: Option<&'a str> },
+    Ellipsis {
+        /// An optional label for the matcher.
+        label: Option<&'a str>,
+    },
 
     /// A dimension size expression that must match a specific value.
     Expr {
+        /// An optional label for the matcher.
         label: Option<&'a str>,
+
+        /// The dimension expression that must match a specific value.
         expr: DimExpr<'a>,
     },
 }
 
 impl<'a> DimMatcher<'a> {
+    /// Create a new `DimMatcher` that matches any dimension size.
     pub const fn any() -> Self {
         DimMatcher::Any { label: None }
     }
 
+    /// Create a new `DimMatcher` that matches a variable number of dimensions (ellipsis).
     pub const fn ellipsis() -> Self {
         DimMatcher::Ellipsis { label: None }
     }
 
+    /// Create a new `DimMatcher` from a dimension expression.
+    ///
+    /// ## Arguments
+    ///
+    /// - `expr`: a dimension expression that must match a specific value.
+    ///
+    /// ## Returns
+    ///
+    /// A new `DimMatcher` that matches the given expression.
     pub const fn expr(expr: DimExpr<'a>) -> Self {
         DimMatcher::Expr { label: None, expr }
     }
 
+    /// Get the label of the matcher, if any.
     pub const fn label(&self) -> Option<&'a str> {
         match self {
             DimMatcher::Any { label } => *label,
@@ -40,6 +61,15 @@ impl<'a> DimMatcher<'a> {
         }
     }
 
+    /// Attach a label to the matcher.
+    ///
+    /// ## Arguments
+    ///
+    /// - `label`: an optional label to attach to the matcher.
+    ///
+    /// ## Returns
+    ///
+    /// A new `DimMatcher` with the label attached.
     pub const fn with_label(
         self,
         label: Option<&'a str>,

@@ -1,3 +1,5 @@
+//! Windowing operations for Swin Transformer v2
+
 use bimm_contracts::{ShapeContract, shape_contract};
 use burn::prelude::{Backend, Tensor};
 use burn::tensor::BasicOps;

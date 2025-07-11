@@ -88,9 +88,11 @@ pub struct StochasticDepthTransformerBlockSequenceConfig {
     #[config(default = 0.0)]
     pub attn_drop_rate: f64,
 
+    /// Common drop path rate for all blocks.
     #[config(default = 0.0)]
     pub common_drop_path_rate: f64,
 
+    /// Per-depth drop path rates.
     #[config(default = "None")]
     pub drop_path_rates: Option<Vec<f64>>,
 }

@@ -112,8 +112,13 @@ impl PatchMergingConfig {
 /// See: https://github.com/microsoft/Swin-Transformer/blob/main/models/swin_transformer_v2.py
 #[derive(Module, Debug)]
 pub struct PatchMerging<B: Backend> {
+    /// Input resolution (height, width).
     input_resolution: [usize; 2],
+
+    /// Linear layer for reducing the feature dimension.
     reduction: Linear<B>,
+
+    /// Layer norm layer.
     norm: LayerNorm<B>,
 }
 
@@ -128,6 +133,17 @@ impl<B: Backend> PatchMergingMeta for PatchMerging<B> {
 }
 
 impl<B: Backend> PatchMerging<B> {
+    /// Forward pass of the PatchMerging module.
+    ///
+    /// # Arguments
+    ///
+    /// - `x` - Input tensor of shape `(B, (H * W), C)`, where `B` is the batch size,
+    ///   `H` is the height, `W` is the width, and `C` is the number of channels.
+    ///
+    /// # Returns
+    ///
+    /// A tensor of shape `(B, (H/2 * W/2), 2 * C)`, where `C` is the number of channels
+    /// after merging patches.
     pub fn forward(
         &self,
         x: Tensor<B, 3>,

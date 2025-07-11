@@ -14,6 +14,7 @@ use burn::nn::{Dropout, DropoutConfig, Linear, LinearConfig};
 use burn::prelude::{Backend, Tensor};
 use burn::tensor::activation::softmax;
 
+/// EPS is a small constant used to avoid numerical instability in calculations.
 pub const EPS: f64 = 1e-12;
 
 /// Common introspection interface for WindowAttention.
@@ -21,8 +22,18 @@ pub trait WindowAttentionMeta {
     /// Get the input/channel dimension size.
     fn d_input(&self) -> usize;
 
-    /// Get the window size.
+    /// Get the window shape ``[height, width]``.
     fn window_shape(&self) -> [usize; 2];
+
+    /// Get the height of the window.
+    fn window_height(&self) -> usize {
+        self.window_shape()[0]
+    }
+
+    /// Get the width of the window.
+    fn window_width(&self) -> usize {
+        self.window_shape()[1]
+    }
 
     /// Get the number of attention heads.
     fn num_heads(&self) -> usize;
@@ -40,43 +51,55 @@ pub trait WindowAttentionMeta {
 /// Configuration for the WindowAttention module.
 #[derive(Config, Debug)]
 pub struct WindowAttentionConfig {
+    /// Input dimension size.
     pub d_input: usize,
 
+    /// Window shape as [height, width].
     pub window_shape: [usize; 2],
 
+    /// Number of attention heads.
     pub num_heads: usize,
 
+    /// Whether to enable bias for Q, K, V linear layers.
     #[config(default = true)]
     pub enable_qkv_bias: bool,
 
+    /// Dropout rate for attention.
     #[config(default = 0.)]
     pub attn_drop: f64,
 
+    /// Dropout rate for projection.
     #[config(default = 0.)]
     pub proj_drop: f64,
 }
 
 impl WindowAttentionMeta for WindowAttentionConfig {
+    /// Get the input/channel dimension size.
     fn d_input(&self) -> usize {
         self.d_input
     }
 
+    /// Get the window shape.
     fn window_shape(&self) -> [usize; 2] {
         self.window_shape
     }
 
+    /// Get the number of heads.
     fn num_heads(&self) -> usize {
         self.num_heads
     }
 
+    /// Get the drop rate for attention.
     fn attn_drop(&self) -> f64 {
         self.attn_drop
     }
 
+    /// Get the drop rate for projection.
     fn proj_drop(&self) -> f64 {
         self.proj_drop
     }
 
+    /// Check if QKV bias is enabled.
     fn enable_qkv_bias(&self) -> bool {
         self.enable_qkv_bias
     }
@@ -85,19 +108,34 @@ impl WindowAttentionMeta for WindowAttentionConfig {
 /// The WindowAttention module.
 #[derive(Module, Debug)]
 pub struct WindowAttention<B: Backend> {
+    /// Input dimension size.
     pub d_input: usize,
+
+    /// Number of attention heads.
     pub num_heads: usize,
 
+    /// Linear layer for Q.
     pub q_linear: Linear<B>,
+
+    /// Linear layer for K.
     pub k_linear: Linear<B>,
+
+    /// Linear layer for V.
     pub v_linear: Linear<B>,
 
+    /// Learnable logit scale.
     pub logit_scale: Param<Tensor<B, 3>>,
+
+    /// Relative position bias module.
     pub rpb_module: OffsetGridRelativePositionBias<B>,
 
+    /// Linear layer for projection.
     pub proj: Linear<B>,
 
+    /// Dropout for attention.
     pub attn_drop: Dropout,
+
+    /// Dropout for projection.
     pub proj_drop: Dropout,
 }
 
@@ -278,6 +316,15 @@ impl<B: Backend> WindowAttention<B> {
 }
 
 impl WindowAttentionConfig {
+    /// Create a new WindowAttentionConfig.
+    ///
+    /// ## Arguments
+    ///
+    /// - `device`: The backend device to use.
+    ///
+    /// ## Returns
+    ///
+    /// A new instance of WindowAttentionConfig.
     pub fn init<B: Backend>(
         &self,
         device: &B::Device,

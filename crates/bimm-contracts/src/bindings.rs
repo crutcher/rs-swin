@@ -96,7 +96,10 @@ where
 
 /// A mutable stack environment, backed by a static stack environment.
 pub struct MutableStackEnvironment<'a> {
+    /// The backing stack environment that contains the original bindings.
     pub backing: StackEnvironment<'a>,
+
+    /// The updates made to the stack environment.
     pub updates: Vec<(&'a str, usize)>,
 }
 
