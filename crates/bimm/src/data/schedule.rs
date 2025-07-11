@@ -23,6 +23,7 @@ pub struct DataLoadSchedule<M>
 where
     M: DataLoadMetaDataItem,
 {
+    /// The items in the schedule.
     pub items: Vec<M>,
 }
 

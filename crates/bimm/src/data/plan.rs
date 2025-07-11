@@ -9,7 +9,10 @@ where
     M: DataLoadMetaDataItem,
     T: DataLoadDataItem,
 {
+    /// The schedule that defines when and how to load the data.
     pub schedule: DataLoadSchedule<M>,
+
+    /// An optional operator that defines how to load the data.
     pub op: Option<Arc<dyn DataLoadOperator<M, T>>>,
 }
 
