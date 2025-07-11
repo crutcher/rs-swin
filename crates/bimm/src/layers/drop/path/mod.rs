@@ -12,6 +12,7 @@ use burn::module::Module;
 use burn::prelude::{Backend, Tensor};
 use burn::tensor::Distribution;
 
+/// Common rate table for DropPath regularization.
 pub mod rate_table;
 
 /// Checks if the given probability is within the valid range [0, 1].
@@ -101,19 +102,26 @@ fn _drop_path_sample<B: Backend, const D: usize>(
 
 /// Common introspection interface for DropPath modules.
 pub trait DropPathMeta {
+    /// Returns the drop probability.
     fn drop_prob(&self) -> f64;
+
+    /// Returns the keep probability, which is `1.0 - drop_prob`.
     fn keep_prob(&self) -> f64 {
         1.0 - self.drop_prob()
     }
+
+    /// Returns whether the output is scaled by `1 / (1 - drop_prob)`.
     fn scale_by_keep(&self) -> bool;
 }
 
 /// Configuration for the DropPath module.
 #[derive(Config, Debug)]
 pub struct DropPathConfig {
+    /// Probability of dropping a path.
     #[config(default = 0.0)]
     pub drop_prob: f64,
 
+    /// Whether to scale the output by `1 / (1 - drop_prob)`.
     #[config(default = true)]
     pub scale_by_keep: bool,
 }
@@ -145,7 +153,10 @@ impl DropPathConfig {
 /// Burn Module that implements the DropPath (Stochastic Depth) regularization.
 #[derive(Module, Clone, Debug)]
 pub struct DropPath {
+    /// Probability of dropping a path.
     pub drop_prob: f64,
+
+    /// Whether to scale the output by `1 / (1 - drop_prob)`.
     pub scale_by_keep: bool,
 }
 

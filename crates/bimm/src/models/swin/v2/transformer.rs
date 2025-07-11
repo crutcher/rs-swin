@@ -14,12 +14,17 @@ use burn::nn::{
 };
 use burn::prelude::{Backend, Tensor};
 
+/// Configuration for a single layer in the Swin Transformer V2 model.
 #[derive(Config, Debug, PartialEq, Eq)]
 pub struct LayerConfig {
+    /// The depth of the layer, i.e., the number of transformer blocks in this layer.
     pub depth: usize,
+
+    /// The number of attention heads in the transformer blocks of this layer.
     pub num_heads: usize,
 }
 
+/// Meta trait for `SwinTransformerV2` configs.
 pub trait SwinTransformerV2Meta {
     /// The input image resolution as [height, width].
     fn input_resolution(&self) -> [usize; 2];
@@ -74,6 +79,7 @@ pub trait SwinTransformerV2Meta {
     fn enable_patch_norm(&self) -> bool;
 }
 
+/// Configuration for `SwinTransformerV2` model.
 #[derive(Config, Debug)]
 pub struct SwinTransformerV2Config {
     /// The input image resolution as [height, width].
@@ -185,13 +191,19 @@ impl SwinTransformerV2Meta for SwinTransformerV2Config {
     }
 }
 
+/// Partially validated plan for the SWIN Transformer V2 model.
 #[derive(Debug)]
 pub struct SwinTransformerV2Plan {
+    /// The patch embedding configuration for the model.
     pub patch_config: PatchEmbedConfig,
 
+    /// The resolutions of the grid for each layer.
     pub layer_resolutions: Vec<[usize; 2]>,
+
+    /// The embedding dimension size of the output for each layer.
     pub layer_dims: Vec<usize>,
 
+    /// The block configurations for each layer, including stochastic depth.
     pub block_configs: Vec<StochasticDepthTransformerBlockSequenceConfig>,
 }
 
@@ -351,20 +363,43 @@ impl SwinTransformerV2Config {
     }
 }
 
+/// High-level SWIN Transformer V2 model.
 #[derive(Module, Debug)]
 pub struct SwinTransformerV2<B: Backend> {
+    /// The patch embedding layer that converts the input image into patches.
     pub patch_embed: PatchEmbed<B>,
+
+    /// The absolute positional encoding (APE) for the patches, if enabled.
     pub patch_ape: Option<Param<Tensor<B, 3>>>,
+
+    /// The input dropout layer applied to the patch embeddings.
     pub grid_input_dropout: Dropout,
+
+    /// The sequences of transformer blocks for the grid.
     pub grid_transformer_block_sequences: Vec<StochasticDepthTransformerBlockSequence<B>>,
+
+    /// The patch merging layers that reduce the spatial dimensions of the grid.
     pub grid_merge_layers: Vec<PatchMerging<B>>,
+
+    /// The layer normalization applied to the output of the grid transformer blocks.
     pub grid_output_norm: LayerNorm<B>,
+
+    /// The number of output features after the grid transformer blocks.
     pub grid_output_features: usize,
+
+    /// The average pooling layer to aggregate the grid output.
     pub head_avgpool: AdaptiveAvgPool1d,
+
+    /// The final classification head.
     pub head: Linear<B>,
 
+    /// Dropout rate for MLP.
     pub drop_rate: f64,
+
+    /// Dropout rate for attention.
     pub attn_drop_rate: f64,
+
+    /// Drop path rate for stochastic depth.
     pub drop_path_rate: f64,
 }
 

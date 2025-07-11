@@ -11,14 +11,21 @@ use burn::tensor::activation::sigmoid;
 
 /// Common introspection interface for relative position bias modules.
 pub trait RelativePositionBiasMeta {
+    /// Returns the base value for the relative position bias.
     fn base(&self) -> f64;
+
+    /// Returns the number of attention heads.
     fn num_heads(&self) -> usize;
+
+    /// Returns the shape of the window.
     fn window_shape(&self) -> [usize; 2];
 
+    /// Returns the height of the window.
     fn window_height(&self) -> usize {
         self.window_shape()[0]
     }
 
+    /// Returns the width of the window.
     fn window_width(&self) -> usize {
         self.window_shape()[1]
     }
@@ -27,11 +34,14 @@ pub trait RelativePositionBiasMeta {
 /// Configuration for the relative position bias module.
 #[derive(Config, Debug, Copy)]
 pub struct RelativePositionBiasConfig {
+    /// The base value for the relative position bias.
     #[config(default = 8.0)]
     pub base: f64,
 
+    /// The number of attention heads.
     pub num_heads: usize,
 
+    /// The shape of the window ``[height, width]``.
     pub window_shape: [usize; 2],
 }
 
@@ -87,13 +97,22 @@ impl RelativePositionBiasConfig {
 /// Published/Used in SWIN-Transformer v2.
 #[derive(Module, Debug)]
 pub struct OffsetGridRelativePositionBias<B: Backend> {
+    /// The base value for the relative position bias.
     pub base: f64,
+
+    /// The number of attention heads.
     pub num_heads: usize,
+
+    /// The shape of the window.
     pub window_shape: [usize; 2],
 
+    /// The relative coordinates table for the window.
     pub rel_coords_table: Tensor<B, 3>,
+
+    /// The relative position index for the window.
     pub rel_index: Tensor<B, 2, Int>,
 
+    /// The continuous position bias MLP.
     pub cbp: ContinuousPositionBiasMlp<B>,
 }
 
@@ -183,6 +202,7 @@ pub trait ContinuousPositionBiasMlpMeta {
     fn num_heads(&self) -> usize;
 }
 
+/// Configuration for `ContinuousPositionBiasMlp`.
 #[derive(Config, Debug, Copy)]
 pub struct ContinuousPositionBiasMlpConfig {
     /// The hidden dimension of the MLP.

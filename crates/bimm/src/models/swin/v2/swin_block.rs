@@ -13,16 +13,22 @@ use burn::tensor::BasicOps;
 use crate::layers::drop::path::{DropPath, DropPathConfig};
 use bimm_contracts::{ShapeContract, run_every_nth, shape_contract};
 
+/// Common meta-interface for `BlockMlp` config.
 pub trait BlockMlpMeta {
+    /// Get the input dimension size.
     fn d_input(&self) -> usize;
 
+    /// Get the hidden dimension size.
     fn d_hidden(&self) -> usize;
 
+    /// Get the output dimension size.
     fn d_output(&self) -> usize;
 
+    /// Get the dropout rate.
     fn drop(&self) -> f64;
 }
 
+/// Configuration for `BlockMlp`.
 #[derive(Config, Debug)]
 pub struct BlockMlpConfig {
     d_input: usize,
@@ -56,6 +62,15 @@ impl BlockMlpMeta for BlockMlpConfig {
 }
 
 impl BlockMlpConfig {
+    /// Creates a new `BlockMlp`.
+    ///
+    /// ## Arguments
+    ///
+    /// - `device`: The device on which the MLP will be initialized.
+    ///
+    /// ## Returns
+    ///
+    /// A new `BlockMlp` instance.
     pub fn init<B: Backend>(
         &self,
         device: &B::Device,
@@ -76,9 +91,16 @@ impl BlockMlpConfig {
 /// Swin MLP Module
 #[derive(Module, Debug)]
 pub struct BlockMlp<B: Backend> {
+    /// First linear layer.
     fc1: Linear<B>,
+
+    /// Second linear layer.
     fc2: Linear<B>,
+
+    /// Activation function.
     act: Gelu,
+
+    /// Dropout layer.
     drop: Dropout,
 }
 
@@ -249,33 +271,43 @@ pub trait ShiftedWindowTransformerBlockMeta {
 /// Configuration for TransformerBlock.
 #[derive(Config, Debug)]
 pub struct ShiftedWindowTransformerBlockConfig {
+    /// Input dimension size.
     pub d_input: usize,
 
+    /// Input resolution as ``[height, width]``.
     pub input_resolution: [usize; 2],
 
+    /// Number of attention heads.
     pub num_heads: usize,
 
+    /// Window size for window attention.
     #[config(default = 7)]
     pub window_size: usize,
 
+    /// Shift size for shifted window attention; 0 means no shift.
     #[config(default = 0)]
     pub shift_size: usize,
 
+    /// Ratio of hidden dimension to input dimension in MLP.
     #[config(default = 4.0)]
     pub mlp_ratio: f64,
 
+    /// Whether to enable QKV bias.
     #[config(default = true)]
     pub enable_qkv_bias: bool,
 
+    /// Dropout rate for MLP.
     #[config(default = 0.0)]
     pub drop_rate: f64,
 
+    /// Dropout rate for attention.
     #[config(default = 0.0)]
     pub attn_drop_rate: f64,
 
+    /// Drop path rate for stochastic depth.
     #[config(default = 0.0)]
     pub drop_path_rate: f64,
-    // TODO: act_layer, norm_layer
+    // TODO/Check: act_layer, norm_layer
 }
 
 impl ShiftedWindowTransformerBlockMeta for ShiftedWindowTransformerBlockConfig {
@@ -416,17 +448,31 @@ impl ShiftedWindowTransformerBlockConfig {
 /// Applies one layer of Swin Transformer block with window attention and MLP.
 #[derive(Module, Debug)]
 pub struct ShiftedWindowTransformerBlock<B: Backend> {
+    /// Input resolution of the block, as ``[H, W]``.
     pub input_resolution: [usize; 2],
+
+    /// Window size for window attention.
     pub window_size: usize,
 
+    /// Shift size for shifted window attention; 0 means no shift.
     pub shift_size: usize,
+
+    /// Shift mask for shifted window attention.
     pub shift_mask: Option<Tensor<B, 3>>,
 
+    /// Drop path for stochastic depth.
     pub drop_path: DropPath,
 
+    /// Layer normalization 1.
     pub norm1: LayerNorm<B>,
+
+    /// Layer normalization 2.
     pub norm2: LayerNorm<B>,
+
+    /// Window attention block.
     pub win_attn: WindowAttention<B>,
+
+    /// MLP block.
     pub block_mlp: BlockMlp<B>,
 }
 

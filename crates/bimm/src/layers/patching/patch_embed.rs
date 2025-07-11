@@ -136,9 +136,16 @@ impl PatchEmbedConfig {
 /// SWIN-Transformer v2 PatchEmbed module.
 #[derive(Module, Debug)]
 pub struct PatchEmbed<B: Backend> {
+    /// Input resolution (height, width).
     pub input_resolution: [usize; 2],
+
+    /// Size of each patch.
     pub patch_size: usize,
+
+    /// Convolutional layer for patch projection.
     pub projection: Conv2d<B>,
+
+    /// Patch normalization layer, if enabled.
     pub norm: Option<LayerNorm<B>>,
 }
 
