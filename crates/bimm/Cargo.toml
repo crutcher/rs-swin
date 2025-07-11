@@ -13,7 +13,7 @@ workspace = true
 [dependencies]
 burn = { workspace = true }
 bimm-contracts = { workspace = true }
-serde = { version = "1.0.219", features = ["derive"] }
+serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
 burn = { workspace = true, features = ["ndarray"] }
