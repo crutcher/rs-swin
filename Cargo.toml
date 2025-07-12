@@ -25,6 +25,11 @@ bimm = { version = "0.1.9", path = "crates/bimm" }
 bimm-contracts = { version = "0.1.9", path = "crates/bimm-contracts" }
 bimm-contracts-macros = { version = "0.1.9", path = "crates/bimm-contracts-macros" }
 
+# Burn coupled-dependencies
+serde = { version = "^1.0.219" }
+serde_json = { version = "^1.0.140" }
+globwalk = { version = "^0.9.1" }
+
 # macro dependencies
 proc-macro2 = { version = "^1.0.95" }
 syn = { version = "^2.0.104" }
