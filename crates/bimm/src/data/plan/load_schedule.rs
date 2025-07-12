@@ -90,6 +90,59 @@ where
     pub fn is_empty(&self) -> bool {
         self.items.is_empty()
     }
+
+    /// Filters the items in the schedule based on a provided filter function.
+    ///
+    /// ## Arguments
+    ///
+    /// - `predicate`: A closure that takes a reference to an item of type `M` and returns a boolean.
+    ///
+    /// ## Returns
+    ///
+    /// A new `DataLoadSchedule<M>` containing only the items that match the predicate.
+    pub fn filter<P>(
+        &self,
+        predicate: P,
+    ) -> Self
+    where
+        P: FnMut(&M) -> bool,
+    {
+        let mut predicate = predicate;
+        let items: Vec<M> = self
+            .items
+            .iter()
+            .filter(move |item| predicate(*item))
+            .cloned()
+            .collect();
+
+        items.into()
+    }
+
+    /// Filters the items in the schedule based on a provided filter function,
+    /// and maps them to a new type `R` if the predicate returns `Some(R)`.
+    ///
+    /// This function is useful for transforming the schedule items while filtering them.
+    ///
+    /// ## Arguments
+    ///
+    /// - `predicate`: A closure that takes a reference to an item of type `M` and returns an `Option<R>`.
+    ///
+    /// ## Returns
+    ///
+    /// A new `DataLoadSchedule<R>` containing the items that matched the predicate and were transformed to type `R`.
+    pub fn filter_map<P, R>(
+        &self,
+        predicate: P,
+    ) -> DataLoadSchedule<R>
+    where
+        P: FnMut(&M) -> Option<R>,
+        R: DataLoadMetaDataItem,
+    {
+        let predicate = predicate;
+        let items: Vec<R> = self.items.iter().filter_map(predicate).collect();
+
+        items.into()
+    }
 }
 
 impl<M> From<Vec<M>> for DataLoadSchedule<M>
@@ -189,5 +242,31 @@ DataLoadSchedule {
 
             assert_eq!(obj, schedule);
         }
+    }
+
+    #[test]
+    fn test_filter_schedule() {
+        let vec = vec![1, 2, 3, 4];
+        let schedule = DataLoadSchedule::from(vec.clone());
+
+        let schedule = schedule.filter(|item| *item % 2 == 0);
+        assert_eq!(schedule.len(), 2);
+        assert_eq!(schedule.items, vec![2, 4]);
+    }
+
+    #[test]
+    fn test_filter_map_schedule() {
+        let vec = vec![1, 2, 3, 4];
+        let schedule = DataLoadSchedule::from(vec.clone());
+
+        let schedule = schedule.filter_map(|item| {
+            if *item % 2 == 0 {
+                Some(format!("i:{item}"))
+            } else {
+                None
+            }
+        });
+        assert_eq!(schedule.len(), 2);
+        assert_eq!(schedule.items, vec!["i:2", "i:4"]);
     }
 }
