@@ -1,5 +1,6 @@
-use crate::data::loader::{DataLoadDataItem, DataLoadOperator};
-use crate::data::schedule::{DataLoadMetaDataItem, DataLoadSchedule};
+use crate::data::plan::{
+    DataLoadDataItem, DataLoadMetaDataItem, DataLoadOperator, DataLoadSchedule,
+};
 use std::sync::Arc;
 
 /// Represents a plan for loading data, including a schedule and an optional operator.
@@ -50,9 +51,12 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::sync::Arc;
+
     use crate::data::error::DataLoadError;
-    use crate::data::loader::FnOperator;
+    use crate::data::plan::load_operator::FnOperator;
+    use crate::data::plan::load_plan::DataLoadPlan;
+    use crate::data::plan::load_schedule::DataLoadSchedule;
 
     #[test]
     fn test_index_to_str_plan() {
