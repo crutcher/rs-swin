@@ -1,5 +1,4 @@
-use burn::serde::Serialize;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::hash::Hash;
 
@@ -23,7 +22,7 @@ pub struct DataLoadSchedule<M>
 where
     M: DataLoadMetaDataItem,
 {
-    /// The items in the schedule.
+    /// The items in the schedule, which are of type `M`.
     pub items: Vec<M>,
 }
 
