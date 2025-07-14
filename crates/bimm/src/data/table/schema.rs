@@ -3,15 +3,15 @@ use serde::{Deserialize, Serialize};
 
 /// A serializable description of a data type.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct DataTypeDescription {
+pub struct BimmDataTypeDescription {
     /// The name of the data type.
     pub type_name: String,
 }
 
-impl DataTypeDescription {
+impl BimmDataTypeDescription {
     /// Creates a `DataTypeDescription` from a type name.
     pub fn from_type_name(type_name: &str) -> Self {
-        DataTypeDescription {
+        BimmDataTypeDescription {
             type_name: type_name.to_string(),
         }
     }
@@ -31,7 +31,7 @@ pub struct BimmColumnSchema {
     pub name: String,
 
     /// The type of the column.
-    pub data_type: DataTypeDescription,
+    pub data_type: BimmDataTypeDescription,
 }
 
 impl BimmColumnSchema {
@@ -40,7 +40,7 @@ impl BimmColumnSchema {
         identifiers::check_ident(name).unwrap();
         BimmColumnSchema {
             name: name.to_string(),
-            data_type: DataTypeDescription::new::<T>(),
+            data_type: BimmDataTypeDescription::new::<T>(),
         }
     }
 }
@@ -54,6 +54,7 @@ pub struct BimmTableSchema {
 
 impl BimmTableSchema {
     /// Creates a new `DataTableDescription` with the given columns.
+    #[must_use]
     pub fn from_columns(columns: &[BimmColumnSchema]) -> Self {
         let columns = columns.to_vec();
         let table = Self { columns };
@@ -64,14 +65,12 @@ impl BimmTableSchema {
     }
 
     /// Validates the table description.
+    #[must_use]
     pub fn validate(&self) -> Result<(), String> {
         let mut seen_names = std::collections::HashSet::new();
         for column in &self.columns {
             if !seen_names.insert(column.name.clone()) {
                 return Err(format!("Duplicate column name: '{}'", column.name));
-            }
-            if column.data_type.type_name.is_empty() {
-                return Err(format!("Column '{}' has an empty type name", column.name));
             }
         }
         Ok(())
@@ -184,13 +183,13 @@ impl BimmTableSchema {
 
 #[cfg(test)]
 mod tests {
-    use crate::data::table::schema::{BimmColumnSchema, BimmTableSchema, DataTypeDescription};
+    use crate::data::table::schema::{BimmColumnSchema, BimmDataTypeDescription, BimmTableSchema};
     use indoc::indoc;
 
     #[test]
     fn test_data_type_description() {
-        let type_desc = DataTypeDescription::new::<Option<i32>>();
-        assert_eq!(type_desc.type_name, std::any::type_name::<Option<i32>>(),);
+        let schema = BimmDataTypeDescription::new::<Option<i32>>();
+        assert_eq!(schema.type_name, std::any::type_name::<Option<i32>>(),);
     }
 
     #[test]
@@ -198,22 +197,28 @@ mod tests {
         let column = BimmColumnSchema::new::<Option<i32>>("abc");
 
         assert_eq!(column.name, "abc");
-        assert_eq!(column.data_type, DataTypeDescription::new::<Option<i32>>());
+        assert_eq!(
+            column.data_type,
+            BimmDataTypeDescription::new::<Option<i32>>()
+        );
     }
 
     #[test]
     fn test_data_table_description() {
-        let table_desc = BimmTableSchema::from_columns(&[
-            BimmColumnSchema::new::<i32>("foo"),
-            BimmColumnSchema::new::<String>("bar"),
-        ]);
+        let mut schema = BimmTableSchema::from_columns(&[BimmColumnSchema::new::<i32>("foo")]);
 
-        assert_eq!(table_desc.columns.len(), 2);
-        assert_eq!(table_desc.columns[0].name, "foo");
-        assert_eq!(table_desc.columns[1].name, "bar");
+        schema.add_column(BimmColumnSchema::new::<String>("bar"));
+
+        assert_eq!(schema.columns.len(), 2);
+        assert_eq!(schema.columns[0].name, "foo");
+        assert_eq!(schema.columns[1].name, "bar");
+
+        assert_eq!(schema.column_index("foo"), Some(0));
+        assert_eq!(schema.column_index("bar"), Some(1));
+        assert_eq!(schema.column_index("qux"), None);
 
         assert_eq!(
-            serde_json::to_string_pretty(&table_desc).unwrap(),
+            serde_json::to_string_pretty(&schema).unwrap(),
             indoc! {r#"
                 {
                   "columns": [
@@ -233,5 +238,21 @@ mod tests {
                 }"#
             }
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "Duplicate column name: 'foo'")]
+    fn conflicting_column_names_on_validate() {
+        let _schema = BimmTableSchema::from_columns(&[
+            BimmColumnSchema::new::<i32>("foo"),
+            BimmColumnSchema::new::<String>("foo"),
+        ]);
+    }
+
+    #[test]
+    #[should_panic(expected = "Column name 'foo' already exists")]
+    fn conflicting_column_names_on_add() {
+        let mut schema = BimmTableSchema::from_columns(&[BimmColumnSchema::new::<i32>("foo")]);
+        schema.add_column(BimmColumnSchema::new::<String>("foo"));
     }
 }

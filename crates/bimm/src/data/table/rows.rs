@@ -1,13 +1,14 @@
 use crate::data::table::schema::BimmTableSchema;
+use std::sync::Arc;
 
 /// Represents a boxed value that can hold any type.
-pub type AnyBox = Box<dyn std::any::Any>;
+pub type AnyArc = Arc<dyn std::any::Any>;
 
 /// Represents a row in a Bimm table, containing values for each column.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BimmRow {
-    /// The values in the row, where each value is an `Option<AnyBox>`.
-    pub values: Vec<Option<AnyBox>>,
+    /// The values in the row, where each value is an `Option<AnyArc>`.
+    pub values: Vec<Option<AnyArc>>,
 }
 
 impl BimmRow {
@@ -29,11 +30,11 @@ impl BimmRow {
     /// ## Arguments
     ///
     /// * `index`: The index of the value to set.
-    /// * `value`: The value to set at the specified index, wrapped in an `Option<AnyBox>`.
+    /// * `value`: The value to set at the specified index, wrapped in an `Option<AnyArc>`.
     pub fn set_value(
         &mut self,
         index: usize,
-        value: Option<AnyBox>,
+        value: Option<AnyArc>,
     ) {
         self.values[index] = value;
     }
@@ -52,6 +53,7 @@ impl BimmRow {
         }
     }
 
+    /// Check if the row's format matches the schema of the table.
     fn fastcheck_schema(
         &self,
         schema: &BimmTableSchema,
@@ -66,6 +68,27 @@ impl BimmRow {
         Ok(())
     }
 
+    /// Gets the value of a column by its name, downcasting it to the specified type.
+    ///
+    /// ## Arguments
+    ///
+    /// * `schema`: The schema of the table to which this row belongs.
+    /// * `column_name`: The name of the column to retrieve the value from.
+    ///
+    /// ## Returns
+    ///
+    /// An `Option<&T>` where `T` is the type of the column value.
+    pub fn get_column<T: 'static>(
+        &self,
+        schema: &BimmTableSchema,
+        column_name: &str,
+    ) -> Option<&T> {
+        self.fastcheck_schema(schema).unwrap();
+
+        let index = schema.check_column_index(column_name).unwrap();
+        self.get_value::<T>(index)
+    }
+
     /// Sets multiple column values by their names.
     ///
     /// ## Arguments
@@ -77,7 +100,7 @@ impl BimmRow {
         &mut self,
         schema: &BimmTableSchema,
         names: &[&str; K],
-        values: [AnyBox; K],
+        values: [AnyArc; K],
     ) {
         self.fastcheck_schema(schema).unwrap();
 
@@ -102,7 +125,7 @@ impl BimmRow {
     pub fn new_with_columns<const K: usize>(
         schema: &BimmTableSchema,
         names: &[&str; K],
-        values: [AnyBox; K],
+        values: [AnyArc; K],
     ) -> Self {
         let mut row = BimmRow::new_for_table(schema);
         row.set_columns(schema, names, values);
@@ -117,6 +140,67 @@ mod tests {
     use burn::backend::NdArray;
     use burn::prelude::Tensor;
     use burn::tensor::TensorData;
+    use std::sync::Arc;
+
+    #[test]
+    fn test_get_value() {
+        let schema = BimmTableSchema::from_columns(&[
+            BimmColumnSchema::new::<i32>("foo"),
+            BimmColumnSchema::new::<String>("bar"),
+            BimmColumnSchema::new::<i32>("qux"),
+        ]);
+
+        let row = BimmRow::new_with_columns(
+            &schema,
+            &["foo", "bar"],
+            [Arc::new(42), Arc::new("Hello".to_string())],
+        );
+
+        assert_eq!(row.get_value::<i32>(0), Some(&42));
+        assert_eq!(row.get_value::<String>(1), Some(&"Hello".to_string()));
+
+        // Bad-type access should return None
+        assert_eq!(row.get_value::<String>(0), None);
+
+        // Reading an empty column should return None
+        assert_eq!(row.get_value::<i32>(2), None);
+        assert_eq!(row.get_column::<i32>(&schema, "qux"), None);
+
+        assert_eq!(row.get_column::<i32>(&schema, "foo"), Some(&42));
+        // Bad type access by name should return None
+        assert_eq!(row.get_column::<String>(&schema, "foo"), None);
+    }
+
+    #[test]
+    #[should_panic(expected = "Row has 2 values, but table has 3 columns")]
+    fn test_row_with_invalid_column_count() {
+        let schema = BimmTableSchema::from_columns(&[
+            BimmColumnSchema::new::<i32>("foo"),
+            BimmColumnSchema::new::<String>("bar"),
+            BimmColumnSchema::new::<f64>("baz"),
+        ]);
+
+        let row = BimmRow::new_with_width(2);
+
+        row.get_column::<i32>(&schema, "foo");
+    }
+
+    #[test]
+    fn test_row_with_basic_types() {
+        let schema = BimmTableSchema::from_columns(&[
+            BimmColumnSchema::new::<i32>("foo"),
+            BimmColumnSchema::new::<String>("bar"),
+        ]);
+
+        let row = BimmRow::new_with_columns(
+            &schema,
+            &["foo", "bar"],
+            [Arc::new(42), Arc::new("Hello".to_string())],
+        );
+
+        assert_eq!(row.get_value::<i32>(0), Some(&42));
+        assert_eq!(row.get_value::<String>(1), Some(&"Hello".to_string()));
+    }
 
     #[test]
     fn test_row_with_tensor() {
@@ -132,9 +216,9 @@ mod tests {
             &schema,
             &["foo", "bar", "qux"],
             [
-                Box::new(42),
-                Box::new("World".to_string()),
-                Box::new(Tensor::<NdArray, 2>::from_data(
+                Arc::new(42),
+                Arc::new("World".to_string()),
+                Arc::new(Tensor::<NdArray, 2>::from_data(
                     [[1.0, 2.0], [3.0, 4.0]],
                     &device,
                 )),
