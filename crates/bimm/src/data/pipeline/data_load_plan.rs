@@ -1,4 +1,4 @@
-use crate::data::plan::{
+use crate::data::pipeline::{
     DataLoadDataItem, DataLoadMetaDataItem, DataLoadOperator, DataLoadSchedule,
 };
 use std::sync::Arc;
@@ -53,10 +53,10 @@ where
 mod tests {
     use std::sync::Arc;
 
-    use crate::data::error::DataLoadError;
-    use crate::data::plan::load_operator::FnOperator;
-    use crate::data::plan::load_plan::DataLoadPlan;
-    use crate::data::plan::load_schedule::DataLoadSchedule;
+    use crate::data::pipeline::data_load_error::DataLoadError;
+    use crate::data::pipeline::data_load_operator::FnOperator;
+    use crate::data::pipeline::data_load_plan::DataLoadPlan;
+    use crate::data::pipeline::data_load_schedule::DataLoadSchedule;
 
     #[test]
     fn test_index_to_str_plan() {

@@ -1,8 +1,5 @@
-/// Common error types for the data pipeline.
-pub mod error;
+/// New Data Pipeline module.
+pub mod pipeline;
 
-/// Data pipeline plan module.
-pub mod plan;
-
-/// Data pipeline source module.
-pub mod source;
+/// New Data Table module.
+pub mod table;
