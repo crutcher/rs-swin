@@ -31,22 +31,26 @@ mod tests {
         // - symbolic column def (wth some basic source type / op argument checking ...)
         // - extends column schema with build info
 
+        // TODO: garbage collection for intermediate columns.
+        // - could mark columns as intermediate (did, but removed for now).
+        // - what pins an intermediate column?
+        //   - in the dep graph for missing non-intermediate columns?
+
         schema.add_column(
             BimmColumnSchema::new::<String>("class_name")
                 .with_description("category class name")
-                .with_build_info("path_to_class", &[("source", "path")], json!(null)),
+                .with_build_info("path_to_class", &[("source", "path")], &[]),
         );
         schema.add_column(
             BimmColumnSchema::new::<u32>("class")
                 .with_description("category class code")
-                .with_build_info("class_code", &[("source", "class_name")], json!(null)),
+                .with_build_info("class_code", &[("source", "class_name")], &[]),
         );
 
         schema.add_column(
             BimmColumnSchema::new::<Vec<u8>>("raw_image")
                 .with_description("initial image loaded from disk")
-                .with_build_info("load_image", &[("source", "path")], json!(null))
-                .with_ephemeral(),
+                .with_build_info("load_image", &[("source", "path")], &[]),
         );
 
         // same.
@@ -56,7 +60,7 @@ mod tests {
                 .with_build_info(
                     "image_aug",
                     &[("source", "raw_image")],
-                    json!({"blur": 0.1, "brightness": 0.2}),
+                    &[("blur", json!(0.1)), ("brightness", json!(0.2))],
                 ),
         );
 
@@ -104,7 +108,6 @@ mod tests {
                       "data_type": {
                         "type_name": "alloc::vec::Vec<u8>"
                       },
-                      "ephemeral": true,
                       "build_info": {
                         "op": "load_image",
                         "deps": {

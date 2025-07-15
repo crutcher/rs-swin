@@ -38,9 +38,9 @@ pub struct BimmColumnBuildInfo {
     pub deps: BTreeMap<String, String>,
 
     /// Additional arguments for the operation, serialized as JSON.
-    #[serde(skip_serializing_if = "serde_json::Value::is_null")]
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     #[serde(default)]
-    pub params: serde_json::Value,
+    pub params: BTreeMap<String, serde_json::Value>,
 }
 
 /// A description of a column in a data table.
@@ -57,11 +57,6 @@ pub struct BimmColumnSchema {
     /// The type of the column.
     pub data_type: BimmDataTypeDescription,
 
-    /// Whether the column is ephemeral (temporary).
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
-    #[serde(default)]
-    pub ephemeral: bool,
-
     /// Build information for the column, if applicable.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
@@ -76,7 +71,6 @@ impl BimmColumnSchema {
             name: name.to_string(),
             description: None,
             data_type: BimmDataTypeDescription::new::<T>(),
-            ephemeral: false,
             build_info: None,
         }
     }
@@ -96,34 +90,29 @@ impl BimmColumnSchema {
     ///
     /// - `op_name`: The name of the operation that builds this column.
     /// - `deps`: A vector of column names that this column depends on.
+    /// - `params`: A vector of additional parameters for the operation, serialized as JSON.
     pub fn with_build_info(
         mut self,
         op_name: &str,
         deps: &[(&str, &str)],
-        args: serde_json::Value,
+        params: &[(&str, serde_json::Value)],
     ) -> Self {
-        let bindings = deps
+        let deps = deps
             .iter()
             .map(|(pname, cname)| (pname.to_string(), cname.to_string()))
             .collect::<BTreeMap<_, _>>();
 
+        let params = params
+            .iter()
+            .map(|(pname, value)| (pname.to_string(), value.clone()))
+            .collect::<BTreeMap<_, _>>();
+
         self.build_info = Some(BimmColumnBuildInfo {
             op: op_name.to_string(),
-            deps: bindings,
-            params: args,
+            deps,
+            params,
         });
-        self
-    }
 
-    /// Marks the column as ephemeral (temporary).
-    ///
-    /// Ephemeral columns may be cleaned up after all columns that depend on them have been built.
-    ///
-    /// ## Returns
-    ///
-    /// A new `BimmColumnSchema` with the `ephemeral` field set to `true`.
-    pub fn with_ephemeral(mut self) -> Self {
-        self.ephemeral = true;
         self
     }
 
@@ -311,19 +300,6 @@ impl BimmTableSchema {
         self.columns.push(column);
     }
 
-    /// Marks a column as ephemeral (temporary).
-    ///
-    /// Ephemeral columns may be cleaned up after all columns that depend on them have been built.
-    #[must_use]
-    pub fn mark_ephemeral(
-        &mut self,
-        column_name: &str,
-    ) -> Result<(), String> {
-        let index = self.check_column_index(column_name)?;
-        self.columns[index].ephemeral = true;
-        Ok(())
-    }
-
     /// Renames a column in the table description.
     pub fn rename_column(
         &mut self,
@@ -457,12 +433,10 @@ mod tests {
     fn test_schema() {
         let mut schema = BimmTableSchema::from_columns(&[BimmColumnSchema::new::<i32>("foo")]);
 
-        schema.mark_ephemeral("foo").unwrap();
-
         schema.add_column(BimmColumnSchema::new::<String>("bar").with_build_info(
             "build_bar",
             &[("source", "foo")],
-            serde_json::Value::Null,
+            &[],
         ));
 
         assert_eq!(schema.columns.len(), 2);
@@ -482,8 +456,7 @@ mod tests {
                       "name": "foo",
                       "data_type": {
                         "type_name": "i32"
-                      },
-                      "ephemeral": true
+                      }
                     },
                     {
                       "name": "bar",
@@ -523,8 +496,7 @@ mod tests {
                       "name": "xxx",
                       "data_type": {
                         "type_name": "i32"
-                      },
-                      "ephemeral": true
+                      }
                     },
                     {
                       "name": "bar",
