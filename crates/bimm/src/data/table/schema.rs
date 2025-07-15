@@ -145,11 +145,11 @@ impl BimmColumnSchema {
             match col.build_info.as_ref() {
                 None => build_order.static_columns.push(col.name.clone()),
                 Some(build_info) => {
-                    for (_, dep) in &build_info.deps {
-                        if !col_names.contains(dep) {
+                    for (_, cname) in &build_info.deps {
+                        if !col_names.contains(cname) {
                             return Err(format!(
                                 "Column '{}' depends on non-existent column '{}'",
-                                col.name, dep
+                                col.name, cname
                             ));
                         }
                     }
@@ -165,9 +165,9 @@ impl BimmColumnSchema {
                         continue;
                     }
 
-                    if build_info.deps.iter().all(|(_, dep)| {
-                        build_order.static_columns.contains(dep)
-                            || build_order.topo_order.contains(dep)
+                    if build_info.deps.iter().all(|(_, cname)| {
+                        build_order.static_columns.contains(cname)
+                            || build_order.topo_order.contains(cname)
                     }) {
                         progress = true;
                         build_order.topo_order.push(col.name.clone());
@@ -288,11 +288,11 @@ impl BimmTableSchema {
         self.check_name(&column.name).unwrap();
 
         if let Some(build_info) = &column.build_info {
-            for (_, dep) in &build_info.deps {
-                if !self.column_index(dep).is_some() {
+            for (_, cname) in &build_info.deps {
+                if !self.column_index(cname).is_some() {
                     panic!(
                         "Column '{}' depends on non-existent column '{}'",
-                        column.name, dep
+                        column.name, cname
                     );
                 }
             }
@@ -318,9 +318,9 @@ impl BimmTableSchema {
                 col.name = new_name.to_string();
             }
             if let Some(build_info) = &mut col.build_info {
-                build_info.deps.values_mut().for_each(|d| {
-                    if *d == old_name {
-                        *d = new_name.to_string();
+                build_info.deps.values_mut().for_each(|cname| {
+                    if *cname == old_name {
+                        *cname = new_name.to_string();
                     }
                 });
             }
