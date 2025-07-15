@@ -26,10 +26,22 @@ mod tests {
             BimmColumnSchema::new::<String>("path").with_description("path to the image")
         ]);
 
-        // TODO: some kind of op/builder to construct this.
+        // TODO: building up fluent schema builder pattern; some kind of op/builder to construct this.
         // - bound operator environment (name <-> implementation mapping)
         // - symbolic column def (wth some basic source type / op argument checking ...)
         // - extends column schema with build info
+
+        schema.add_column(
+            BimmColumnSchema::new::<String>("class_name")
+                .with_description("category class name")
+                .with_build_info("path_to_class", &[("path", "source")], json!(null)),
+        );
+        schema.add_column(
+            BimmColumnSchema::new::<u32>("class")
+                .with_description("category class code")
+                .with_build_info("class_code", &[("class_name", "source")], json!(null)),
+        );
+
         schema.add_column(
             BimmColumnSchema::new::<Vec<u8>>("raw_image")
                 .with_description("initial image loaded from disk")
@@ -58,6 +70,38 @@ mod tests {
                       "description": "path to the image",
                       "data_type": {
                         "type_name": "alloc::string::String"
+                      }
+                    },
+                    {
+                      "name": "class_name",
+                      "description": "category class name",
+                      "data_type": {
+                        "type_name": "alloc::string::String"
+                      },
+                      "build_info": {
+                        "op_name": "path_to_class",
+                        "deps": [
+                          [
+                            "path",
+                            "source"
+                          ]
+                        ]
+                      }
+                    },
+                    {
+                      "name": "class",
+                      "description": "category class code",
+                      "data_type": {
+                        "type_name": "u32"
+                      },
+                      "build_info": {
+                        "op_name": "class_code",
+                        "deps": [
+                          [
+                            "class_name",
+                            "source"
+                          ]
+                        ]
                       }
                     },
                     {
