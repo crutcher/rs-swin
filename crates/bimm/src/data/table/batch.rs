@@ -157,21 +157,23 @@ mod tests {
             [Arc::new(100), Arc::new("World".to_string())],
         );
 
-        let slice = BimmRowBatch::new(Arc::new(schema), vec![row1, row2]);
+        let batch = BimmRowBatch::new(Arc::new(schema), vec![row1, row2]);
 
-        assert_eq!(slice.len(), 2);
-        assert_eq!(slice.rows[0].get_value::<i32>(0), Some(&42));
+        assert_eq!(batch.len(), 2);
+        assert!(!batch.is_empty());
+
+        assert_eq!(batch.rows[0].get_value::<i32>(0), Some(&42));
         assert_eq!(
-            slice.rows[1].get_value::<String>(1),
+            batch.rows[1].get_value::<String>(1),
             Some(&"World".to_string())
         );
 
         assert_eq!(
-            slice.collect_column_values::<i32>("foo"),
+            batch.collect_column_values::<i32>("foo"),
             vec![Some(&42), Some(&100)]
         );
         assert_eq!(
-            slice.join_column("foo", |vs| {
+            batch.join_column("foo", |vs| {
                 let x: i32 = vs.iter().filter_map(|&v| v).sum();
                 Ok(x)
             }),

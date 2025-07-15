@@ -1,5 +1,6 @@
 use crate::data::table::identifiers;
 use serde::{Deserialize, Serialize};
+use std::ops::{Index, IndexMut};
 
 /// A serializable description of a data type.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -24,6 +25,16 @@ impl BimmDataTypeDescription {
     }
 }
 
+/// Column build information.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct BimmColumnBuildInfo {
+    /// The name of the operation that builds this column.
+    pub op_name: String,
+
+    /// The column dependencies of this column.
+    pub deps: Vec<String>,
+}
+
 /// A description of a column in a data table.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct BimmColumnSchema {
@@ -32,6 +43,16 @@ pub struct BimmColumnSchema {
 
     /// The type of the column.
     pub data_type: BimmDataTypeDescription,
+
+    /// Whether the column is ephemeral (temporary).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[serde(default)]
+    pub ephemeral: bool,
+
+    /// Build information for the column, if applicable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    pub build_info: Option<BimmColumnBuildInfo>,
 }
 
 impl BimmColumnSchema {
@@ -41,7 +62,94 @@ impl BimmColumnSchema {
         BimmColumnSchema {
             name: name.to_string(),
             data_type: BimmDataTypeDescription::new::<T>(),
+            ephemeral: false,
+            build_info: None,
         }
+    }
+
+    /// Attaches build information to the column.
+    ///
+    /// ## Arguments
+    ///
+    /// - `op_name`: The name of the operation that builds this column.
+    /// - `deps`: A vector of column names that this column depends on.
+    pub fn with_build_info(
+        mut self,
+        op_name: &str,
+        deps: Vec<&str>,
+    ) -> Self {
+        self.build_info = Some(BimmColumnBuildInfo {
+            op_name: op_name.to_string(),
+            deps: deps.into_iter().map(|s| s.to_string()).collect(),
+        });
+        self
+    }
+
+    /// Computes a topological build order for the columns based on their dependencies.
+    ///
+    /// This function ensures that columns without build information are built first,
+    /// and that columns with dependencies are built only after their dependencies have been satisfied.
+    ///
+    /// ## Arguments
+    ///
+    /// - `columns`: A vector of `BimmColumnSchema` representing the columns in the table.
+    ///
+    /// ## Returns
+    ///
+    /// A `Result<ColumnBuildOrder, String>` where:
+    /// - `Ok(ColumnBuildOrder)` is the computed build order.
+    /// - `Err(String)` is an error message if there are duplicate column names or circular dependencies.
+    #[must_use]
+    pub fn build_order(columns: &Vec<BimmColumnSchema>) -> Result<ColumnBuildOrder, String> {
+        let mut col_names = std::collections::HashSet::new();
+        for col in columns.clone() {
+            if !col_names.insert(col.name.clone()) {
+                return Err(format!("Duplicate column name: '{}'", col.name));
+            }
+        }
+
+        let mut build_order = ColumnBuildOrder::default();
+
+        for col in columns.clone() {
+            match col.build_info.as_ref() {
+                None => build_order.static_columns.push(col.name.clone()),
+                Some(build_info) => {
+                    for dep in &build_info.deps {
+                        if !col_names.contains(dep) {
+                            return Err(format!(
+                                "Column '{}' depends on non-existent column '{}'",
+                                col.name, dep
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+
+        while (build_order.static_columns.len() + build_order.topo_order.len()) < columns.len() {
+            let mut progress = false;
+            for col in columns.clone() {
+                if let Some(build_info) = &col.build_info {
+                    if build_order.topo_order.contains(&col.name) {
+                        continue;
+                    }
+
+                    if build_info.deps.iter().all(|dep| {
+                        build_order.static_columns.contains(dep)
+                            || build_order.topo_order.contains(dep)
+                    }) {
+                        progress = true;
+                        build_order.topo_order.push(col.name.clone());
+                    }
+                }
+            }
+
+            if !progress {
+                return Err("Circular dependency detected in column build order".to_string());
+            }
+        }
+
+        Ok(build_order)
     }
 }
 
@@ -52,28 +160,75 @@ pub struct BimmTableSchema {
     pub columns: Vec<BimmColumnSchema>,
 }
 
+impl Index<usize> for BimmTableSchema {
+    type Output = BimmColumnSchema;
+
+    fn index(
+        &self,
+        index: usize,
+    ) -> &Self::Output {
+        &self.columns[index]
+    }
+}
+
+impl IndexMut<usize> for BimmTableSchema {
+    fn index_mut(
+        &mut self,
+        index: usize,
+    ) -> &mut Self::Output {
+        &mut self.columns[index]
+    }
+}
+
+impl Index<&str> for BimmTableSchema {
+    type Output = BimmColumnSchema;
+
+    fn index(
+        &self,
+        index: &str,
+    ) -> &Self::Output {
+        let name = index.as_ref();
+        self.column_index(name)
+            .and_then(|idx| self.columns.get(idx))
+            .expect("Column not found")
+    }
+}
+
+impl IndexMut<&str> for BimmTableSchema {
+    fn index_mut(
+        &mut self,
+        index: &str,
+    ) -> &mut Self::Output {
+        let name = index.as_ref();
+        let idx = self.check_column_index(name).expect("Column not found");
+        &mut self.columns[idx]
+    }
+}
+
+/// Topological build order for columns in a table schema.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+pub struct ColumnBuildOrder {
+    /// Non-buildable columns (those without build info).
+    pub static_columns: Vec<String>,
+
+    /// The order in which columns can be built.
+    pub topo_order: Vec<String>,
+}
+
 impl BimmTableSchema {
     /// Creates a new `DataTableDescription` with the given columns.
     #[must_use]
     pub fn from_columns(columns: &[BimmColumnSchema]) -> Self {
         let columns = columns.to_vec();
-        let table = Self { columns };
 
-        table.validate().unwrap();
+        let _build_order = BimmColumnSchema::build_order(&columns).unwrap();
 
-        table
+        Self { columns }
     }
 
-    /// Validates the table description.
-    #[must_use]
-    pub fn validate(&self) -> Result<(), String> {
-        let mut seen_names = std::collections::HashSet::new();
-        for column in &self.columns {
-            if !seen_names.insert(column.name.clone()) {
-                return Err(format!("Duplicate column name: '{}'", column.name));
-            }
-        }
-        Ok(())
+    /// Returns the `ColumnBuildOrder` for the schema.
+    pub fn build_order(&self) -> ColumnBuildOrder {
+        BimmColumnSchema::build_order(&self.columns).unwrap()
     }
 
     /// Checks if a column name is invalid, or conflicts with existing columns.
@@ -100,7 +255,58 @@ impl BimmTableSchema {
         column: BimmColumnSchema,
     ) {
         self.check_name(&column.name).unwrap();
+
+        if let Some(build_info) = &column.build_info {
+            for dep in &build_info.deps {
+                if !self.column_index(dep).is_some() {
+                    panic!(
+                        "Column '{}' depends on non-existent column '{}'",
+                        column.name, dep
+                    );
+                }
+            }
+        }
         self.columns.push(column);
+    }
+
+    /// Marks a column as ephemeral (temporary).
+    ///
+    /// Ephemeral columns may be cleaned up after all columns that depend on them have been built.
+    #[must_use]
+    pub fn mark_ephemeral(
+        &mut self,
+        column_name: &str,
+    ) -> Result<(), String> {
+        let index = self.check_column_index(column_name)?;
+        self.columns[index].ephemeral = true;
+        Ok(())
+    }
+
+    /// Renames a column in the table description.
+    pub fn rename_column(
+        &mut self,
+        old_name: &str,
+        new_name: &str,
+    ) -> Result<(), String> {
+        if old_name == new_name {
+            // No change needed
+            return Ok(());
+        }
+
+        self.check_name(new_name)?;
+
+        for col in &mut self.columns {
+            if col.name == old_name {
+                col.name = new_name.to_string();
+            }
+            if let Some(build_info) = &mut col.build_info {
+                if let Some(dep_index) = build_info.deps.iter().position(|d| d == old_name) {
+                    build_info.deps[dep_index] = new_name.to_string();
+                }
+            }
+        }
+
+        Ok(())
     }
 
     /// Returns the index of a column by its name.
@@ -183,7 +389,7 @@ impl BimmTableSchema {
 
 #[cfg(test)]
 mod tests {
-    use crate::data::table::schema::{BimmColumnSchema, BimmDataTypeDescription, BimmTableSchema};
+    use super::*;
     use indoc::indoc;
 
     #[test]
@@ -204,10 +410,14 @@ mod tests {
     }
 
     #[test]
-    fn test_data_table_description() {
+    fn test_schema() {
         let mut schema = BimmTableSchema::from_columns(&[BimmColumnSchema::new::<i32>("foo")]);
 
-        schema.add_column(BimmColumnSchema::new::<String>("bar"));
+        schema.mark_ephemeral("foo").unwrap();
+
+        schema.add_column(
+            BimmColumnSchema::new::<String>("bar").with_build_info("build_bar", vec!["foo"]),
+        );
 
         assert_eq!(schema.columns.len(), 2);
         assert_eq!(schema.columns[0].name, "foo");
@@ -226,12 +436,60 @@ mod tests {
                       "name": "foo",
                       "data_type": {
                         "type_name": "i32"
-                      }
+                      },
+                      "ephemeral": true
                     },
                     {
                       "name": "bar",
                       "data_type": {
                         "type_name": "alloc::string::String"
+                      },
+                      "build_info": {
+                        "op_name": "build_bar",
+                        "deps": [
+                          "foo"
+                        ]
+                      }
+                    }
+                  ]
+                }"#
+            }
+        );
+
+        assert_eq!(
+            schema.build_order(),
+            ColumnBuildOrder {
+                static_columns: vec!["foo".to_string()],
+                topo_order: vec!["bar".to_string()],
+            }
+        );
+
+        // No-op.
+        schema.rename_column("foo", "foo").unwrap();
+
+        schema.rename_column("foo", "xxx").unwrap();
+        assert_eq!(
+            serde_json::to_string_pretty(&schema).unwrap(),
+            indoc! {r#"
+                {
+                  "columns": [
+                    {
+                      "name": "xxx",
+                      "data_type": {
+                        "type_name": "i32"
+                      },
+                      "ephemeral": true
+                    },
+                    {
+                      "name": "bar",
+                      "data_type": {
+                        "type_name": "alloc::string::String"
+                      },
+                      "build_info": {
+                        "op_name": "build_bar",
+                        "deps": [
+                          "xxx"
+                        ]
                       }
                     }
                   ]
