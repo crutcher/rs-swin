@@ -34,18 +34,18 @@ mod tests {
         schema.add_column(
             BimmColumnSchema::new::<String>("class_name")
                 .with_description("category class name")
-                .with_build_info("path_to_class", &[("path", "source")], json!(null)),
+                .with_build_info("path_to_class", &[("source", "path")], json!(null)),
         );
         schema.add_column(
             BimmColumnSchema::new::<u32>("class")
                 .with_description("category class code")
-                .with_build_info("class_code", &[("class_name", "source")], json!(null)),
+                .with_build_info("class_code", &[("source", "class_name")], json!(null)),
         );
 
         schema.add_column(
             BimmColumnSchema::new::<Vec<u8>>("raw_image")
                 .with_description("initial image loaded from disk")
-                .with_build_info("load_image", &[("path", "source")], json!(null))
+                .with_build_info("load_image", &[("source", "path")], json!(null))
                 .with_ephemeral(),
         );
 
@@ -55,7 +55,7 @@ mod tests {
                 .with_description("augmented image")
                 .with_build_info(
                     "image_aug",
-                    &[("raw_image", "source")],
+                    &[("source", "raw_image")],
                     json!({"blur": 0.1, "brightness": 0.2}),
                 ),
         );
@@ -79,13 +79,10 @@ mod tests {
                         "type_name": "alloc::string::String"
                       },
                       "build_info": {
-                        "op_name": "path_to_class",
-                        "deps": [
-                          [
-                            "path",
-                            "source"
-                          ]
-                        ]
+                        "op": "path_to_class",
+                        "deps": {
+                          "source": "path"
+                        }
                       }
                     },
                     {
@@ -95,13 +92,10 @@ mod tests {
                         "type_name": "u32"
                       },
                       "build_info": {
-                        "op_name": "class_code",
-                        "deps": [
-                          [
-                            "class_name",
-                            "source"
-                          ]
-                        ]
+                        "op": "class_code",
+                        "deps": {
+                          "source": "class_name"
+                        }
                       }
                     },
                     {
@@ -112,13 +106,10 @@ mod tests {
                       },
                       "ephemeral": true,
                       "build_info": {
-                        "op_name": "load_image",
-                        "deps": [
-                          [
-                            "path",
-                            "source"
-                          ]
-                        ]
+                        "op": "load_image",
+                        "deps": {
+                          "source": "path"
+                        }
                       }
                     },
                     {
@@ -128,13 +119,10 @@ mod tests {
                         "type_name": "alloc::vec::Vec<u8>"
                       },
                       "build_info": {
-                        "op_name": "image_aug",
-                        "deps": [
-                          [
-                            "raw_image",
-                            "source"
-                          ]
-                        ],
+                        "op": "image_aug",
+                        "deps": {
+                          "source": "raw_image"
+                        },
                         "params": {
                           "blur": 0.1,
                           "brightness": 0.2

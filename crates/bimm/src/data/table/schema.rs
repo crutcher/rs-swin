@@ -1,5 +1,6 @@
 use crate::data::table::identifiers;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::ops::{Index, IndexMut};
 
 /// A serializable description of a data type.
@@ -29,13 +30,12 @@ impl BimmDataTypeDescription {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct BimmColumnBuildInfo {
     /// The name of the operation that builds this column.
-    pub op_name: String,
+    pub op: String,
 
-    /// The column dependencies of this column.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    /// The bindings for the operation, serialized as a map of name-value pairs.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     #[serde(default)]
-    // TODO(crutcher): it would be nice if this were a map ``{ name: dep }``
-    pub deps: Vec<(String, String)>,
+    pub deps: BTreeMap<String, String>,
 
     /// Additional arguments for the operation, serialized as JSON.
     #[serde(skip_serializing_if = "serde_json::Value::is_null")]
@@ -102,14 +102,14 @@ impl BimmColumnSchema {
         deps: &[(&str, &str)],
         args: serde_json::Value,
     ) -> Self {
-        let deps = deps
+        let bindings = deps
             .iter()
-            .map(|(name, alias)| (name.to_string(), alias.to_string()))
-            .collect::<Vec<_>>();
+            .map(|(pname, cname)| (pname.to_string(), cname.to_string()))
+            .collect::<BTreeMap<_, _>>();
 
         self.build_info = Some(BimmColumnBuildInfo {
-            op_name: op_name.to_string(),
-            deps,
+            op: op_name.to_string(),
+            deps: bindings,
             params: args,
         });
         self
@@ -156,7 +156,7 @@ impl BimmColumnSchema {
             match col.build_info.as_ref() {
                 None => build_order.static_columns.push(col.name.clone()),
                 Some(build_info) => {
-                    for (dep, _) in &build_info.deps {
+                    for (_, dep) in &build_info.deps {
                         if !col_names.contains(dep) {
                             return Err(format!(
                                 "Column '{}' depends on non-existent column '{}'",
@@ -176,7 +176,7 @@ impl BimmColumnSchema {
                         continue;
                     }
 
-                    if build_info.deps.iter().all(|(dep, _)| {
+                    if build_info.deps.iter().all(|(_, dep)| {
                         build_order.static_columns.contains(dep)
                             || build_order.topo_order.contains(dep)
                     }) {
@@ -299,7 +299,7 @@ impl BimmTableSchema {
         self.check_name(&column.name).unwrap();
 
         if let Some(build_info) = &column.build_info {
-            for (dep, _) in &build_info.deps {
+            for (_, dep) in &build_info.deps {
                 if !self.column_index(dep).is_some() {
                     panic!(
                         "Column '{}' depends on non-existent column '{}'",
@@ -342,10 +342,11 @@ impl BimmTableSchema {
                 col.name = new_name.to_string();
             }
             if let Some(build_info) = &mut col.build_info {
-                if let Some(dep_index) = build_info.deps.iter().position(|(d, _)| d == old_name) {
-                    let (_, p) = build_info.deps[dep_index].clone();
-                    build_info.deps[dep_index] = (new_name.to_string(), p.clone());
-                }
+                build_info.deps.values_mut().for_each(|d| {
+                    if *d == old_name {
+                        *d = new_name.to_string();
+                    }
+                });
             }
         }
 
@@ -460,7 +461,7 @@ mod tests {
 
         schema.add_column(BimmColumnSchema::new::<String>("bar").with_build_info(
             "build_bar",
-            &[("foo", "source")],
+            &[("source", "foo")],
             serde_json::Value::Null,
         ));
 
@@ -490,13 +491,10 @@ mod tests {
                         "type_name": "alloc::string::String"
                       },
                       "build_info": {
-                        "op_name": "build_bar",
-                        "deps": [
-                          [
-                            "foo",
-                            "source"
-                          ]
-                        ]
+                        "op": "build_bar",
+                        "deps": {
+                          "source": "foo"
+                        }
                       }
                     }
                   ]
@@ -534,13 +532,10 @@ mod tests {
                         "type_name": "alloc::string::String"
                       },
                       "build_info": {
-                        "op_name": "build_bar",
-                        "deps": [
-                          [
-                            "xxx",
-                            "source"
-                          ]
-                        ]
+                        "op": "build_bar",
+                        "deps": {
+                          "source": "xxx"
+                        }
                       }
                     }
                   ]
