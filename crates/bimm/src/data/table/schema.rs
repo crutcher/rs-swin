@@ -33,6 +33,11 @@ pub struct BimmColumnBuildInfo {
 
     /// The column dependencies of this column.
     pub deps: Vec<String>,
+
+    /// Additional arguments for the operation, serialized as JSON.
+    #[serde(skip_serializing_if = "serde_json::Value::is_null")]
+    #[serde(default)]
+    pub args: serde_json::Value,
 }
 
 /// A description of a column in a data table.
@@ -76,12 +81,26 @@ impl BimmColumnSchema {
     pub fn with_build_info(
         mut self,
         op_name: &str,
-        deps: Vec<&str>,
+        deps: &[&str],
+        args: serde_json::Value,
     ) -> Self {
         self.build_info = Some(BimmColumnBuildInfo {
             op_name: op_name.to_string(),
             deps: deps.into_iter().map(|s| s.to_string()).collect(),
+            args,
         });
+        self
+    }
+
+    /// Marks the column as ephemeral (temporary).
+    ///
+    /// Ephemeral columns may be cleaned up after all columns that depend on them have been built.
+    ///
+    /// ## Returns
+    ///
+    /// A new `BimmColumnSchema` with the `ephemeral` field set to `true`.
+    pub fn with_ephemeral(mut self) -> Self {
+        self.ephemeral = true;
         self
     }
 
@@ -415,9 +434,11 @@ mod tests {
 
         schema.mark_ephemeral("foo").unwrap();
 
-        schema.add_column(
-            BimmColumnSchema::new::<String>("bar").with_build_info("build_bar", vec!["foo"]),
-        );
+        schema.add_column(BimmColumnSchema::new::<String>("bar").with_build_info(
+            "build_bar",
+            &["foo"],
+            serde_json::Value::Null,
+        ));
 
         assert_eq!(schema.columns.len(), 2);
         assert_eq!(schema.columns[0].name, "foo");
