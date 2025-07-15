@@ -384,7 +384,7 @@ impl BimmTableSchema {
     /// ## Example
     ///
     /// ```rust
-    /// use bimm::data::table::schema::{BimmTableSchema, BimmColumnSchema};
+    /// use bimm::data::table::{BimmTableSchema, BimmColumnSchema};
     /// let table = BimmTableSchema::from_columns(&[
     ///     BimmColumnSchema::new::<i32>("foo"),
     ///     BimmColumnSchema::new::<String>("bar"),
@@ -433,6 +433,16 @@ mod tests {
     fn test_schema() {
         let mut schema = BimmTableSchema::from_columns(&[BimmColumnSchema::new::<i32>("foo")]);
 
+        // Index<usize>
+        assert_eq!(schema[0].name, "foo");
+        // IndexMut<usize>
+        schema[0].description = Some("Overwritten".to_string());
+
+        // Index<&str>
+        assert_eq!(schema["foo"].name, "foo");
+        // IndexMut<usize>
+        schema["foo"].description = Some("An integer column".to_string());
+
         schema.add_column(BimmColumnSchema::new::<String>("bar").with_build_info(
             "build_bar",
             &[("source", "foo")],
@@ -454,6 +464,7 @@ mod tests {
                   "columns": [
                     {
                       "name": "foo",
+                      "description": "An integer column",
                       "data_type": {
                         "type_name": "i32"
                       }
@@ -494,6 +505,7 @@ mod tests {
                   "columns": [
                     {
                       "name": "xxx",
+                      "description": "An integer column",
                       "data_type": {
                         "type_name": "i32"
                       }
