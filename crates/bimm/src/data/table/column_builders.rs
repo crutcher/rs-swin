@@ -130,7 +130,7 @@ impl BimmColumnBuilder {
     where
         F: BimmColumnFuncFactory,
     {
-        let slot_index = table_schema.check_column_index(column_name).unwrap();
+        let slot_index = table_schema.check_column_index(column_name)?;
         let column_schema = &table_schema[slot_index];
 
         let build_info = column_schema
