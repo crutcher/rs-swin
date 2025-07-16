@@ -34,15 +34,6 @@ pub struct MapColumnFuncFactory {
 }
 
 impl MapColumnFuncFactory {
-    /// Creates a new `MapColumnBuilderFactory` with the given bindings.
-    ///
-    /// ## Arguments
-    ///
-    /// * `bindings`: A map of operation names to their corresponding `BimmColumnBuilderFactory` implementations.
-    pub fn new(bindings: BTreeMap<String, Arc<dyn BimmColumnFuncFactory>>) -> Self {
-        MapColumnFuncFactory { bindings }
-    }
-
     /// Adds a binding for a specific operation name.
     ///
     /// ## Arguments
@@ -51,10 +42,10 @@ impl MapColumnFuncFactory {
     /// * `factory`: The factory that creates the column function for the operation.
     pub fn add_binding(
         &mut self,
-        op_name: String,
+        op_name: &str,
         factory: Arc<dyn BimmColumnFuncFactory>,
     ) {
-        self.bindings.insert(op_name, factory);
+        self.bindings.insert(op_name.to_string(), factory);
     }
 }
 
@@ -232,7 +223,7 @@ impl BimmColumnBuilder {
 mod tests {
     use crate::data::table::{
         AnyArc, BimmColumnBuilder, BimmColumnFunc, BimmColumnFuncFactory, BimmColumnSchema,
-        BimmDataTypeDescription, BimmRowBatch, BimmTableSchema,
+        BimmDataTypeDescription, BimmRowBatch, BimmTableSchema, MapColumnFuncFactory,
     };
     use std::any::Any;
     use std::collections::BTreeMap;
@@ -283,7 +274,8 @@ mod tests {
             ),
         ]));
 
-        let factory = AddFuncFactory {};
+        let mut factory: MapColumnFuncFactory = Default::default();
+        factory.add_binding("add", Arc::new(AddFuncFactory {}));
 
         let builder = BimmColumnBuilder::init("c", schema.as_ref().clone(), factory)
             .expect("Failed to initialize column builder");
