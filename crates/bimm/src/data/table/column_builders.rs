@@ -1,6 +1,7 @@
 use crate::data::table::{AnyArc, BimmDataTypeDescription, BimmRow, BimmTableSchema};
 use std::any::Any;
 use std::collections::BTreeMap;
+use std::fmt::Debug;
 use std::sync::Arc;
 
 /// Factory for creating `BimmColumnFunc` instances.
@@ -99,6 +100,19 @@ pub struct BimmColumnBuilder {
 
     /// The builder that implements the column function.
     builder: Arc<dyn BimmColumnFunc>,
+}
+
+impl Debug for BimmColumnBuilder {
+    fn fmt(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
+        write!(
+            f,
+            "BimmColumnBuilder {{ column_name: {}, slot_index: {} }}",
+            self.column_name, self.slot_index
+        )
+    }
 }
 
 impl BimmColumnBuilder {
@@ -280,6 +294,12 @@ mod tests {
         let builder = BimmColumnBuilder::init("c", schema.as_ref().clone(), factory)
             .expect("Failed to initialize column builder");
 
+        // Check Debug.
+        assert_eq!(
+            format!("{builder:?}"),
+            "BimmColumnBuilder { column_name: c, slot_index: 2 }"
+        );
+
         let mut batch = BimmRowBatch::with_size(schema.clone(), 2);
         batch[0].set_columns(schema.as_ref(), &["a", "b"], [Arc::new(1), Arc::new(2)]);
         batch[1].set_columns(schema.as_ref(), &["a", "b"], [Arc::new(5), Arc::new(6)]);
@@ -294,5 +314,29 @@ mod tests {
         );
         assert_eq!(batch[0].get_column(schema.as_ref(), "c"), Some(&13));
         assert_eq!(batch[1].get_column(schema.as_ref(), "c"), Some(&21));
+    }
+
+    #[test]
+    fn test_map_lookup_fail() {
+        let schema = Arc::new(BimmTableSchema::from_columns(&[
+            BimmColumnSchema::new::<i32>("a"),
+            BimmColumnSchema::new::<i32>("b"),
+            BimmColumnSchema::new::<i32>("c").with_build_info(
+                "add",
+                &[("x", "a"), ("y", "b")],
+                &[("bias", serde_json::json!(10))],
+            ),
+        ]));
+
+        let factory = MapColumnFuncFactory::default();
+        assert_eq!(factory.bindings.len(), 0);
+
+        assert_eq!(
+            BimmColumnBuilder::init("c", schema.as_ref().clone(), factory)
+                .err()
+                .unwrap(),
+            "Failed to create builder for column 'c': No builder found for operation 'add'"
+                .to_string(),
+        );
     }
 }
