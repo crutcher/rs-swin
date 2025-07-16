@@ -39,10 +39,10 @@ pub struct BimmColumnBuildInfo {
     #[serde(default)]
     pub deps: BTreeMap<String, String>,
 
-    /// Additional arguments for the operation, serialized as JSON.
-    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    /// Additional configuration for the operation, serialized as JSON.
+    #[serde(skip_serializing_if = "serde_json::Value::is_null")]
     #[serde(default)]
-    pub params: BTreeMap<String, serde_json::Value>,
+    pub config: serde_json::Value,
 }
 
 /// A description of a column in a data table.
@@ -97,22 +97,17 @@ impl BimmColumnSchema {
         mut self,
         op_name: &str,
         deps: &[(&str, &str)],
-        params: &[(&str, serde_json::Value)],
+        config: serde_json::Value,
     ) -> Self {
         let deps = deps
             .iter()
             .map(|(pname, cname)| (pname.to_string(), cname.to_string()))
             .collect::<BTreeMap<_, _>>();
 
-        let params = params
-            .iter()
-            .map(|(pname, value)| (pname.to_string(), value.clone()))
-            .collect::<BTreeMap<_, _>>();
-
         self.build_info = Some(BimmColumnBuildInfo {
             op: op_name.to_string(),
             deps,
-            params,
+            config,
         });
 
         self
@@ -413,6 +408,7 @@ impl BimmTableSchema {
 mod tests {
     use super::*;
     use indoc::indoc;
+    use serde_json::json;
 
     #[test]
     fn test_data_type_description() {
@@ -448,7 +444,7 @@ mod tests {
         schema.add_column(BimmColumnSchema::new::<String>("bar").with_build_info(
             "build_bar",
             &[("source", "foo")],
-            &[],
+            json!(null),
         ));
 
         assert_eq!(schema.columns.len(), 2);

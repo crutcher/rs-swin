@@ -22,7 +22,7 @@ pub trait BimmColumnFuncFactory {
         &self,
         op_name: &str,
         dep_types: &BTreeMap<String, BimmDataTypeDescription>,
-        params: &BTreeMap<String, serde_json::Value>,
+        config: &serde_json::Value,
         data_type: &BimmDataTypeDescription,
     ) -> Result<Arc<dyn BimmColumnFunc>, String>;
 }
@@ -55,11 +55,11 @@ impl BimmColumnFuncFactory for MapColumnFuncFactory {
         &self,
         op_name: &str,
         dep_types: &BTreeMap<String, BimmDataTypeDescription>,
-        params: &BTreeMap<String, serde_json::Value>,
+        config: &serde_json::Value,
         data_type: &BimmDataTypeDescription,
     ) -> Result<Arc<dyn BimmColumnFunc>, String> {
         if let Some(factory) = self.bindings.get(op_name) {
-            factory.init_func(op_name, dep_types, params, data_type)
+            factory.init_func(op_name, dep_types, config, data_type)
         } else {
             Err(format!("No builder found for operation '{op_name}'"))
         }
@@ -167,7 +167,7 @@ impl BimmColumnBuilder {
             .init_func(
                 &build_info.op,
                 &dep_types,
-                &build_info.params,
+                &build_info.config,
                 &column_schema.data_type,
             )
             .map_err(|e| format!("Failed to create builder for column '{column_name}': {e}"))?;
@@ -239,10 +239,13 @@ mod tests {
         AnyArc, BimmColumnBuilder, BimmColumnFunc, BimmColumnFuncFactory, BimmColumnSchema,
         BimmDataTypeDescription, BimmRowBatch, BimmTableSchema, MapColumnFuncFactory,
     };
+    use serde::Deserialize;
+    use serde_json::json;
     use std::any::Any;
     use std::collections::BTreeMap;
     use std::sync::Arc;
 
+    #[derive(Deserialize)]
     struct AddFunc {
         bias: i32,
     }
@@ -268,11 +271,12 @@ mod tests {
             &self,
             _op_name: &str,
             _dep_types: &BTreeMap<String, BimmDataTypeDescription>,
-            params: &BTreeMap<String, serde_json::Value>,
+            config: &serde_json::Value,
             _data_type: &BimmDataTypeDescription,
         ) -> Result<Arc<dyn BimmColumnFunc>, String> {
-            let bias = params.get("bias").unwrap().as_i64().unwrap() as i32;
-            Ok(Arc::new(AddFunc { bias }))
+            let f = serde_json::from_value::<AddFunc>(config.clone())
+                .map_err(|e| format!("Failed to parse config for 'add' function: {e}"))?;
+            Ok(Arc::new(f))
         }
     }
 
@@ -284,7 +288,7 @@ mod tests {
             BimmColumnSchema::new::<i32>("c").with_build_info(
                 "add",
                 &[("x", "a"), ("y", "b")],
-                &[("bias", serde_json::json!(10))],
+                json!({"bias": 10}),
             ),
         ]));
 
@@ -324,7 +328,7 @@ mod tests {
             BimmColumnSchema::new::<i32>("c").with_build_info(
                 "add",
                 &[("x", "a"), ("y", "b")],
-                &[("bias", serde_json::json!(10))],
+                json!({"bias": 10}),
             ),
         ]));
 
