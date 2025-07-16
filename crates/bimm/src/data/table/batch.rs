@@ -57,6 +57,24 @@ impl BimmRowBatch {
         BimmRowBatch { schema, rows }
     }
 
+    /// Creates a new `BimmRowBatch` with the given schema and a specified size.
+    ///
+    /// This initializes the batch with empty rows, each having the width of the schema.
+    ///
+    /// ## Arguments
+    ///
+    /// * `schema`: The schema of the table slice.
+    /// * `size`: The number of rows to initialize in the batch.
+    pub fn with_size(
+        schema: Arc<BimmTableSchema>,
+        size: usize,
+    ) -> Self {
+        let width = schema.columns.len();
+        let rows = vec![BimmRow::new_with_width(width); size];
+
+        BimmRowBatch { schema, rows }
+    }
+
     /// Returns the number of rows in the table slice.
     pub fn len(&self) -> usize {
         self.rows.len()
@@ -137,6 +155,18 @@ mod tests {
     use crate::data::table::rows::BimmRow;
     use crate::data::table::schema::{BimmColumnSchema, BimmTableSchema};
     use std::sync::Arc;
+
+    #[test]
+    fn test_with_size() {
+        let schema = BimmTableSchema::from_columns(&[
+            BimmColumnSchema::new::<i32>("foo"),
+            BimmColumnSchema::new::<String>("bar"),
+        ]);
+
+        let batch = BimmRowBatch::with_size(Arc::new(schema), 3);
+        assert_eq!(batch.len(), 3);
+        assert!(!batch.is_empty());
+    }
 
     #[test]
     fn test_row_batch_with_basic_types() {

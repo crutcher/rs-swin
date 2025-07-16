@@ -108,6 +108,13 @@ impl BimmRow {
         self.get_slot::<T>(index)
     }
 
+    /// Sets the value of a column by its name.
+    ///
+    /// ## Arguments
+    ///
+    /// * `schema`: The schema of the table to which this row belongs.
+    /// * `column_name`: The name of the column to set the value for.
+    /// * `value`: The value to set for the specified column, wrapped in an `Option<AnyArc>`.
     pub fn set_column(
         &mut self,
         schema: &BimmTableSchema,
@@ -200,6 +207,23 @@ mod tests {
         assert_eq!(row.get_column::<i32>(&schema, "foo"), Some(&42));
         // Bad type access by name should return None
         assert_eq!(row.get_column::<String>(&schema, "foo"), None);
+    }
+
+    #[test]
+    fn test_set_column() {
+        let schema = BimmTableSchema::from_columns(&[
+            BimmColumnSchema::new::<i32>("foo"),
+            BimmColumnSchema::new::<String>("bar"),
+        ]);
+
+        let mut row = BimmRow::new_for_table(&schema);
+
+        // Set values for columns
+        row.set_column(&schema, "foo", Some(Arc::new(42)));
+        row.set_column(&schema, "bar", Some(Arc::new("Hello".to_string())));
+
+        assert_eq!(row.get_slot::<i32>(0), Some(&42));
+        assert_eq!(row.get_slot::<String>(1), Some(&"Hello".to_string()));
     }
 
     #[test]

@@ -1,11 +1,11 @@
 mod batch;
-mod column_builder;
+mod column_builders;
 mod identifiers;
 mod rows;
 mod schema;
 
 pub use batch::*;
-pub use column_builder::*;
+pub use column_builders::*;
 pub use identifiers::*;
 pub use rows::*;
 pub use schema::*;
