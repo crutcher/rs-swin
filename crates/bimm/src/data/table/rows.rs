@@ -8,16 +8,16 @@ pub type AnyArc = Arc<dyn std::any::Any>;
 #[derive(Debug, Clone)]
 pub struct BimmRow {
     /// The values in the row, where each value is an `Option<AnyArc>`.
-    pub values: Vec<Option<AnyArc>>,
+    pub slots: Vec<Option<AnyArc>>,
 }
 
 impl BimmRow {
     /// Creates a new `BurnRow` with the given values.
     pub fn new_with_width(size: usize) -> Self {
-        let mut values = Vec::with_capacity(size);
-        values.resize_with(size, || None);
+        let mut slots = Vec::with_capacity(size);
+        slots.resize_with(size, || None);
 
-        BimmRow { values }
+        BimmRow { slots }
     }
 
     /// Creates an empty `BurnRow` with the size of the given table's columns.
@@ -31,25 +31,44 @@ impl BimmRow {
     ///
     /// * `index`: The index of the value to set.
     /// * `value`: The value to set at the specified index, wrapped in an `Option<AnyArc>`.
-    pub fn set_value(
+    pub fn set_slot(
         &mut self,
         index: usize,
         value: Option<AnyArc>,
     ) {
-        self.values[index] = value;
+        self.slots[index] = value;
     }
 
     /// Gets the value at the specified index, downcasting it to the specified type.
     ///
     /// ## Arguments
     /// * `index`: The index of the value to retrieve.
-    pub fn get_value<T: 'static>(
+    pub fn get_slot<T: 'static>(
         &self,
         index: usize,
     ) -> Option<&T> {
-        match self.values.get(index)? {
+        match self.slots.get(index)? {
             None => None,
             Some(value) => value.downcast_ref::<T>(),
+        }
+    }
+
+    /// Gets the untyped value at the specified index.
+    ///
+    /// ## Arguments
+    ///
+    /// * `index`: The index of the value to retrieve.
+    ///
+    /// ## Returns
+    ///
+    /// An `Option<&dyn std::any::Any>` representing the value at the specified index.
+    pub fn get_untyped_slot(
+        &self,
+        index: usize,
+    ) -> Option<&dyn std::any::Any> {
+        match self.slots.get(index)? {
+            None => None,
+            Some(value) => Some(value.as_ref()),
         }
     }
 
@@ -58,10 +77,10 @@ impl BimmRow {
         &self,
         schema: &BimmTableSchema,
     ) -> Result<(), String> {
-        if self.values.len() != schema.columns.len() {
+        if self.slots.len() != schema.columns.len() {
             return Err(format!(
-                "Row has {} values, but table has {} columns",
-                self.values.len(),
+                "Row has {} slots, but table has {} columns",
+                self.slots.len(),
                 schema.columns.len()
             ));
         }
@@ -86,7 +105,19 @@ impl BimmRow {
         self.fastcheck_schema(schema).unwrap();
 
         let index = schema.check_column_index(column_name).unwrap();
-        self.get_value::<T>(index)
+        self.get_slot::<T>(index)
+    }
+
+    pub fn set_column(
+        &mut self,
+        schema: &BimmTableSchema,
+        column_name: &str,
+        value: Option<AnyArc>,
+    ) {
+        self.fastcheck_schema(schema).unwrap();
+
+        let index = schema.check_column_index(column_name).unwrap();
+        self.set_slot(index, value);
     }
 
     /// Sets multiple column values by their names.
@@ -107,7 +138,7 @@ impl BimmRow {
         let indices = schema.select_indices(names).unwrap();
 
         for (i, value) in values.into_iter().enumerate() {
-            self.set_value(indices[i], Some(value));
+            self.set_slot(indices[i], Some(value));
         }
     }
 
@@ -156,14 +187,14 @@ mod tests {
             [Arc::new(42), Arc::new("Hello".to_string())],
         );
 
-        assert_eq!(row.get_value::<i32>(0), Some(&42));
-        assert_eq!(row.get_value::<String>(1), Some(&"Hello".to_string()));
+        assert_eq!(row.get_slot::<i32>(0), Some(&42));
+        assert_eq!(row.get_slot::<String>(1), Some(&"Hello".to_string()));
 
         // Bad-type access should return None
-        assert_eq!(row.get_value::<String>(0), None);
+        assert_eq!(row.get_slot::<String>(0), None);
 
         // Reading an empty column should return None
-        assert_eq!(row.get_value::<i32>(2), None);
+        assert_eq!(row.get_slot::<i32>(2), None);
         assert_eq!(row.get_column::<i32>(&schema, "qux"), None);
 
         assert_eq!(row.get_column::<i32>(&schema, "foo"), Some(&42));
@@ -172,7 +203,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Row has 2 values, but table has 3 columns")]
+    #[should_panic(expected = "Row has 2 slots, but table has 3 columns")]
     fn test_row_with_invalid_column_count() {
         let schema = BimmTableSchema::from_columns(&[
             BimmColumnSchema::new::<i32>("foo"),
@@ -198,8 +229,8 @@ mod tests {
             [Arc::new(42), Arc::new("Hello".to_string())],
         );
 
-        assert_eq!(row.get_value::<i32>(0), Some(&42));
-        assert_eq!(row.get_value::<String>(1), Some(&"Hello".to_string()));
+        assert_eq!(row.get_slot::<i32>(0), Some(&42));
+        assert_eq!(row.get_slot::<String>(1), Some(&"Hello".to_string()));
     }
 
     #[test]
@@ -225,10 +256,10 @@ mod tests {
             ],
         );
 
-        assert_eq!(row.get_value::<i32>(0), Some(&42));
-        assert_eq!(row.get_value::<String>(1), Some(&"World".to_string()));
+        assert_eq!(row.get_slot::<i32>(0), Some(&42));
+        assert_eq!(row.get_slot::<String>(1), Some(&"World".to_string()));
 
-        let tensor = row.get_value::<Tensor<NdArray, 2>>(2).unwrap();
+        let tensor = row.get_slot::<Tensor<NdArray, 2>>(2).unwrap();
         tensor
             .clone()
             .to_data()

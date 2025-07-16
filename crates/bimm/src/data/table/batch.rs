@@ -105,7 +105,7 @@ impl BimmRowBatch {
         let index = self.schema.check_column_index(column_name).unwrap();
         self.rows
             .iter()
-            .map(|row| row.get_value::<T>(index))
+            .map(|row| row.get_slot::<T>(index))
             .collect::<Vec<_>>()
     }
 
@@ -162,9 +162,9 @@ mod tests {
         assert_eq!(batch.len(), 2);
         assert!(!batch.is_empty());
 
-        assert_eq!(batch.rows[0].get_value::<i32>(0), Some(&42));
+        assert_eq!(batch.rows[0].get_slot::<i32>(0), Some(&42));
         assert_eq!(
-            batch.rows[1].get_value::<String>(1),
+            batch.rows[1].get_slot::<String>(1),
             Some(&"World".to_string())
         );
 
@@ -197,8 +197,8 @@ mod tests {
 
         let part = batch.slice(1, 3);
         assert_eq!(part.len(), 2);
-        assert_eq!(part[0].get_value::<i32>(0), Some(&2));
-        assert_eq!(part[1].get_value::<i32>(0), Some(&3));
+        assert_eq!(part[0].get_slot::<i32>(0), Some(&2));
+        assert_eq!(part[1].get_slot::<i32>(0), Some(&3));
     }
 
     #[test]

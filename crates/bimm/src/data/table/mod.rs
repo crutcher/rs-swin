@@ -1,15 +1,11 @@
-/// Identifier pattern checkers.
-mod identifiers;
-
-/// Bimm Table Rows.
-mod rows;
-
-// Bimm Table Batch.
 mod batch;
-/// Bimm Table Schema.
+mod column_builder;
+mod identifiers;
+mod rows;
 mod schema;
 
 pub use batch::*;
+pub use column_builder::*;
 pub use identifiers::*;
 pub use rows::*;
 pub use schema::*;

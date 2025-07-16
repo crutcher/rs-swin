@@ -30,6 +30,8 @@ impl BimmDataTypeDescription {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct BimmColumnBuildInfo {
     /// The name of the operation that builds this column.
+    ///
+    /// TODO: Namespace / lookup semantics.
     pub op: String,
 
     /// The bindings for the operation, serialized as a map of name-value pairs.
@@ -131,9 +133,9 @@ impl BimmColumnSchema {
     /// - `Ok(ColumnBuildOrder)` is the computed build order.
     /// - `Err(String)` is an error message if there are duplicate column names or circular dependencies.
     #[must_use]
-    pub fn build_order(columns: &Vec<BimmColumnSchema>) -> Result<ColumnBuildOrder, String> {
+    pub fn build_order(columns: &[BimmColumnSchema]) -> Result<ColumnBuildOrder, String> {
         let mut col_names = std::collections::HashSet::new();
-        for col in columns.clone() {
+        for col in columns {
             if !col_names.insert(col.name.clone()) {
                 return Err(format!("Duplicate column name: '{}'", col.name));
             }
@@ -141,11 +143,11 @@ impl BimmColumnSchema {
 
         let mut build_order = ColumnBuildOrder::default();
 
-        for col in columns.clone() {
+        for col in columns {
             match col.build_info.as_ref() {
                 None => build_order.static_columns.push(col.name.clone()),
                 Some(build_info) => {
-                    for (_, cname) in &build_info.deps {
+                    for cname in build_info.deps.values() {
                         if !col_names.contains(cname) {
                             return Err(format!(
                                 "Column '{}' depends on non-existent column '{}'",
@@ -159,7 +161,7 @@ impl BimmColumnSchema {
 
         while (build_order.static_columns.len() + build_order.topo_order.len()) < columns.len() {
             let mut progress = false;
-            for col in columns.clone() {
+            for col in columns {
                 if let Some(build_info) = &col.build_info {
                     if build_order.topo_order.contains(&col.name) {
                         continue;
@@ -218,7 +220,7 @@ impl Index<&str> for BimmTableSchema {
         &self,
         index: &str,
     ) -> &Self::Output {
-        let name = index.as_ref();
+        let name = index;
         self.column_index(name)
             .and_then(|idx| self.columns.get(idx))
             .expect("Column not found")
@@ -230,7 +232,7 @@ impl IndexMut<&str> for BimmTableSchema {
         &mut self,
         index: &str,
     ) -> &mut Self::Output {
-        let name = index.as_ref();
+        let name = index;
         let idx = self.check_column_index(name).expect("Column not found");
         &mut self.columns[idx]
     }
@@ -288,8 +290,8 @@ impl BimmTableSchema {
         self.check_name(&column.name).unwrap();
 
         if let Some(build_info) = &column.build_info {
-            for (_, cname) in &build_info.deps {
-                if !self.column_index(cname).is_some() {
+            for cname in build_info.deps.values() {
+                if self.column_index(cname).is_none() {
                     panic!(
                         "Column '{}' depends on non-existent column '{}'",
                         column.name, cname
