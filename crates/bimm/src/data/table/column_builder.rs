@@ -1,6 +1,4 @@
-use crate::data::table::{
-    AnyArc, BimmDataTypeDescription, BimmRow, BimmTableSchema,
-};
+use crate::data::table::{AnyArc, BimmDataTypeDescription, BimmRow, BimmTableSchema};
 use std::any::Any;
 use std::collections::BTreeMap;
 
@@ -32,52 +30,65 @@ pub trait BimmColumnBuilder {
 }
 
 pub struct BimmColumnBuilderBinding {
-    pub column_name: String,
-
+    pub table_schema: BimmTableSchema,
     pub builder: Box<dyn BimmColumnBuilder>,
+
+    pub column_name: String,
+    column_index: usize,
+    dep_map: Vec<(String, usize)>,
 }
 
 impl BimmColumnBuilderBinding {
     pub fn new(
-        column_name: String,
+        column_name: &str,
+        table_schema: BimmTableSchema,
         builder: Box<dyn BimmColumnBuilder>,
-    ) -> Self {
-        Self {
-            column_name,
-            builder,
-        }
-    }
-    fn build_rows(
-        &self,
-        schema: &BimmTableSchema,
-        rows: &mut [BimmRow],
-    ) -> Result<(), String> {
-        // These are all things which could be cached / verified on init the builder.
-        let column_index = schema.check_column_index(&self.column_name)?;
-        let column_schema = &schema[column_index];
+    ) -> Result<Self, String> {
+        let column_index = table_schema.check_column_index(column_name).unwrap();
+        let column_schema = &table_schema[column_index];
 
-        let build_info = column_schema.build_info.as_ref().unwrap();
+        let build_info = column_schema
+            .build_info
+            .as_ref()
+            .ok_or_else(|| format!("Column '{column_name}' does not have build info"))?;
+
         let dep_map: Vec<(String, usize)> = build_info
             .deps
             .iter()
-            .map(|(pname, cname)| (pname.clone(), schema.check_column_index(cname).unwrap()))
-            .collect::<Vec<_>>()
-            .try_into()
-            .map_err(|_| "Invalid build info dependencies")?;
+            .map(|(pname, cname)| {
+                (
+                    pname.clone(),
+                    table_schema.check_column_index(cname).unwrap(),
+                )
+            })
+            .collect();
 
+        Ok(Self {
+            table_schema,
+            builder,
+            column_name: column_name.to_string(),
+            column_index,
+            dep_map,
+        })
+    }
+
+    pub fn build_rows(
+        &self,
+        rows: &mut [BimmRow],
+    ) -> Result<(), String> {
         // This is the builder call.
         for row in rows.iter_mut() {
             // Collect the dep column values.
             // TODO: extract method
             let deps = {
                 let mut deps = BTreeMap::new();
-                for (pname, index) in &dep_map {
+                for (pname, index) in &self.dep_map {
                     deps.insert(pname.clone(), row.get_untyped_slot(*index));
                 }
                 deps
             };
 
-            row.set_slot(column_index, self.builder.build_cell(&deps)?);
+            row.set_slot(self.column_index, self.builder.build_cell(&deps)?);
         }
 
         Ok(())
