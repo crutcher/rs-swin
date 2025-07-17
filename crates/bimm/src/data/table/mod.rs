@@ -1,12 +1,14 @@
 mod batch;
 mod column_builders;
 mod identifiers;
+mod operators;
 mod rows;
 mod schema;
 
 pub use batch::*;
 pub use column_builders::*;
 pub use identifiers::*;
+pub use operators::*;
 pub use rows::*;
 pub use schema::*;
 
