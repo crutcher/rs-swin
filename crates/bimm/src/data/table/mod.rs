@@ -14,6 +14,7 @@ pub use schema::*;
 mod tests {
     use super::*;
     use indoc::indoc;
+    use serde_json::json;
 
     #[test]
     fn test_example() {
@@ -21,49 +22,72 @@ mod tests {
         // used here to define build info; and the column builder machinery,
         // used to actually build the columns.
 
-        fn extract_class_name_from_path(
-            schema: &BimmTableSchema,
+        fn plan_class_extraction(
+            schema: &mut BimmTableSchema,
             path_column: &str,
-        ) -> ColumnBuildSpec {
-            // TODO: better lookup / type check error handling as utils on schema.
-            let data_type = &schema[path_column].data_type;
-            if data_type.type_name != std::any::type_name::<String>() {
-                panic!(
-                    "Expected column '{}' to be of type String, found '{}'",
-                    path_column, data_type.type_name
-                );
-            }
-
-            ColumnBuildSpec::new("path_to_class", &[("source", path_column)])
-        }
-        fn class_name_to_code(
-            schema: &BimmTableSchema,
             class_name_column: &str,
-        ) -> ColumnBuildSpec {
-            let data_type = &schema[class_name_column].data_type;
-            if data_type.type_name != std::any::type_name::<String>() {
-                panic!(
-                    "Expected column '{}' to be of type String, found '{}'",
-                    class_name_column, data_type.type_name
-                );
-            }
-
-            ColumnBuildSpec::new("class_code", &[("source", class_name_column)])
+            class_code_column: &str,
+        ) {
+            schema.add_column(
+                BimmColumnSchema::new::<String>(class_name_column)
+                    .with_description("category class name"),
+            );
+            schema.add_column(
+                BimmColumnSchema::new::<u32>(class_code_column)
+                    .with_description("category class code"),
+            );
+            schema
+                .add_build_plan(BuildPlan {
+                    operator: OperatorSpec {
+                        id: ColumnOperatorId {
+                            namespace: "example".to_string(),
+                            name: "path_to_class".to_string(),
+                        },
+                        description: Some("Extracts class name from image path".to_string()),
+                        config: json!(null),
+                    },
+                    inputs: [("source", path_column)]
+                        .iter()
+                        .map(|(p, c)| (p.to_string(), c.to_string()))
+                        .collect(),
+                    outputs: [("name", class_name_column), ("code", class_code_column)]
+                        .iter()
+                        .map(|(p, c)| (p.to_string(), c.to_string()))
+                        .collect(),
+                })
+                .unwrap()
         }
 
-        fn load_image(
-            schema: &BimmTableSchema,
+        type ImageStandIn = Vec<u8>;
+        fn plan_image_load(
+            schema: &mut BimmTableSchema,
             path_column: &str,
-        ) -> ColumnBuildSpec {
-            let data_type = &schema[path_column].data_type;
-            if data_type.type_name != std::any::type_name::<String>() {
-                panic!(
-                    "Expected column '{}' to be of type String, found '{}'",
-                    path_column, data_type.type_name
-                );
-            }
-
-            ColumnBuildSpec::new("load_image", &[("source", path_column)])
+            image_column: &str,
+        ) {
+            schema.add_column(
+                BimmColumnSchema::new::<ImageStandIn>(image_column)
+                    .with_description("Image loaded from disk"),
+            );
+            schema
+                .add_build_plan(BuildPlan {
+                    operator: OperatorSpec {
+                        id: ColumnOperatorId {
+                            namespace: "example".to_string(),
+                            name: "load_image".to_string(),
+                        },
+                        description: Some("Loads image from disk".to_string()),
+                        config: json!(null),
+                    },
+                    inputs: [("path", path_column)]
+                        .iter()
+                        .map(|(p, c)| (p.to_string(), c.to_string()))
+                        .collect(),
+                    outputs: [("image", image_column)]
+                        .iter()
+                        .map(|(p, c)| (p.to_string(), c.to_string()))
+                        .collect(),
+                })
+                .unwrap()
         }
 
         #[derive(serde::Serialize, serde::Deserialize)]
@@ -72,20 +96,36 @@ mod tests {
             brightness: f64,
         }
 
-        fn augment_image(
-            schema: &BimmTableSchema,
-            raw_image_column: &str,
+        fn plan_image_augmentation(
+            schema: &mut BimmTableSchema,
+            source_column: &str,
+            output_column: &str,
             config: ImageAugConfig,
-        ) -> ColumnBuildSpec {
-            let data_type = &schema[raw_image_column].data_type;
-            if data_type.type_name != std::any::type_name::<Vec<u8>>() {
-                panic!(
-                    "Expected column '{}' to be of type Vec<u8>, found '{}'",
-                    raw_image_column, data_type.type_name
-                );
-            }
+        ) {
+            schema.add_column(
+                BimmColumnSchema::new::<Vec<u8>>(output_column).with_description("augmented image"),
+            );
 
-            ColumnBuildSpec::new("image_aug", &[("source", raw_image_column)]).with_config(config)
+            schema
+                .add_build_plan(BuildPlan {
+                    operator: OperatorSpec {
+                        id: ColumnOperatorId {
+                            namespace: "example".to_string(),
+                            name: "image_aug".to_string(),
+                        },
+                        description: Some("Augments image with blur and brightness".to_string()),
+                        config: serde_json::to_value(config).unwrap(),
+                    },
+                    inputs: [("source", source_column)]
+                        .iter()
+                        .map(|(p, c)| (p.to_string(), c.to_string()))
+                        .collect(),
+                    outputs: [("augmented", output_column)]
+                        .iter()
+                        .map(|(p, c)| (p.to_string(), c.to_string()))
+                        .collect(),
+                })
+                .unwrap();
         }
 
         let mut schema = BimmTableSchema::from_columns(&[
@@ -102,35 +142,18 @@ mod tests {
         // - what pins an intermediate column?
         //   - in the dep graph for missing non-intermediate columns?
 
-        schema.add_column(
-            BimmColumnSchema::new::<String>("class_name")
-                .with_description("category class name")
-                .with_build_spec(extract_class_name_from_path(&schema, "path")),
-        );
-        schema.add_column(
-            BimmColumnSchema::new::<u32>("class")
-                .with_description("category class code")
-                .with_build_spec(class_name_to_code(&schema, "class_name")),
-        );
+        plan_class_extraction(&mut schema, "path", "class_name", "class_code");
 
-        schema.add_column(
-            BimmColumnSchema::new::<Vec<u8>>("raw_image")
-                .with_description("initial image loaded from disk")
-                .with_build_spec(load_image(&schema, "path")),
-        );
+        plan_image_load(&mut schema, "path", "raw_image");
 
-        // same.
-        schema.add_column(
-            BimmColumnSchema::new::<Vec<u8>>("aug_image")
-                .with_description("augmented image")
-                .with_build_spec(augment_image(
-                    &schema,
-                    "raw_image",
-                    ImageAugConfig {
-                        blur: 2.0,
-                        brightness: 0.5,
-                    },
-                )),
+        plan_image_augmentation(
+            &mut schema,
+            "raw_image",
+            "aug_image",
+            ImageAugConfig {
+                blur: 2.0,
+                brightness: 0.5,
+            },
         );
 
         assert_eq!(
@@ -150,38 +173,20 @@ mod tests {
                       "description": "category class name",
                       "data_type": {
                         "type_name": "alloc::string::String"
-                      },
-                      "build_spec": {
-                        "op": "path_to_class",
-                        "deps": {
-                          "source": "path"
-                        }
                       }
                     },
                     {
-                      "name": "class",
+                      "name": "class_code",
                       "description": "category class code",
                       "data_type": {
                         "type_name": "u32"
-                      },
-                      "build_spec": {
-                        "op": "class_code",
-                        "deps": {
-                          "source": "class_name"
-                        }
                       }
                     },
                     {
                       "name": "raw_image",
-                      "description": "initial image loaded from disk",
+                      "description": "Image loaded from disk",
                       "data_type": {
                         "type_name": "alloc::vec::Vec<u8>"
-                      },
-                      "build_spec": {
-                        "op": "load_image",
-                        "deps": {
-                          "source": "path"
-                        }
                       }
                     },
                     {
@@ -189,16 +194,58 @@ mod tests {
                       "description": "augmented image",
                       "data_type": {
                         "type_name": "alloc::vec::Vec<u8>"
-                      },
-                      "build_spec": {
-                        "op": "image_aug",
-                        "deps": {
-                          "source": "raw_image"
+                      }
+                    }
+                  ],
+                  "build_plans": [
+                    {
+                      "operator": {
+                        "id": {
+                          "namespace": "example",
+                          "name": "path_to_class"
                         },
+                        "description": "Extracts class name from image path"
+                      },
+                      "inputs": {
+                        "source": "path"
+                      },
+                      "outputs": {
+                        "code": "class_code",
+                        "name": "class_name"
+                      }
+                    },
+                    {
+                      "operator": {
+                        "id": {
+                          "namespace": "example",
+                          "name": "load_image"
+                        },
+                        "description": "Loads image from disk"
+                      },
+                      "inputs": {
+                        "path": "path"
+                      },
+                      "outputs": {
+                        "image": "raw_image"
+                      }
+                    },
+                    {
+                      "operator": {
+                        "id": {
+                          "namespace": "example",
+                          "name": "image_aug"
+                        },
+                        "description": "Augments image with blur and brightness",
                         "config": {
                           "blur": 2.0,
                           "brightness": 0.5
                         }
+                      },
+                      "inputs": {
+                        "source": "raw_image"
+                      },
+                      "outputs": {
+                        "augmented": "aug_image"
                       }
                     }
                   ]

@@ -27,6 +27,50 @@ impl BimmDataTypeDescription {
     }
 }
 
+/// Namespace and name of a column operator.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ColumnOperatorId {
+    /// The namespace of the operator.
+    pub namespace: String,
+
+    /// The name of the operator.
+    pub name: String,
+}
+
+/// A specification for a column operator, including its ID, description, and configuration.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct OperatorSpec {
+    /// The ID of the operator.
+    pub id: ColumnOperatorId,
+
+    /// The description of the operator.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    pub description: Option<String>,
+
+    /// Additional configuration for the operation, serialized as JSON.
+    #[serde(skip_serializing_if = "serde_json::Value::is_null")]
+    #[serde(default)]
+    pub config: serde_json::Value,
+}
+
+/// A build plan for columns in a table schema.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct BuildPlan {
+    /// The spec for the operator that will be used to build the columns.
+    pub operator: OperatorSpec,
+
+    /// The input column bindings ``{parameter_name: column_name}``.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    #[serde(default)]
+    pub inputs: BTreeMap<String, String>,
+
+    /// The output column bindings ``{parameter_name: column_name}``.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    #[serde(default)]
+    pub outputs: BTreeMap<String, String>,
+}
+
 /// Column build information.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ColumnBuildSpec {
@@ -221,6 +265,11 @@ impl BimmColumnSchema {
 pub struct BimmTableSchema {
     /// The columns in the table.
     pub columns: Vec<BimmColumnSchema>,
+
+    /// Build plans for the table.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
+    pub build_plans: Vec<BuildPlan>,
 }
 
 impl Index<usize> for BimmTableSchema {
@@ -283,10 +332,14 @@ impl BimmTableSchema {
     #[must_use]
     pub fn from_columns(columns: &[BimmColumnSchema]) -> Self {
         let columns = columns.to_vec();
+        let build_plans = Vec::new();
 
         let _build_order = BimmColumnSchema::build_order(&columns).unwrap();
 
-        Self { columns }
+        Self {
+            columns,
+            build_plans,
+        }
     }
 
     /// Returns the `ColumnBuildOrder` for the schema.
@@ -330,6 +383,39 @@ impl BimmTableSchema {
             }
         }
         self.columns.push(column);
+    }
+
+    /// Adds a build plan to the table description.
+    pub fn add_build_plan(
+        &mut self,
+        plan: BuildPlan,
+    ) -> Result<(), String> {
+        // Check that all the input and output columns exist.
+        for cname in plan.inputs.values() {
+            if self.column_index(cname).is_none() {
+                return Err(format!(
+                    "Input column '{cname}' does not exist in the schema"
+                ));
+            }
+        }
+        for cname in plan.outputs.values() {
+            if self.column_index(cname).is_none() {
+                return Err(format!(
+                    "Output column '{cname}' does not exist in the schema"
+                ));
+            }
+
+            for alt_plan in &self.build_plans {
+                if alt_plan.outputs.values().any(|v| v == cname) {
+                    return Err(format!(
+                        "Output column '{cname}' already exists in another build plan"
+                    ));
+                }
+            }
+        }
+
+        self.build_plans.push(plan);
+        Ok(())
     }
 
     /// Renames a column in the table description.
