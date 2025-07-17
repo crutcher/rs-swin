@@ -240,13 +240,13 @@ mod tests {
         BimmColumnSchema, BimmDataTypeDescription, BimmRowBatch, BimmTableSchema,
         MapColumnFuncFactory,
     };
-    use serde::Deserialize;
-    use serde_json::json;
+    use serde::{Deserialize, Serialize};
+
     use std::any::Any;
     use std::collections::BTreeMap;
     use std::sync::Arc;
 
-    #[derive(Deserialize)]
+    #[derive(Serialize, Deserialize)]
     struct AddFunc {
         bias: i32,
     }
@@ -288,7 +288,7 @@ mod tests {
             BimmColumnSchema::new::<i32>("b"),
             BimmColumnSchema::new::<i32>("c").with_build_info(
                 BimmColumnBuildInfo::new("add", &[("x", "a"), ("y", "b")])
-                    .with_config(json!({"bias": 10})),
+                    .with_config(AddFunc { bias: 10 }),
             ),
         ]));
 
@@ -327,7 +327,7 @@ mod tests {
             BimmColumnSchema::new::<i32>("b"),
             BimmColumnSchema::new::<i32>("c").with_build_info(
                 BimmColumnBuildInfo::new("add", &[("x", "a"), ("y", "b")])
-                    .with_config(json!({"bias": 10})),
+                    .with_config(AddFunc { bias: 10 }),
             ),
         ]));
 

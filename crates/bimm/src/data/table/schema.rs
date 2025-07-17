@@ -1,5 +1,6 @@
 use crate::data::table::identifiers;
 use serde::{Deserialize, Serialize};
+use serde_json::to_value;
 use std::collections::BTreeMap;
 use std::ops::{Index, IndexMut};
 
@@ -63,11 +64,17 @@ impl BimmColumnBuildInfo {
         }
     }
     /// Creates a new `BimmColumnBuildInfo`, adding the given config.
-    pub fn with_config(
+    pub fn with_config<T>(
         self,
-        config: serde_json::Value,
-    ) -> Self {
-        BimmColumnBuildInfo { config, ..self }
+        config: T,
+    ) -> Self
+    where
+        T: Serialize,
+    {
+        BimmColumnBuildInfo {
+            config: to_value(config).expect("Failed to serialize config"),
+            ..self
+        }
     }
 }
 

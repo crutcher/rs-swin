@@ -14,13 +14,12 @@ pub use schema::*;
 mod tests {
     use super::*;
     use indoc::indoc;
-    use serde_json::to_value;
 
     #[test]
     fn test_example() {
-        /// TODO: improve relationship between the symbolic builder mechanism,
-        /// used here to define build info; and the column builder machinery,
-        /// used to actually build the columns.
+        // TODO: improve relationship between the symbolic builder mechanism,
+        // used here to define build info; and the column builder machinery,
+        // used to actually build the columns.
 
         fn path_to_class_builder(
             schema: &BimmTableSchema,
@@ -87,7 +86,7 @@ mod tests {
             }
 
             BimmColumnBuildInfo::new("image_aug", &[("source", raw_image_column)])
-                .with_config(to_value(config).unwrap())
+                .with_config(config)
         }
 
         let mut schema = BimmTableSchema::from_columns(&[
