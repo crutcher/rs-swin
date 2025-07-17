@@ -21,10 +21,10 @@ mod tests {
         // used here to define build info; and the column builder machinery,
         // used to actually build the columns.
 
-        fn path_to_class_builder(
+        fn extract_class_name_from_path(
             schema: &BimmTableSchema,
             path_column: &str,
-        ) -> BimmColumnBuildInfo {
+        ) -> ColumnBuildSpec {
             // TODO: better lookup / type check error handling as utils on schema.
             let data_type = &schema[path_column].data_type;
             if data_type.type_name != std::any::type_name::<String>() {
@@ -34,12 +34,12 @@ mod tests {
                 );
             }
 
-            BimmColumnBuildInfo::new("path_to_class", &[("source", path_column)])
+            ColumnBuildSpec::new("path_to_class", &[("source", path_column)])
         }
-        fn class_name_to_code_builder(
+        fn class_name_to_code(
             schema: &BimmTableSchema,
             class_name_column: &str,
-        ) -> BimmColumnBuildInfo {
+        ) -> ColumnBuildSpec {
             let data_type = &schema[class_name_column].data_type;
             if data_type.type_name != std::any::type_name::<String>() {
                 panic!(
@@ -48,13 +48,13 @@ mod tests {
                 );
             }
 
-            BimmColumnBuildInfo::new("class_code", &[("source", class_name_column)])
+            ColumnBuildSpec::new("class_code", &[("source", class_name_column)])
         }
 
-        fn load_image_builder(
+        fn load_image(
             schema: &BimmTableSchema,
             path_column: &str,
-        ) -> BimmColumnBuildInfo {
+        ) -> ColumnBuildSpec {
             let data_type = &schema[path_column].data_type;
             if data_type.type_name != std::any::type_name::<String>() {
                 panic!(
@@ -63,7 +63,7 @@ mod tests {
                 );
             }
 
-            BimmColumnBuildInfo::new("load_image", &[("source", path_column)])
+            ColumnBuildSpec::new("load_image", &[("source", path_column)])
         }
 
         #[derive(serde::Serialize, serde::Deserialize)]
@@ -72,11 +72,11 @@ mod tests {
             brightness: f64,
         }
 
-        fn image_aug_builder(
+        fn augment_image(
             schema: &BimmTableSchema,
             raw_image_column: &str,
             config: ImageAugConfig,
-        ) -> BimmColumnBuildInfo {
+        ) -> ColumnBuildSpec {
             let data_type = &schema[raw_image_column].data_type;
             if data_type.type_name != std::any::type_name::<Vec<u8>>() {
                 panic!(
@@ -85,8 +85,7 @@ mod tests {
                 );
             }
 
-            BimmColumnBuildInfo::new("image_aug", &[("source", raw_image_column)])
-                .with_config(config)
+            ColumnBuildSpec::new("image_aug", &[("source", raw_image_column)]).with_config(config)
         }
 
         let mut schema = BimmTableSchema::from_columns(&[
@@ -106,25 +105,25 @@ mod tests {
         schema.add_column(
             BimmColumnSchema::new::<String>("class_name")
                 .with_description("category class name")
-                .with_build_info(path_to_class_builder(&schema, "path")),
+                .with_build_spec(extract_class_name_from_path(&schema, "path")),
         );
         schema.add_column(
             BimmColumnSchema::new::<u32>("class")
                 .with_description("category class code")
-                .with_build_info(class_name_to_code_builder(&schema, "class_name")),
+                .with_build_spec(class_name_to_code(&schema, "class_name")),
         );
 
         schema.add_column(
             BimmColumnSchema::new::<Vec<u8>>("raw_image")
                 .with_description("initial image loaded from disk")
-                .with_build_info(load_image_builder(&schema, "path")),
+                .with_build_spec(load_image(&schema, "path")),
         );
 
         // same.
         schema.add_column(
             BimmColumnSchema::new::<Vec<u8>>("aug_image")
                 .with_description("augmented image")
-                .with_build_info(image_aug_builder(
+                .with_build_spec(augment_image(
                     &schema,
                     "raw_image",
                     ImageAugConfig {
@@ -152,7 +151,7 @@ mod tests {
                       "data_type": {
                         "type_name": "alloc::string::String"
                       },
-                      "build_info": {
+                      "build_spec": {
                         "op": "path_to_class",
                         "deps": {
                           "source": "path"
@@ -165,7 +164,7 @@ mod tests {
                       "data_type": {
                         "type_name": "u32"
                       },
-                      "build_info": {
+                      "build_spec": {
                         "op": "class_code",
                         "deps": {
                           "source": "class_name"
@@ -178,7 +177,7 @@ mod tests {
                       "data_type": {
                         "type_name": "alloc::vec::Vec<u8>"
                       },
-                      "build_info": {
+                      "build_spec": {
                         "op": "load_image",
                         "deps": {
                           "source": "path"
@@ -191,7 +190,7 @@ mod tests {
                       "data_type": {
                         "type_name": "alloc::vec::Vec<u8>"
                       },
-                      "build_info": {
+                      "build_spec": {
                         "op": "image_aug",
                         "deps": {
                           "source": "raw_image"

@@ -29,7 +29,7 @@ impl BimmDataTypeDescription {
 
 /// Column build information.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct BimmColumnBuildInfo {
+pub struct ColumnBuildSpec {
     /// The name of the operation that builds this column.
     ///
     /// TODO: Namespace / lookup semantics.
@@ -46,7 +46,7 @@ pub struct BimmColumnBuildInfo {
     pub config: serde_json::Value,
 }
 
-impl BimmColumnBuildInfo {
+impl ColumnBuildSpec {
     /// Creates a new `BimmColumnBuildInfo` with the given operation name and dependencies.
     pub fn new(
         op: &str,
@@ -57,7 +57,7 @@ impl BimmColumnBuildInfo {
             .map(|(pname, cname)| (pname.to_string(), cname.to_string()))
             .collect::<BTreeMap<_, _>>();
 
-        BimmColumnBuildInfo {
+        ColumnBuildSpec {
             op: op.to_string(),
             deps,
             config: serde_json::Value::Null,
@@ -71,7 +71,7 @@ impl BimmColumnBuildInfo {
     where
         T: Serialize,
     {
-        BimmColumnBuildInfo {
+        ColumnBuildSpec {
             config: to_value(config).expect("Failed to serialize config"),
             ..self
         }
@@ -95,7 +95,7 @@ pub struct BimmColumnSchema {
     /// Build information for the column, if applicable.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    pub build_info: Option<BimmColumnBuildInfo>,
+    pub build_spec: Option<ColumnBuildSpec>,
 }
 
 impl BimmColumnSchema {
@@ -106,7 +106,7 @@ impl BimmColumnSchema {
             name: name.to_string(),
             description: None,
             data_type: BimmDataTypeDescription::new::<T>(),
-            build_info: None,
+            build_spec: None,
         }
     }
 
@@ -133,17 +133,17 @@ impl BimmColumnSchema {
     ///
     /// ## Arguments
     ///
-    /// - `build_info`: The build information to attach to the column.
+    /// - `build_spec`: The build information to attach to the column.
     ///
     /// ## Returns
     ///
     /// A new `BimmColumnSchema` with the build information attached.
-    pub fn with_build_info(
+    pub fn with_build_spec(
         self,
-        build_info: BimmColumnBuildInfo,
+        build_spec: ColumnBuildSpec,
     ) -> Self {
         BimmColumnSchema {
-            build_info: Some(build_info),
+            build_spec: Some(build_spec),
             ..self
         }
     }
@@ -174,10 +174,10 @@ impl BimmColumnSchema {
         let mut build_order = ColumnBuildOrder::default();
 
         for col in columns {
-            match col.build_info.as_ref() {
+            match col.build_spec.as_ref() {
                 None => build_order.static_columns.push(col.name.clone()),
-                Some(build_info) => {
-                    for cname in build_info.deps.values() {
+                Some(build_spec) => {
+                    for cname in build_spec.deps.values() {
                         if !col_names.contains(cname) {
                             return Err(format!(
                                 "Column '{}' depends on non-existent column '{}'",
@@ -192,12 +192,12 @@ impl BimmColumnSchema {
         while (build_order.static_columns.len() + build_order.topo_order.len()) < columns.len() {
             let mut progress = false;
             for col in columns {
-                if let Some(build_info) = &col.build_info {
+                if let Some(build_spec) = &col.build_spec {
                     if build_order.topo_order.contains(&col.name) {
                         continue;
                     }
 
-                    if build_info.deps.iter().all(|(_, cname)| {
+                    if build_spec.deps.iter().all(|(_, cname)| {
                         build_order.static_columns.contains(cname)
                             || build_order.topo_order.contains(cname)
                     }) {
@@ -319,8 +319,8 @@ impl BimmTableSchema {
     ) {
         self.check_name(&column.name).unwrap();
 
-        if let Some(build_info) = &column.build_info {
-            for cname in build_info.deps.values() {
+        if let Some(build_spec) = &column.build_spec {
+            for cname in build_spec.deps.values() {
                 if self.column_index(cname).is_none() {
                     panic!(
                         "Column '{}' depends on non-existent column '{}'",
@@ -349,8 +349,8 @@ impl BimmTableSchema {
             if col.name == old_name {
                 col.name = new_name.to_string();
             }
-            if let Some(build_info) = &mut col.build_info {
-                build_info.deps.values_mut().for_each(|cname| {
+            if let Some(build_spec) = &mut col.build_spec {
+                build_spec.deps.values_mut().for_each(|cname| {
                     if *cname == old_name {
                         *cname = new_name.to_string();
                     }
@@ -477,7 +477,7 @@ mod tests {
 
         schema.add_column(
             BimmColumnSchema::new::<String>("bar")
-                .with_build_info(BimmColumnBuildInfo::new("build_bar", &[("source", "foo")])),
+                .with_build_spec(ColumnBuildSpec::new("build_bar", &[("source", "foo")])),
         );
 
         assert_eq!(schema.columns.len(), 2);
@@ -505,7 +505,7 @@ mod tests {
                       "data_type": {
                         "type_name": "alloc::string::String"
                       },
-                      "build_info": {
+                      "build_spec": {
                         "op": "build_bar",
                         "deps": {
                           "source": "foo"
@@ -546,7 +546,7 @@ mod tests {
                       "data_type": {
                         "type_name": "alloc::string::String"
                       },
-                      "build_info": {
+                      "build_spec": {
                         "op": "build_bar",
                         "deps": {
                           "source": "xxx"

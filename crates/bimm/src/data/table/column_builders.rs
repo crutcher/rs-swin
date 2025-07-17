@@ -5,7 +5,7 @@ use std::fmt::Debug;
 use std::sync::Arc;
 
 /// Factory for creating `BimmColumnFunc` instances.
-pub trait BimmColumnFuncFactory {
+pub trait ColumnOperatorFactory {
     /// Creates a column builder for a specific operation.
     ///
     /// ## Arguments
@@ -24,17 +24,17 @@ pub trait BimmColumnFuncFactory {
         dep_types: &BTreeMap<String, BimmDataTypeDescription>,
         config: &serde_json::Value,
         data_type: &BimmDataTypeDescription,
-    ) -> Result<Arc<dyn BimmColumnFunc>, String>;
+    ) -> Result<Arc<dyn ColumnOperator>, String>;
 }
 
 /// Factory for creating `BimmColumnFunc` instances based on operation names.
 #[derive(Clone, Default)]
-pub struct MapColumnFuncFactory {
+pub struct MapColumnOperatorFactory {
     /// A map of operation names to their corresponding `BimmColumnFuncFactory` implementations.
-    pub bindings: BTreeMap<String, Arc<dyn BimmColumnFuncFactory>>,
+    pub bindings: BTreeMap<String, Arc<dyn ColumnOperatorFactory>>,
 }
 
-impl MapColumnFuncFactory {
+impl MapColumnOperatorFactory {
     /// Adds a binding for a specific operation name.
     ///
     /// ## Arguments
@@ -44,20 +44,20 @@ impl MapColumnFuncFactory {
     pub fn add_binding(
         &mut self,
         op_name: &str,
-        factory: Arc<dyn BimmColumnFuncFactory>,
+        factory: Arc<dyn ColumnOperatorFactory>,
     ) {
         self.bindings.insert(op_name.to_string(), factory);
     }
 }
 
-impl BimmColumnFuncFactory for MapColumnFuncFactory {
+impl ColumnOperatorFactory for MapColumnOperatorFactory {
     fn init_func(
         &self,
         op_name: &str,
         dep_types: &BTreeMap<String, BimmDataTypeDescription>,
         config: &serde_json::Value,
         data_type: &BimmDataTypeDescription,
-    ) -> Result<Arc<dyn BimmColumnFunc>, String> {
+    ) -> Result<Arc<dyn ColumnOperator>, String> {
         if let Some(factory) = self.bindings.get(op_name) {
             factory.init_func(op_name, dep_types, config, data_type)
         } else {
@@ -68,7 +68,7 @@ impl BimmColumnFuncFactory for MapColumnFuncFactory {
 
 /// BimmColumnBuilder lifecycle
 ///
-pub trait BimmColumnFunc {
+pub trait ColumnOperator {
     /// Builds a single row cell.
     ///
     /// ## Arguments
@@ -99,7 +99,7 @@ pub struct BimmColumnBuilder {
     slot_map: BTreeMap<String, usize>,
 
     /// The builder that implements the column function.
-    builder: Arc<dyn BimmColumnFunc>,
+    builder: Arc<dyn ColumnOperator>,
 }
 
 impl Debug for BimmColumnBuilder {
@@ -133,13 +133,13 @@ impl BimmColumnBuilder {
         factory: F,
     ) -> Result<Self, String>
     where
-        F: BimmColumnFuncFactory,
+        F: ColumnOperatorFactory,
     {
         let slot_index = table_schema.check_column_index(column_name)?;
         let column_schema = &table_schema[slot_index];
 
         let build_info = column_schema
-            .build_info
+            .build_spec
             .as_ref()
             .ok_or_else(|| format!("Column '{column_name}' does not have build info"))?;
 
@@ -236,9 +236,9 @@ impl BimmColumnBuilder {
 #[cfg(test)]
 mod tests {
     use crate::data::table::{
-        AnyArc, BimmColumnBuildInfo, BimmColumnBuilder, BimmColumnFunc, BimmColumnFuncFactory,
-        BimmColumnSchema, BimmDataTypeDescription, BimmRowBatch, BimmTableSchema,
-        MapColumnFuncFactory,
+        AnyArc, BimmColumnBuilder, BimmColumnSchema, BimmDataTypeDescription, BimmRowBatch,
+        BimmTableSchema, ColumnBuildSpec, ColumnOperator, ColumnOperatorFactory,
+        MapColumnOperatorFactory,
     };
     use serde::{Deserialize, Serialize};
 
@@ -251,7 +251,7 @@ mod tests {
         bias: i32,
     }
 
-    impl BimmColumnFunc for AddFunc {
+    impl ColumnOperator for AddFunc {
         fn apply(
             &self,
             deps: &BTreeMap<&str, Option<&dyn Any>>,
@@ -267,14 +267,14 @@ mod tests {
 
     struct AddFuncFactory {}
 
-    impl BimmColumnFuncFactory for AddFuncFactory {
+    impl ColumnOperatorFactory for AddFuncFactory {
         fn init_func(
             &self,
             _op_name: &str,
             _dep_types: &BTreeMap<String, BimmDataTypeDescription>,
             config: &serde_json::Value,
             _data_type: &BimmDataTypeDescription,
-        ) -> Result<Arc<dyn BimmColumnFunc>, String> {
+        ) -> Result<Arc<dyn ColumnOperator>, String> {
             let f = serde_json::from_value::<AddFunc>(config.clone())
                 .map_err(|e| format!("Failed to parse config for 'add' function: {e}"))?;
             Ok(Arc::new(f))
@@ -286,13 +286,13 @@ mod tests {
         let schema = Arc::new(BimmTableSchema::from_columns(&[
             BimmColumnSchema::new::<i32>("a"),
             BimmColumnSchema::new::<i32>("b"),
-            BimmColumnSchema::new::<i32>("c").with_build_info(
-                BimmColumnBuildInfo::new("add", &[("x", "a"), ("y", "b")])
+            BimmColumnSchema::new::<i32>("c").with_build_spec(
+                ColumnBuildSpec::new("add", &[("x", "a"), ("y", "b")])
                     .with_config(AddFunc { bias: 10 }),
             ),
         ]));
 
-        let mut factory: MapColumnFuncFactory = Default::default();
+        let mut factory: MapColumnOperatorFactory = Default::default();
         factory.add_binding("add", Arc::new(AddFuncFactory {}));
 
         let builder = BimmColumnBuilder::init("c", schema.as_ref().clone(), factory)
@@ -325,13 +325,13 @@ mod tests {
         let schema = Arc::new(BimmTableSchema::from_columns(&[
             BimmColumnSchema::new::<i32>("a"),
             BimmColumnSchema::new::<i32>("b"),
-            BimmColumnSchema::new::<i32>("c").with_build_info(
-                BimmColumnBuildInfo::new("add", &[("x", "a"), ("y", "b")])
+            BimmColumnSchema::new::<i32>("c").with_build_spec(
+                ColumnBuildSpec::new("add", &[("x", "a"), ("y", "b")])
                     .with_config(AddFunc { bias: 10 }),
             ),
         ]));
 
-        let factory = MapColumnFuncFactory::default();
+        let factory = MapColumnOperatorFactory::default();
         assert_eq!(factory.bindings.len(), 0);
 
         assert_eq!(
