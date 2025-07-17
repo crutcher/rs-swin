@@ -236,8 +236,9 @@ impl BimmColumnBuilder {
 #[cfg(test)]
 mod tests {
     use crate::data::table::{
-        AnyArc, BimmColumnBuilder, BimmColumnFunc, BimmColumnFuncFactory, BimmColumnSchema,
-        BimmDataTypeDescription, BimmRowBatch, BimmTableSchema, MapColumnFuncFactory,
+        AnyArc, BimmColumnBuildInfo, BimmColumnBuilder, BimmColumnFunc, BimmColumnFuncFactory,
+        BimmColumnSchema, BimmDataTypeDescription, BimmRowBatch, BimmTableSchema,
+        MapColumnFuncFactory,
     };
     use serde::Deserialize;
     use serde_json::json;
@@ -286,9 +287,8 @@ mod tests {
             BimmColumnSchema::new::<i32>("a"),
             BimmColumnSchema::new::<i32>("b"),
             BimmColumnSchema::new::<i32>("c").with_build_info(
-                "add",
-                &[("x", "a"), ("y", "b")],
-                json!({"bias": 10}),
+                BimmColumnBuildInfo::new("add", &[("x", "a"), ("y", "b")])
+                    .with_config(json!({"bias": 10})),
             ),
         ]));
 
@@ -326,9 +326,8 @@ mod tests {
             BimmColumnSchema::new::<i32>("a"),
             BimmColumnSchema::new::<i32>("b"),
             BimmColumnSchema::new::<i32>("c").with_build_info(
-                "add",
-                &[("x", "a"), ("y", "b")],
-                json!({"bias": 10}),
+                BimmColumnBuildInfo::new("add", &[("x", "a"), ("y", "b")])
+                    .with_config(json!({"bias": 10})),
             ),
         ]));
 

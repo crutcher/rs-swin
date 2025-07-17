@@ -45,6 +45,32 @@ pub struct BimmColumnBuildInfo {
     pub config: serde_json::Value,
 }
 
+impl BimmColumnBuildInfo {
+    /// Creates a new `BimmColumnBuildInfo` with the given operation name and dependencies.
+    pub fn new(
+        op: &str,
+        deps: &[(&str, &str)],
+    ) -> Self {
+        let deps = deps
+            .iter()
+            .map(|(pname, cname)| (pname.to_string(), cname.to_string()))
+            .collect::<BTreeMap<_, _>>();
+
+        BimmColumnBuildInfo {
+            op: op.to_string(),
+            deps,
+            config: serde_json::Value::Null,
+        }
+    }
+    /// Creates a new `BimmColumnBuildInfo`, adding the given config.
+    pub fn with_config(
+        self,
+        config: serde_json::Value,
+    ) -> Self {
+        BimmColumnBuildInfo { config, ..self }
+    }
+}
+
 /// A description of a column in a data table.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct BimmColumnSchema {
@@ -77,40 +103,42 @@ impl BimmColumnSchema {
         }
     }
 
-    /// Sets the description of the column.
-    pub fn with_description(
-        mut self,
-        description: &str,
-    ) -> Self {
-        self.description = Some(description.to_string());
-        self
-    }
-
-    /// Attaches build information to the column.
+    /// Extends the schema with a description.
     ///
     /// ## Arguments
     ///
-    /// - `op_name`: The name of the operation that builds this column.
-    /// - `deps`: A vector of column names that this column depends on.
-    /// - `params`: A vector of additional parameters for the operation, serialized as JSON.
-    pub fn with_build_info(
-        mut self,
-        op_name: &str,
-        deps: &[(&str, &str)],
-        config: serde_json::Value,
+    /// - `description`: The description to attach to the column.
+    ///
+    /// ## Returns
+    ///
+    /// A new `BimmColumnSchema` with the description attached.
+    pub fn with_description(
+        self,
+        description: &str,
     ) -> Self {
-        let deps = deps
-            .iter()
-            .map(|(pname, cname)| (pname.to_string(), cname.to_string()))
-            .collect::<BTreeMap<_, _>>();
+        BimmColumnSchema {
+            description: Some(description.to_string()),
+            ..self
+        }
+    }
 
-        self.build_info = Some(BimmColumnBuildInfo {
-            op: op_name.to_string(),
-            deps,
-            config,
-        });
-
-        self
+    /// Extends the schema with build info.
+    ///
+    /// ## Arguments
+    ///
+    /// - `build_info`: The build information to attach to the column.
+    ///
+    /// ## Returns
+    ///
+    /// A new `BimmColumnSchema` with the build information attached.
+    pub fn with_build_info(
+        self,
+        build_info: BimmColumnBuildInfo,
+    ) -> Self {
+        BimmColumnSchema {
+            build_info: Some(build_info),
+            ..self
+        }
     }
 
     /// Computes a topological build order for the columns based on their dependencies.
@@ -408,7 +436,6 @@ impl BimmTableSchema {
 mod tests {
     use super::*;
     use indoc::indoc;
-    use serde_json::json;
 
     #[test]
     fn test_data_type_description() {
@@ -441,11 +468,10 @@ mod tests {
         // IndexMut<usize>
         schema["foo"].description = Some("An integer column".to_string());
 
-        schema.add_column(BimmColumnSchema::new::<String>("bar").with_build_info(
-            "build_bar",
-            &[("source", "foo")],
-            json!(null),
-        ));
+        schema.add_column(
+            BimmColumnSchema::new::<String>("bar")
+                .with_build_info(BimmColumnBuildInfo::new("build_bar", &[("source", "foo")])),
+        );
 
         assert_eq!(schema.columns.len(), 2);
         assert_eq!(schema.columns[0].name, "foo");

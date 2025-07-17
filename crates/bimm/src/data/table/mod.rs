@@ -35,18 +35,27 @@ mod tests {
         schema.add_column(
             BimmColumnSchema::new::<String>("class_name")
                 .with_description("category class name")
-                .with_build_info("path_to_class", &[("source", "path")], json!(null)),
+                .with_build_info(BimmColumnBuildInfo::new(
+                    "path_to_class",
+                    &[("source", "path")],
+                )),
         );
         schema.add_column(
             BimmColumnSchema::new::<u32>("class")
                 .with_description("category class code")
-                .with_build_info("class_code", &[("source", "class_name")], json!(null)),
+                .with_build_info(BimmColumnBuildInfo::new(
+                    "class_code",
+                    &[("source", "class_name")],
+                )),
         );
 
         schema.add_column(
             BimmColumnSchema::new::<Vec<u8>>("raw_image")
                 .with_description("initial image loaded from disk")
-                .with_build_info("load_image", &[("source", "path")], json!(null)),
+                .with_build_info(BimmColumnBuildInfo::new(
+                    "load_image",
+                    &[("source", "path")],
+                )),
         );
 
         // same.
@@ -54,9 +63,8 @@ mod tests {
             BimmColumnSchema::new::<Vec<u8>>("aug_image")
                 .with_description("augmented image")
                 .with_build_info(
-                    "image_aug",
-                    &[("source", "raw_image")],
-                    json!({"blur": 0.1, "brightness": 0.2}),
+                    BimmColumnBuildInfo::new("image_aug", &[("source", "raw_image")])
+                        .with_config(json!({"blur": 0.1, "brightness": 0.2})),
                 ),
         );
 
