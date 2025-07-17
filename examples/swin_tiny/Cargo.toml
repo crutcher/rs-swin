@@ -10,7 +10,10 @@ publish = false
 workspace = true
 
 [dependencies]
-burn = { workspace = true, features = ["train", "autodiff", "cuda", "fusion"] }
+burn = { workspace = true, features = ["train", "autodiff", "cuda", "fusion", "vision", "dataset"] }
+
+globwalk = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 
 bimm = { workspace = true } 
 rand = { workspace = true }
