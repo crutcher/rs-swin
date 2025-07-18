@@ -52,11 +52,27 @@ impl OperatorId {
     }
 }
 
-/// A specification for a column operator, including its ID, description, and configuration.
+impl From<(&str, &str)> for OperatorId {
+    fn from(val: (&str, &str)) -> Self {
+        OperatorId::new(val.0, val.1)
+    }
+}
+
+impl From<[&str; 2]> for OperatorId {
+    fn from(val: [&str; 2]) -> Self {
+        OperatorId::new(val[0], val[1])
+    }
+}
+
+/// A build plan for columns in a table schema.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct BuildOperatorSpec {
+pub struct BuildPlan {
+    /// The unique identifier for the build plan.
+    #[serde(default = "uuid::Uuid::new_v4")]
+    pub id: uuid::Uuid,
+
     /// The ID of the operator.
-    pub id: OperatorId,
+    pub operator: OperatorId,
 
     /// The description of the operator.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -67,13 +83,6 @@ pub struct BuildOperatorSpec {
     #[serde(skip_serializing_if = "serde_json::Value::is_null")]
     #[serde(default)]
     pub config: serde_json::Value,
-}
-
-/// A build plan for columns in a table schema.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct ColumnBuildPlan {
-    /// The spec for the operator that will be used to build the columns.
-    pub operator: BuildOperatorSpec,
 
     /// The input column bindings ``{parameter_name: column_name}``.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
@@ -84,6 +93,116 @@ pub struct ColumnBuildPlan {
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     #[serde(default)]
     pub outputs: BTreeMap<String, String>,
+}
+
+impl BuildPlan {
+    /// Creates a new `ColumnBuildPlan` with the given operator spec.
+    pub fn for_operator<I>(id: I) -> Self
+    where
+        I: Into<OperatorId>,
+    {
+        BuildPlan {
+            id: uuid::Uuid::new_v4(),
+            operator: id.into(),
+            description: None,
+            config: serde_json::Value::Null,
+            inputs: BTreeMap::new(),
+            outputs: BTreeMap::new(),
+        }
+    }
+
+    /// Extends the build plan with a description.
+    ///
+    /// ## Arguments
+    ///
+    /// - `description`: The description to attach to the build plan.
+    ///
+    /// ## Returns
+    ///
+    /// A new `ColumnBuildPlan` with the description attached.
+    pub fn with_description(
+        self,
+        description: &str,
+    ) -> Self {
+        BuildPlan {
+            description: Some(description.to_string()),
+            ..self
+        }
+    }
+
+    /// Extends the build plan with a configuration.
+    ///
+    /// ## Arguments
+    ///
+    /// - `config`: The configuration to attach to the build plan, serialized as JSON.
+    ///
+    /// ## Returns
+    ///
+    /// A new `ColumnBuildPlan` with the configuration attached.
+    pub fn with_config<T>(
+        self,
+        config: T,
+    ) -> Self
+    where
+        T: Serialize,
+    {
+        BuildPlan {
+            config: serde_json::to_value(config).expect("Failed to serialize config"),
+            ..self
+        }
+    }
+
+    /// Extends the build plan with input columns.
+    ///
+    /// ## Arguments
+    ///
+    /// - `inputs`: A slice of tuples where each tuple contains a parameter name and a column name.
+    ///
+    /// ## Returns
+    ///
+    /// A new `ColumnBuildPlan` with the input columns attached.
+    pub fn with_inputs(
+        self,
+        inputs: &[(&str, &str)],
+    ) -> Self {
+        let mut btree = BTreeMap::new();
+        for (param, column) in inputs {
+            identifiers::check_ident(param).expect("Invalid parameter name");
+            identifiers::check_ident(column).expect("Invalid column name");
+            btree.insert(param.to_string(), column.to_string());
+        }
+
+        BuildPlan {
+            inputs: btree,
+            ..self
+        }
+    }
+
+    /// Extends the build plan with output columns.
+    ///
+    /// ## Arguments
+    ///
+    /// - `outputs`: A slice of tuples where each tuple contains a parameter name and a column name.
+    ///
+    /// ## Returns
+    ///
+    /// A new `ColumnBuildPlan` with the output columns attached.
+    pub fn with_outputs(
+        self,
+        outputs: &[(&str, &str)],
+    ) -> Self {
+        let mut btree = BTreeMap::new();
+        for (param, column) in outputs {
+            identifiers::check_ident(param).expect("Invalid parameter name");
+            identifiers::check_ident(column).expect("Invalid column name");
+            btree.insert(param.to_string(), column.to_string());
+        }
+
+        BuildPlan {
+            outputs: btree,
+            ..self
+        }
+    }
 }
 
 /// A description of a column in a data table.
@@ -141,7 +260,7 @@ pub struct TableSchema {
     /// Build plans for the table.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     #[serde(default)]
-    pub build_plans: Vec<ColumnBuildPlan>,
+    pub build_plans: Vec<BuildPlan>,
 }
 
 impl Index<usize> for TableSchema {
@@ -189,17 +308,84 @@ impl IndexMut<&str> for TableSchema {
     }
 }
 
-/// Topological build order for columns in a table schema.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
-pub struct ColumnBuildOrder {
-    /// Non-buildable columns (those without build info).
-    pub static_columns: Vec<String>,
-
-    /// The order in which columns can be built.
-    pub topo_order: Vec<String>,
-}
-
 impl TableSchema {
+    fn check_graph(
+        columns: &[ColumnSchema],
+        plans: &[BuildPlan],
+    ) -> Result<(Vec<String>, Vec<BuildPlan>), String> {
+        let column_names: Vec<String> = columns.iter().map(|c| c.name.clone()).collect();
+
+        let mut base_columns: Vec<String> = column_names.clone();
+        for plan in plans {
+            for (_, cname) in plan.outputs.iter() {
+                base_columns.retain(|c| c != cname);
+            }
+        }
+
+        let base_columns = base_columns;
+
+        let mut scheduled_columns = base_columns.clone();
+        let mut plan_order = Vec::new();
+
+        loop {
+            let mut progress = false;
+
+            for (idx, plan) in plans.iter().enumerate() {
+                if plan_order.contains(&idx) {
+                    // This plan is already scheduled.
+                    continue;
+                }
+                if plan
+                    .inputs
+                    .values()
+                    .all(|cname| scheduled_columns.contains(cname))
+                {
+                    // All inputs are scheduled, we can schedule this plan.
+                    for (_, cname) in plan.outputs.iter() {
+                        if !scheduled_columns.contains(cname) {
+                            scheduled_columns.push(cname.clone());
+                        }
+                    }
+                    progress = true;
+                    plan_order.push(idx);
+                } else {
+                    // Not all inputs are scheduled, skip this plan.
+                    continue;
+                }
+            }
+
+            if !progress {
+                // No progress was made, we are done.
+                break;
+            }
+        }
+
+        if scheduled_columns.len() != column_names.len() {
+            return Err(format!(
+                "Not all columns are scheduled: expected {}, got {}",
+                column_names.len(),
+                scheduled_columns.len()
+            ));
+        }
+
+        let order: Vec<BuildPlan> = plan_order.iter().map(|&idx| plans[idx].clone()).collect();
+
+        Ok((base_columns, order))
+    }
+
+    /// Compute the build order for the table schema.
+    ///
+    /// This function checks the build plans and their dependencies to determine the order in which they should be executed.
+    ///
+    /// ## Returns
+    ///
+    /// A `Result<(Vec<String>, Vec<BuildPlan>), String>` where:
+    /// - `Ok((Vec<String>, Vec<BuildPlan>))` contains the base columns and the ordered build plans.
+    /// - `Err(String)` contains an error message if the build order cannot be determined.
+    pub fn build_order(&self) -> Result<(Vec<String>, Vec<BuildPlan>), String> {
+        Self::check_graph(&self.columns, &self.build_plans)
+    }
+
     /// Creates a new `DataTableDescription` with the given columns.
     #[must_use]
     pub fn from_columns(columns: &[ColumnSchema]) -> Self {
@@ -246,7 +432,7 @@ impl TableSchema {
     /// Adds a build plan to the table description.
     pub fn add_build_plan(
         &mut self,
-        plan: ColumnBuildPlan,
+        plan: BuildPlan,
     ) -> Result<(), String> {
         // Check that all the input and output columns exist.
         for cname in plan.inputs.values() {
@@ -272,8 +458,45 @@ impl TableSchema {
             }
         }
 
+        {
+            let mut plans = self.build_plans.clone();
+            plans.push(plan.clone());
+            Self::check_graph(&self.columns, plans.as_slice())?;
+        }
+
         self.build_plans.push(plan);
         Ok(())
+    }
+
+    /// Adds a build plan and its output columns to the table description.
+    ///
+    /// ## Arguments
+    ///
+    /// - `plan`: The build plan to add.
+    /// - `output_info`: A slice of tuples where each tuple contains the output column name, its data type, and a description.
+    ///
+    /// ## Returns
+    ///
+    /// A `Result<(), String>` where:
+    /// - `Ok(())` indicates success.
+    /// - `Err(String)` contains an error message if the operation fails.
+    pub fn add_build_plan_and_outputs(
+        &mut self,
+        plan: BuildPlan,
+        output_info: &[(&str, DataTypeDescription, &str)],
+    ) -> Result<(), String> {
+        // Now add the output columns.
+        for (pname, data_type, desc) in output_info {
+            let cname = plan.outputs.get(*pname).expect("Output column not found");
+            let column = ColumnSchema {
+                name: cname.to_string(),
+                description: Some(desc.to_string()),
+                data_type: data_type.clone(),
+            };
+            self.add_column(column);
+        }
+
+        self.add_build_plan(plan)
     }
 
     /// Renames a column in the table description.

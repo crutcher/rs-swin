@@ -24,6 +24,8 @@ bimm = { version = "0.1.9", path = "crates/bimm" }
 bimm-contracts = { version = "0.1.9", path = "crates/bimm-contracts" }
 bimm-contracts-macros = { version = "0.1.9", path = "crates/bimm-contracts-macros" }
 
+uuid = { version = "^1.17.0" }
+
 # Burn coupled-dependencies
 serde = { version = "^1.0.219" }
 serde_json = { version = "^1.0.140" }
