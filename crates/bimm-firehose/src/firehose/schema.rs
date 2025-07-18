@@ -1,19 +1,19 @@
-use crate::data::table::identifiers;
+use crate::firehose::identifiers;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::ops::{Index, IndexMut};
 
 /// A serializable description of a data type.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct BimmDataTypeDescription {
+pub struct DataTypeDescription {
     /// The name of the data type.
     pub type_name: String,
 }
 
-impl BimmDataTypeDescription {
+impl DataTypeDescription {
     /// Creates a `DataTypeDescription` from a type name.
     pub fn from_type_name(type_name: &str) -> Self {
-        BimmDataTypeDescription {
+        DataTypeDescription {
             type_name: type_name.to_string(),
         }
     }
@@ -26,18 +26,42 @@ impl BimmDataTypeDescription {
     }
 }
 
-/// Column build information.
+/// Namespace and name of a column operator.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct BimmColumnBuildInfo {
-    /// The name of the operation that builds this column.
-    ///
-    /// TODO: Namespace / lookup semantics.
-    pub op: String,
+pub struct OperatorId {
+    /// The namespace of the operator.
+    pub namespace: String,
 
-    /// The bindings for the operation, serialized as a map of name-value pairs.
-    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    /// The name of the operator.
+    pub name: String,
+}
+
+impl OperatorId {
+    /// Creates a new `OperatorId` with the given namespace and name.
+    pub fn new(
+        namespace: &str,
+        name: &str,
+    ) -> Self {
+        identifiers::check_ident(namespace).expect("Invalid namespace");
+        identifiers::check_ident(name).expect("Invalid name");
+
+        OperatorId {
+            namespace: namespace.to_string(),
+            name: name.to_string(),
+        }
+    }
+}
+
+/// A specification for a column operator, including its ID, description, and configuration.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct BuildOperatorSpec {
+    /// The ID of the operator.
+    pub id: OperatorId,
+
+    /// The description of the operator.
+    #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    pub deps: BTreeMap<String, String>,
+    pub description: Option<String>,
 
     /// Additional configuration for the operation, serialized as JSON.
     #[serde(skip_serializing_if = "serde_json::Value::is_null")]
@@ -45,35 +69,26 @@ pub struct BimmColumnBuildInfo {
     pub config: serde_json::Value,
 }
 
-impl BimmColumnBuildInfo {
-    /// Creates a new `BimmColumnBuildInfo` with the given operation name and dependencies.
-    pub fn new(
-        op: &str,
-        deps: &[(&str, &str)],
-    ) -> Self {
-        let deps = deps
-            .iter()
-            .map(|(pname, cname)| (pname.to_string(), cname.to_string()))
-            .collect::<BTreeMap<_, _>>();
+/// A build plan for columns in a table schema.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ColumnBuildPlan {
+    /// The spec for the operator that will be used to build the columns.
+    pub operator: BuildOperatorSpec,
 
-        BimmColumnBuildInfo {
-            op: op.to_string(),
-            deps,
-            config: serde_json::Value::Null,
-        }
-    }
-    /// Creates a new `BimmColumnBuildInfo`, adding the given config.
-    pub fn with_config(
-        self,
-        config: serde_json::Value,
-    ) -> Self {
-        BimmColumnBuildInfo { config, ..self }
-    }
+    /// The input column bindings ``{parameter_name: column_name}``.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    #[serde(default)]
+    pub inputs: BTreeMap<String, String>,
+
+    /// The output column bindings ``{parameter_name: column_name}``.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    #[serde(default)]
+    pub outputs: BTreeMap<String, String>,
 }
 
 /// A description of a column in a data table.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct BimmColumnSchema {
+pub struct ColumnSchema {
     /// The name of the column.
     pub name: String,
 
@@ -83,23 +98,17 @@ pub struct BimmColumnSchema {
     pub description: Option<String>,
 
     /// The type of the column.
-    pub data_type: BimmDataTypeDescription,
-
-    /// Build information for the column, if applicable.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(default)]
-    pub build_info: Option<BimmColumnBuildInfo>,
+    pub data_type: DataTypeDescription,
 }
 
-impl BimmColumnSchema {
+impl ColumnSchema {
     /// Creates a new `DataColumnDescription` with the given name and type.
     pub fn new<T>(name: &str) -> Self {
         identifiers::check_ident(name).unwrap();
-        BimmColumnSchema {
+        ColumnSchema {
             name: name.to_string(),
             description: None,
-            data_type: BimmDataTypeDescription::new::<T>(),
-            build_info: None,
+            data_type: DataTypeDescription::new::<T>(),
         }
     }
 
@@ -116,108 +125,27 @@ impl BimmColumnSchema {
         self,
         description: &str,
     ) -> Self {
-        BimmColumnSchema {
+        ColumnSchema {
             description: Some(description.to_string()),
             ..self
         }
-    }
-
-    /// Extends the schema with build info.
-    ///
-    /// ## Arguments
-    ///
-    /// - `build_info`: The build information to attach to the column.
-    ///
-    /// ## Returns
-    ///
-    /// A new `BimmColumnSchema` with the build information attached.
-    pub fn with_build_info(
-        self,
-        build_info: BimmColumnBuildInfo,
-    ) -> Self {
-        BimmColumnSchema {
-            build_info: Some(build_info),
-            ..self
-        }
-    }
-
-    /// Computes a topological build order for the columns based on their dependencies.
-    ///
-    /// This function ensures that columns without build information are built first,
-    /// and that columns with dependencies are built only after their dependencies have been satisfied.
-    ///
-    /// ## Arguments
-    ///
-    /// - `columns`: A vector of `BimmColumnSchema` representing the columns in the table.
-    ///
-    /// ## Returns
-    ///
-    /// A `Result<ColumnBuildOrder, String>` where:
-    /// - `Ok(ColumnBuildOrder)` is the computed build order.
-    /// - `Err(String)` is an error message if there are duplicate column names or circular dependencies.
-    #[must_use]
-    pub fn build_order(columns: &[BimmColumnSchema]) -> Result<ColumnBuildOrder, String> {
-        let mut col_names = std::collections::HashSet::new();
-        for col in columns {
-            if !col_names.insert(col.name.clone()) {
-                return Err(format!("Duplicate column name: '{}'", col.name));
-            }
-        }
-
-        let mut build_order = ColumnBuildOrder::default();
-
-        for col in columns {
-            match col.build_info.as_ref() {
-                None => build_order.static_columns.push(col.name.clone()),
-                Some(build_info) => {
-                    for cname in build_info.deps.values() {
-                        if !col_names.contains(cname) {
-                            return Err(format!(
-                                "Column '{}' depends on non-existent column '{}'",
-                                col.name, cname
-                            ));
-                        }
-                    }
-                }
-            }
-        }
-
-        while (build_order.static_columns.len() + build_order.topo_order.len()) < columns.len() {
-            let mut progress = false;
-            for col in columns {
-                if let Some(build_info) = &col.build_info {
-                    if build_order.topo_order.contains(&col.name) {
-                        continue;
-                    }
-
-                    if build_info.deps.iter().all(|(_, cname)| {
-                        build_order.static_columns.contains(cname)
-                            || build_order.topo_order.contains(cname)
-                    }) {
-                        progress = true;
-                        build_order.topo_order.push(col.name.clone());
-                    }
-                }
-            }
-
-            if !progress {
-                return Err("Circular dependency detected in column build order".to_string());
-            }
-        }
-
-        Ok(build_order)
     }
 }
 
 /// Bimm Table Schema.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct BimmTableSchema {
+pub struct TableSchema {
     /// The columns in the table.
-    pub columns: Vec<BimmColumnSchema>,
+    pub columns: Vec<ColumnSchema>,
+
+    /// Build plans for the table.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
+    pub build_plans: Vec<ColumnBuildPlan>,
 }
 
-impl Index<usize> for BimmTableSchema {
-    type Output = BimmColumnSchema;
+impl Index<usize> for TableSchema {
+    type Output = ColumnSchema;
 
     fn index(
         &self,
@@ -227,7 +155,7 @@ impl Index<usize> for BimmTableSchema {
     }
 }
 
-impl IndexMut<usize> for BimmTableSchema {
+impl IndexMut<usize> for TableSchema {
     fn index_mut(
         &mut self,
         index: usize,
@@ -236,8 +164,8 @@ impl IndexMut<usize> for BimmTableSchema {
     }
 }
 
-impl Index<&str> for BimmTableSchema {
-    type Output = BimmColumnSchema;
+impl Index<&str> for TableSchema {
+    type Output = ColumnSchema;
 
     fn index(
         &self,
@@ -250,7 +178,7 @@ impl Index<&str> for BimmTableSchema {
     }
 }
 
-impl IndexMut<&str> for BimmTableSchema {
+impl IndexMut<&str> for TableSchema {
     fn index_mut(
         &mut self,
         index: &str,
@@ -271,20 +199,20 @@ pub struct ColumnBuildOrder {
     pub topo_order: Vec<String>,
 }
 
-impl BimmTableSchema {
+impl TableSchema {
     /// Creates a new `DataTableDescription` with the given columns.
     #[must_use]
-    pub fn from_columns(columns: &[BimmColumnSchema]) -> Self {
-        let columns = columns.to_vec();
+    pub fn from_columns(columns: &[ColumnSchema]) -> Self {
+        let mut schema = Self {
+            columns: Vec::new(),
+            build_plans: Vec::new(),
+        };
 
-        let _build_order = BimmColumnSchema::build_order(&columns).unwrap();
+        for column in columns {
+            schema.add_column(column.clone());
+        }
 
-        Self { columns }
-    }
-
-    /// Returns the `ColumnBuildOrder` for the schema.
-    pub fn build_order(&self) -> ColumnBuildOrder {
-        BimmColumnSchema::build_order(&self.columns).unwrap()
+        schema
     }
 
     /// Checks if a column name is invalid, or conflicts with existing columns.
@@ -299,7 +227,7 @@ impl BimmTableSchema {
         identifiers::check_ident(name).unwrap();
 
         if self.columns.iter().any(|c| c.name == name) {
-            Err(format!("Column name '{name}' already exists"))
+            Err(format!("Duplicate column name '{name}'"))
         } else {
             Ok(())
         }
@@ -308,21 +236,44 @@ impl BimmTableSchema {
     /// Adds a column to the table description.
     pub fn add_column(
         &mut self,
-        column: BimmColumnSchema,
+        column: ColumnSchema,
     ) {
         self.check_name(&column.name).unwrap();
 
-        if let Some(build_info) = &column.build_info {
-            for cname in build_info.deps.values() {
-                if self.column_index(cname).is_none() {
-                    panic!(
-                        "Column '{}' depends on non-existent column '{}'",
-                        column.name, cname
-                    );
+        self.columns.push(column);
+    }
+
+    /// Adds a build plan to the table description.
+    pub fn add_build_plan(
+        &mut self,
+        plan: ColumnBuildPlan,
+    ) -> Result<(), String> {
+        // Check that all the input and output columns exist.
+        for cname in plan.inputs.values() {
+            if self.column_index(cname).is_none() {
+                return Err(format!(
+                    "Input column '{cname}' does not exist in the schema"
+                ));
+            }
+        }
+        for cname in plan.outputs.values() {
+            if self.column_index(cname).is_none() {
+                return Err(format!(
+                    "Output column '{cname}' does not exist in the schema"
+                ));
+            }
+
+            for alt_plan in &self.build_plans {
+                if alt_plan.outputs.values().any(|v| v == cname) {
+                    return Err(format!(
+                        "Output column '{cname}' already exists in another build plan"
+                    ));
                 }
             }
         }
-        self.columns.push(column);
+
+        self.build_plans.push(plan);
+        Ok(())
     }
 
     /// Renames a column in the table description.
@@ -331,23 +282,38 @@ impl BimmTableSchema {
         old_name: &str,
         new_name: &str,
     ) -> Result<(), String> {
+        let index = match self.column_index(old_name) {
+            Some(idx) => idx,
+            None => {
+                return Err(format!("Column '{old_name}' not found"));
+            }
+        };
+
         if old_name == new_name {
             // No change needed
             return Ok(());
         }
 
+        if self.column_index(new_name).is_some() {
+            return Err(format!("Column name '{new_name}' already exists"));
+        }
+
         self.check_name(new_name)?;
 
-        for col in &mut self.columns {
-            if col.name == old_name {
-                col.name = new_name.to_string();
+        // Update the column name in the schema.
+        self.columns[index].name = new_name.to_string();
+
+        // Update all references to the old column name in build plans.
+        for plan in &mut self.build_plans {
+            for cname in plan.inputs.values_mut() {
+                if cname == old_name {
+                    *cname = new_name.to_string();
+                }
             }
-            if let Some(build_info) = &mut col.build_info {
-                build_info.deps.values_mut().for_each(|cname| {
-                    if *cname == old_name {
-                        *cname = new_name.to_string();
-                    }
-                });
+            for cname in plan.outputs.values_mut() {
+                if cname == old_name {
+                    *cname = new_name.to_string();
+                }
             }
         }
 
@@ -409,11 +375,11 @@ impl BimmTableSchema {
     /// ## Example
     ///
     /// ```rust
-    /// use bimm::data::table::{BimmTableSchema, BimmColumnSchema};
-    /// let table = BimmTableSchema::from_columns(&[
-    ///     BimmColumnSchema::new::<i32>("foo"),
-    ///     BimmColumnSchema::new::<String>("bar"),
-    ///     BimmColumnSchema::new::<Option<usize>>("baz"),
+    /// use bimm_firehose::firehose::{TableSchema, ColumnSchema};
+    /// let table = TableSchema::from_columns(&[
+    ///     ColumnSchema::new::<i32>("foo"),
+    ///     ColumnSchema::new::<String>("bar"),
+    ///     ColumnSchema::new::<Option<usize>>("baz"),
     /// ]);
     ///
     /// let [foo, baz] = table.select_indices(&["foo", "baz"]).unwrap();
@@ -439,24 +405,22 @@ mod tests {
 
     #[test]
     fn test_data_type_description() {
-        let schema = BimmDataTypeDescription::new::<Option<i32>>();
+        let schema = DataTypeDescription::new::<Option<i32>>();
         assert_eq!(schema.type_name, std::any::type_name::<Option<i32>>(),);
     }
 
     #[test]
     fn test_column_description() {
-        let column = BimmColumnSchema::new::<Option<i32>>("abc");
+        let column = ColumnSchema::new::<Option<i32>>("abc");
 
         assert_eq!(column.name, "abc");
-        assert_eq!(
-            column.data_type,
-            BimmDataTypeDescription::new::<Option<i32>>()
-        );
+        assert_eq!(column.data_type, DataTypeDescription::new::<Option<i32>>());
     }
 
     #[test]
     fn test_schema() {
-        let mut schema = BimmTableSchema::from_columns(&[BimmColumnSchema::new::<i32>("foo")]);
+        let mut schema = TableSchema::from_columns(&[ColumnSchema::new::<i32>("foo")]);
+        schema.add_column(ColumnSchema::new::<String>("bar"));
 
         // Index<usize>
         assert_eq!(schema[0].name, "foo");
@@ -467,11 +431,6 @@ mod tests {
         assert_eq!(schema["foo"].name, "foo");
         // IndexMut<usize>
         schema["foo"].description = Some("An integer column".to_string());
-
-        schema.add_column(
-            BimmColumnSchema::new::<String>("bar")
-                .with_build_info(BimmColumnBuildInfo::new("build_bar", &[("source", "foo")])),
-        );
 
         assert_eq!(schema.columns.len(), 2);
         assert_eq!(schema.columns[0].name, "foo");
@@ -497,24 +456,10 @@ mod tests {
                       "name": "bar",
                       "data_type": {
                         "type_name": "alloc::string::String"
-                      },
-                      "build_info": {
-                        "op": "build_bar",
-                        "deps": {
-                          "source": "foo"
-                        }
                       }
                     }
                   ]
                 }"#
-            }
-        );
-
-        assert_eq!(
-            schema.build_order(),
-            ColumnBuildOrder {
-                static_columns: vec!["foo".to_string()],
-                topo_order: vec!["bar".to_string()],
             }
         );
 
@@ -538,12 +483,6 @@ mod tests {
                       "name": "bar",
                       "data_type": {
                         "type_name": "alloc::string::String"
-                      },
-                      "build_info": {
-                        "op": "build_bar",
-                        "deps": {
-                          "source": "xxx"
-                        }
                       }
                     }
                   ]
@@ -553,18 +492,18 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Duplicate column name: 'foo'")]
+    #[should_panic(expected = "Duplicate column name 'foo'")]
     fn conflicting_column_names_on_validate() {
-        let _schema = BimmTableSchema::from_columns(&[
-            BimmColumnSchema::new::<i32>("foo"),
-            BimmColumnSchema::new::<String>("foo"),
+        let _schema = TableSchema::from_columns(&[
+            ColumnSchema::new::<i32>("foo"),
+            ColumnSchema::new::<String>("foo"),
         ]);
     }
 
     #[test]
-    #[should_panic(expected = "Column name 'foo' already exists")]
+    #[should_panic(expected = "Duplicate column name 'foo'")]
     fn conflicting_column_names_on_add() {
-        let mut schema = BimmTableSchema::from_columns(&[BimmColumnSchema::new::<i32>("foo")]);
-        schema.add_column(BimmColumnSchema::new::<String>("foo"));
+        let mut schema = TableSchema::from_columns(&[ColumnSchema::new::<i32>("foo")]);
+        schema.add_column(ColumnSchema::new::<String>("foo"));
     }
 }

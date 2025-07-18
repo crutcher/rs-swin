@@ -1,4 +1,4 @@
-use crate::data::table::schema::BimmTableSchema;
+use crate::firehose::TableSchema;
 use std::sync::Arc;
 
 /// Represents a boxed value that can hold any type.
@@ -6,23 +6,23 @@ pub type AnyArc = Arc<dyn std::any::Any>;
 
 /// Represents a row in a Bimm table, containing values for each column.
 #[derive(Debug, Clone)]
-pub struct BimmRow {
+pub struct Row {
     /// The values in the row, where each value is an `Option<AnyArc>`.
     pub slots: Vec<Option<AnyArc>>,
 }
 
-impl BimmRow {
+impl Row {
     /// Creates a new `BurnRow` with the given values.
     pub fn new_with_width(size: usize) -> Self {
         let mut slots = Vec::with_capacity(size);
         slots.resize_with(size, || None);
 
-        BimmRow { slots }
+        Row { slots }
     }
 
     /// Creates an empty `BurnRow` with the size of the given table's columns.
-    pub fn new_for_table(table: &BimmTableSchema) -> Self {
-        BimmRow::new_with_width(table.columns.len())
+    pub fn new_for_table(table: &TableSchema) -> Self {
+        Row::new_with_width(table.columns.len())
     }
 
     /// Sets the value at the specified index.
@@ -75,7 +75,7 @@ impl BimmRow {
     /// Check if the row's format matches the schema of the table.
     fn fastcheck_schema(
         &self,
-        schema: &BimmTableSchema,
+        schema: &TableSchema,
     ) -> Result<(), String> {
         if self.slots.len() != schema.columns.len() {
             return Err(format!(
@@ -99,7 +99,7 @@ impl BimmRow {
     /// An `Option<&T>` where `T` is the type of the column value.
     pub fn get_column<T: 'static>(
         &self,
-        schema: &BimmTableSchema,
+        schema: &TableSchema,
         column_name: &str,
     ) -> Option<&T> {
         self.fastcheck_schema(schema).unwrap();
@@ -117,7 +117,7 @@ impl BimmRow {
     /// * `value`: The value to set for the specified column, wrapped in an `Option<AnyArc>`.
     pub fn set_column(
         &mut self,
-        schema: &BimmTableSchema,
+        schema: &TableSchema,
         column_name: &str,
         value: Option<AnyArc>,
     ) {
@@ -136,7 +136,7 @@ impl BimmRow {
     /// * `values`: An array of values to set for the corresponding columns.
     pub fn set_columns<const K: usize>(
         &mut self,
-        schema: &BimmTableSchema,
+        schema: &TableSchema,
         names: &[&str; K],
         values: [AnyArc; K],
     ) {
@@ -161,11 +161,11 @@ impl BimmRow {
     ///
     /// A new `BimmRow` instance with the specified values set for the given column names.
     pub fn new_with_columns<const K: usize>(
-        schema: &BimmTableSchema,
+        schema: &TableSchema,
         names: &[&str; K],
         values: [AnyArc; K],
     ) -> Self {
-        let mut row = BimmRow::new_for_table(schema);
+        let mut row = Row::new_for_table(schema);
         row.set_columns(schema, names, values);
         row
     }
@@ -173,8 +173,8 @@ impl BimmRow {
 
 #[cfg(test)]
 mod tests {
-    use crate::data::table::rows::BimmRow;
-    use crate::data::table::schema::{BimmColumnSchema, BimmTableSchema};
+    use super::*;
+    use crate::firehose::ColumnSchema;
     use burn::backend::NdArray;
     use burn::prelude::Tensor;
     use burn::tensor::TensorData;
@@ -182,13 +182,13 @@ mod tests {
 
     #[test]
     fn test_get_value() {
-        let schema = BimmTableSchema::from_columns(&[
-            BimmColumnSchema::new::<i32>("foo"),
-            BimmColumnSchema::new::<String>("bar"),
-            BimmColumnSchema::new::<i32>("qux"),
+        let schema = TableSchema::from_columns(&[
+            ColumnSchema::new::<i32>("foo"),
+            ColumnSchema::new::<String>("bar"),
+            ColumnSchema::new::<i32>("qux"),
         ]);
 
-        let row = BimmRow::new_with_columns(
+        let row = Row::new_with_columns(
             &schema,
             &["foo", "bar"],
             [Arc::new(42), Arc::new("Hello".to_string())],
@@ -211,12 +211,12 @@ mod tests {
 
     #[test]
     fn test_set_column() {
-        let schema = BimmTableSchema::from_columns(&[
-            BimmColumnSchema::new::<i32>("foo"),
-            BimmColumnSchema::new::<String>("bar"),
+        let schema = TableSchema::from_columns(&[
+            ColumnSchema::new::<i32>("foo"),
+            ColumnSchema::new::<String>("bar"),
         ]);
 
-        let mut row = BimmRow::new_for_table(&schema);
+        let mut row = Row::new_for_table(&schema);
 
         // Set values for columns
         row.set_column(&schema, "foo", Some(Arc::new(42)));
@@ -229,25 +229,25 @@ mod tests {
     #[test]
     #[should_panic(expected = "Row has 2 slots, but table has 3 columns")]
     fn test_row_with_invalid_column_count() {
-        let schema = BimmTableSchema::from_columns(&[
-            BimmColumnSchema::new::<i32>("foo"),
-            BimmColumnSchema::new::<String>("bar"),
-            BimmColumnSchema::new::<f64>("baz"),
+        let schema = TableSchema::from_columns(&[
+            ColumnSchema::new::<i32>("foo"),
+            ColumnSchema::new::<String>("bar"),
+            ColumnSchema::new::<f64>("baz"),
         ]);
 
-        let row = BimmRow::new_with_width(2);
+        let row = Row::new_with_width(2);
 
         row.get_column::<i32>(&schema, "foo");
     }
 
     #[test]
     fn test_row_with_basic_types() {
-        let schema = BimmTableSchema::from_columns(&[
-            BimmColumnSchema::new::<i32>("foo"),
-            BimmColumnSchema::new::<String>("bar"),
+        let schema = TableSchema::from_columns(&[
+            ColumnSchema::new::<i32>("foo"),
+            ColumnSchema::new::<String>("bar"),
         ]);
 
-        let row = BimmRow::new_with_columns(
+        let row = Row::new_with_columns(
             &schema,
             &["foo", "bar"],
             [Arc::new(42), Arc::new("Hello".to_string())],
@@ -259,15 +259,15 @@ mod tests {
 
     #[test]
     fn test_row_with_tensor() {
-        let schema = BimmTableSchema::from_columns(&[
-            BimmColumnSchema::new::<i32>("foo"),
-            BimmColumnSchema::new::<String>("bar"),
-            BimmColumnSchema::new::<Tensor<NdArray, 2>>("qux"),
+        let schema = TableSchema::from_columns(&[
+            ColumnSchema::new::<i32>("foo"),
+            ColumnSchema::new::<String>("bar"),
+            ColumnSchema::new::<Tensor<NdArray, 2>>("qux"),
         ]);
 
         let device = Default::default();
 
-        let row = BimmRow::new_with_columns(
+        let row = Row::new_with_columns(
             &schema,
             &["foo", "bar", "qux"],
             [

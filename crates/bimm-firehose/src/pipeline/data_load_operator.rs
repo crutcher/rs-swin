@@ -1,5 +1,4 @@
-use crate::data::pipeline::data_load_error::DataLoadError;
-use crate::data::pipeline::data_load_schedule::DataLoadMetaDataItem;
+use crate::pipeline::{DataLoadError, DataLoadMetaDataItem};
 use std::fmt::Debug;
 
 /// Support super-trait for loadable data types.

@@ -1,20 +1,19 @@
-use crate::data::table::rows::BimmRow;
-use crate::data::table::schema::BimmTableSchema;
+use crate::firehose::{Row, TableSchema};
 use std::ops::{Index, IndexMut};
 use std::sync::Arc;
 
 /// Represents a batch of `BimmRow`, with `BimmTableSchema` as its schema.
 #[derive(Debug)]
-pub struct BimmRowBatch {
+pub struct RowBatch {
     /// The schema of the table slice.
-    pub schema: Arc<BimmTableSchema>,
+    pub schema: Arc<TableSchema>,
 
     /// The rows in the table slice.
-    pub rows: Vec<BimmRow>,
+    pub rows: Vec<Row>,
 }
 
-impl Index<usize> for BimmRowBatch {
-    type Output = BimmRow;
+impl Index<usize> for RowBatch {
+    type Output = Row;
 
     /// Returns a reference to the row at the specified index.
     ///
@@ -29,7 +28,7 @@ impl Index<usize> for BimmRowBatch {
     }
 }
 
-impl IndexMut<usize> for BimmRowBatch {
+impl IndexMut<usize> for RowBatch {
     /// Returns a mutable reference to the row at the specified index.
     ///
     /// ## Arguments
@@ -43,7 +42,7 @@ impl IndexMut<usize> for BimmRowBatch {
     }
 }
 
-impl BimmRowBatch {
+impl RowBatch {
     /// Creates a new `BimmTableSlice` with the given schema and rows.
     ///
     /// ## Arguments
@@ -51,10 +50,10 @@ impl BimmRowBatch {
     /// * `schema`: The schema of the table slice.
     /// * `rows`: The rows in the table slice.
     pub fn new(
-        schema: Arc<BimmTableSchema>,
-        rows: Vec<BimmRow>,
+        schema: Arc<TableSchema>,
+        rows: Vec<Row>,
     ) -> Self {
-        BimmRowBatch { schema, rows }
+        RowBatch { schema, rows }
     }
 
     /// Creates a new `BimmRowBatch` with the given schema and a specified size.
@@ -66,13 +65,13 @@ impl BimmRowBatch {
     /// * `schema`: The schema of the table slice.
     /// * `size`: The number of rows to initialize in the batch.
     pub fn with_size(
-        schema: Arc<BimmTableSchema>,
+        schema: Arc<TableSchema>,
         size: usize,
     ) -> Self {
         let width = schema.columns.len();
-        let rows = vec![BimmRow::new_with_width(width); size];
+        let rows = vec![Row::new_with_width(width); size];
 
-        BimmRowBatch { schema, rows }
+        RowBatch { schema, rows }
     }
 
     /// Returns the number of rows in the table slice.
@@ -102,7 +101,7 @@ impl BimmRowBatch {
         start: usize,
         end: usize,
     ) -> Self {
-        BimmRowBatch::new(self.schema.clone(), self.rows[start..end].to_vec())
+        RowBatch::new(self.schema.clone(), self.rows[start..end].to_vec())
     }
 
     /// Collects values from a specified column by its name.
@@ -152,42 +151,41 @@ impl BimmRowBatch {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data::table::rows::BimmRow;
-    use crate::data::table::schema::{BimmColumnSchema, BimmTableSchema};
+    use crate::firehose::{ColumnSchema, Row, TableSchema};
     use std::sync::Arc;
 
     #[test]
     fn test_with_size() {
-        let schema = BimmTableSchema::from_columns(&[
-            BimmColumnSchema::new::<i32>("foo"),
-            BimmColumnSchema::new::<String>("bar"),
+        let schema = TableSchema::from_columns(&[
+            ColumnSchema::new::<i32>("foo"),
+            ColumnSchema::new::<String>("bar"),
         ]);
 
-        let batch = BimmRowBatch::with_size(Arc::new(schema), 3);
+        let batch = RowBatch::with_size(Arc::new(schema), 3);
         assert_eq!(batch.len(), 3);
         assert!(!batch.is_empty());
     }
 
     #[test]
     fn test_row_batch_with_basic_types() {
-        let schema = BimmTableSchema::from_columns(&[
-            BimmColumnSchema::new::<i32>("foo"),
-            BimmColumnSchema::new::<String>("bar"),
+        let schema = TableSchema::from_columns(&[
+            ColumnSchema::new::<i32>("foo"),
+            ColumnSchema::new::<String>("bar"),
         ]);
 
-        let row1 = BimmRow::new_with_columns(
+        let row1 = Row::new_with_columns(
             &schema,
             &["foo", "bar"],
             [Arc::new(42), Arc::new("Hello".to_string())],
         );
 
-        let row2 = BimmRow::new_with_columns(
+        let row2 = Row::new_with_columns(
             &schema,
             &["foo", "bar"],
             [Arc::new(100), Arc::new("World".to_string())],
         );
 
-        let batch = BimmRowBatch::new(Arc::new(schema), vec![row1, row2]);
+        let batch = RowBatch::new(Arc::new(schema), vec![row1, row2]);
 
         assert_eq!(batch.len(), 2);
         assert!(!batch.is_empty());
@@ -213,15 +211,15 @@ mod tests {
 
     #[test]
     fn test_row_batch() {
-        let schema = BimmTableSchema::from_columns(&[BimmColumnSchema::new::<i32>("foo")]);
+        let schema = TableSchema::from_columns(&[ColumnSchema::new::<i32>("foo")]);
 
-        let batch = BimmRowBatch::new(
+        let batch = RowBatch::new(
             Arc::new(schema.clone()),
             vec![
-                BimmRow::new_with_columns(&schema, &["foo"], [Arc::new(1)]),
-                BimmRow::new_with_columns(&schema, &["foo"], [Arc::new(2)]),
-                BimmRow::new_with_columns(&schema, &["foo"], [Arc::new(3)]),
-                BimmRow::new_with_columns(&schema, &["foo"], [Arc::new(4)]),
+                Row::new_with_columns(&schema, &["foo"], [Arc::new(1)]),
+                Row::new_with_columns(&schema, &["foo"], [Arc::new(2)]),
+                Row::new_with_columns(&schema, &["foo"], [Arc::new(3)]),
+                Row::new_with_columns(&schema, &["foo"], [Arc::new(4)]),
             ],
         );
 
@@ -233,16 +231,16 @@ mod tests {
 
     #[test]
     fn test_mut_row_batch() {
-        let schema = BimmTableSchema::from_columns(&[
-            BimmColumnSchema::new::<i32>("foo"),
-            BimmColumnSchema::new::<String>("bar"),
+        let schema = TableSchema::from_columns(&[
+            ColumnSchema::new::<i32>("foo"),
+            ColumnSchema::new::<String>("bar"),
         ]);
 
-        let mut batch = BimmRowBatch::new(
+        let mut batch = RowBatch::new(
             Arc::new(schema.clone()),
             vec![
-                BimmRow::new_with_columns(&schema, &["foo"], [Arc::new(1)]),
-                BimmRow::new_with_columns(&schema, &["foo"], [Arc::new(2)]),
+                Row::new_with_columns(&schema, &["foo"], [Arc::new(1)]),
+                Row::new_with_columns(&schema, &["foo"], [Arc::new(2)]),
             ],
         );
 

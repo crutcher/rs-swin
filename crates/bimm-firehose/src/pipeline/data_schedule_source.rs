@@ -1,5 +1,4 @@
-use crate::data::pipeline::data_load_error::DataLoadError;
-use crate::data::pipeline::{DataLoadMetaDataItem, DataLoadSchedule};
+use crate::pipeline::{DataLoadError, DataLoadMetaDataItem, DataLoadSchedule};
 use std::fmt::Debug;
 
 /// Data-pipeline trait for schedule sources.
@@ -196,6 +195,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pipeline::DataLoadSchedule;
 
     #[test]
     fn test_fixed_schedule_source() {
