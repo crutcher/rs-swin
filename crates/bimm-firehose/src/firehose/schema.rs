@@ -309,6 +309,83 @@ impl IndexMut<&str> for TableSchema {
 }
 
 impl TableSchema {
+    fn check_graph(
+        columns: &[ColumnSchema],
+        plans: &[BuildPlan],
+    ) -> Result<(Vec<String>, Vec<BuildPlan>), String> {
+        let column_names: Vec<String> = columns.iter().map(|c| c.name.clone()).collect();
+
+        let mut base_columns: Vec<String> = column_names.clone();
+        for plan in plans {
+            for (_, cname) in plan.outputs.iter() {
+                base_columns.retain(|c| c != cname);
+            }
+        }
+
+        let base_columns = base_columns;
+
+        let mut scheduled_columns = base_columns.clone();
+        let mut plan_order = Vec::new();
+
+        loop {
+            let mut progress = false;
+
+            for (idx, plan) in plans.iter().enumerate() {
+                if plan_order.contains(&idx) {
+                    // This plan is already scheduled.
+                    continue;
+                }
+                if plan
+                    .inputs
+                    .values()
+                    .all(|cname| scheduled_columns.contains(cname))
+                {
+                    // All inputs are scheduled, we can schedule this plan.
+                    for (_, cname) in plan.outputs.iter() {
+                        if !scheduled_columns.contains(cname) {
+                            scheduled_columns.push(cname.clone());
+                        }
+                    }
+                    progress = true;
+                    plan_order.push(idx);
+                } else {
+                    // Not all inputs are scheduled, skip this plan.
+                    continue;
+                }
+            }
+
+            if !progress {
+                // No progress was made, we are done.
+                break;
+            }
+        }
+
+        if scheduled_columns.len() != column_names.len() {
+            return Err(format!(
+                "Not all columns are scheduled: expected {}, got {}",
+                column_names.len(),
+                scheduled_columns.len()
+            ));
+        }
+
+        let order: Vec<BuildPlan> = plan_order.iter().map(|&idx| plans[idx].clone()).collect();
+
+        Ok((base_columns, order))
+    }
+
+    /// Compute the build order for the table schema.
+    ///
+    /// This function checks the build plans and their dependencies to determine the order in which they should be executed.
+    ///
+    /// ## Returns
+    ///
+    /// A `Result<(Vec<String>, Vec<BuildPlan>), String>` where:
+    /// - `Ok((Vec<String>, Vec<BuildPlan>))` contains the base columns and the ordered build plans.
+    /// - `Err(String)` contains an error message if the build order cannot be determined.
+    pub fn build_order(&self) -> Result<(Vec<String>, Vec<BuildPlan>), String> {
+        Self::check_graph(&self.columns, &self.build_plans)
+    }
+
     /// Creates a new `DataTableDescription` with the given columns.
     #[must_use]
     pub fn from_columns(columns: &[ColumnSchema]) -> Self {
@@ -379,6 +456,12 @@ impl TableSchema {
                     ));
                 }
             }
+        }
+
+        {
+            let mut plans = self.build_plans.clone();
+            plans.push(plan.clone());
+            Self::check_graph(&self.columns, plans.as_slice())?;
         }
 
         self.build_plans.push(plan);
