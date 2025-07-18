@@ -52,11 +52,23 @@ impl OperatorId {
     }
 }
 
-/// A specification for a column operator, including its ID, description, and configuration.
+impl From<(&str, &str)> for OperatorId {
+    fn from(val: (&str, &str)) -> Self {
+        OperatorId::new(val.0, val.1)
+    }
+}
+
+impl From<[&str; 2]> for OperatorId {
+    fn from(val: [&str; 2]) -> Self {
+        OperatorId::new(val[0], val[1])
+    }
+}
+
+/// A build plan for columns in a table schema.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct BuildOperatorSpec {
+pub struct BuildPlan {
     /// The ID of the operator.
-    pub id: OperatorId,
+    pub operator_id: OperatorId,
 
     /// The description of the operator.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -67,65 +79,6 @@ pub struct BuildOperatorSpec {
     #[serde(skip_serializing_if = "serde_json::Value::is_null")]
     #[serde(default)]
     pub config: serde_json::Value,
-}
-
-impl BuildOperatorSpec {
-    /// Creates a new `BuildOperatorSpec` with the given ID, description, and configuration.
-    pub fn new(id: OperatorId) -> Self {
-        BuildOperatorSpec {
-            id,
-            description: None,
-            config: serde_json::Value::Null,
-        }
-    }
-
-    /// Extends the operator spec with a description.
-    ///
-    /// ## Arguments
-    ///
-    /// - `description`: The description to attach to the operator.
-    ///
-    /// ## Returns
-    ///
-    /// A new `BuildOperatorSpec` with the description attached.
-    pub fn with_description(
-        self,
-        description: &str,
-    ) -> Self {
-        BuildOperatorSpec {
-            description: Some(description.to_string()),
-            ..self
-        }
-    }
-
-    /// Extends the operator spec with a configuration.
-    ///
-    /// ## Arguments
-    ///
-    /// - `config`: The configuration to attach to the operator, serialized as JSON.
-    ///
-    /// ## Returns
-    ///
-    /// A new `BuildOperatorSpec` with the configuration attached.
-    pub fn with_config<T>(
-        self,
-        config: T,
-    ) -> Self
-    where
-        T: Serialize,
-    {
-        BuildOperatorSpec {
-            config: serde_json::to_value(config).expect("Failed to serialize config"),
-            ..self
-        }
-    }
-}
-
-/// A build plan for columns in a table schema.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct ColumnBuildPlan {
-    /// The spec for the operator that will be used to build the columns.
-    pub operator: BuildOperatorSpec,
 
     /// The input column bindings ``{parameter_name: column_name}``.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
@@ -138,11 +91,16 @@ pub struct ColumnBuildPlan {
     pub outputs: BTreeMap<String, String>,
 }
 
-impl ColumnBuildPlan {
+impl BuildPlan {
     /// Creates a new `ColumnBuildPlan` with the given operator spec.
-    pub fn new(id: OperatorId) -> Self {
-        ColumnBuildPlan {
-            operator: BuildOperatorSpec::new(id),
+    pub fn for_operator<I>(id: I) -> Self
+    where
+        I: Into<OperatorId>,
+    {
+        BuildPlan {
+            operator_id: id.into(),
+            description: None,
+            config: serde_json::Value::Null,
             inputs: BTreeMap::new(),
             outputs: BTreeMap::new(),
         }
@@ -161,8 +119,8 @@ impl ColumnBuildPlan {
         self,
         description: &str,
     ) -> Self {
-        ColumnBuildPlan {
-            operator: self.operator.with_description(description),
+        BuildPlan {
+            description: Some(description.to_string()),
             ..self
         }
     }
@@ -183,8 +141,8 @@ impl ColumnBuildPlan {
     where
         T: Serialize,
     {
-        ColumnBuildPlan {
-            operator: self.operator.with_config(config),
+        BuildPlan {
+            config: serde_json::to_value(config).expect("Failed to serialize config"),
             ..self
         }
     }
@@ -209,7 +167,7 @@ impl ColumnBuildPlan {
             btree.insert(param.to_string(), column.to_string());
         }
 
-        ColumnBuildPlan {
+        BuildPlan {
             inputs: btree,
             ..self
         }
@@ -235,7 +193,7 @@ impl ColumnBuildPlan {
             btree.insert(param.to_string(), column.to_string());
         }
 
-        ColumnBuildPlan {
+        BuildPlan {
             outputs: btree,
             ..self
         }
@@ -297,7 +255,7 @@ pub struct TableSchema {
     /// Build plans for the table.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     #[serde(default)]
-    pub build_plans: Vec<ColumnBuildPlan>,
+    pub build_plans: Vec<BuildPlan>,
 }
 
 impl Index<usize> for TableSchema {
@@ -402,7 +360,7 @@ impl TableSchema {
     /// Adds a build plan to the table description.
     pub fn add_build_plan(
         &mut self,
-        plan: ColumnBuildPlan,
+        plan: BuildPlan,
     ) -> Result<(), String> {
         // Check that all the input and output columns exist.
         for cname in plan.inputs.values() {
@@ -430,6 +388,25 @@ impl TableSchema {
 
         self.build_plans.push(plan);
         Ok(())
+    }
+
+    pub fn add_build_plan_and_outputs(
+        &mut self,
+        plan: BuildPlan,
+        output_info: &[(&str, DataTypeDescription, &str)],
+    ) -> Result<(), String> {
+        // Now add the output columns.
+        for (pname, data_type, desc) in output_info {
+            let cname = plan.outputs.get(*pname).expect("Output column not found");
+            let column = ColumnSchema {
+                name: cname.to_string(),
+                description: Some(desc.to_string()),
+                data_type: data_type.clone(),
+            };
+            self.add_column(column);
+        }
+
+        self.add_build_plan(plan)
     }
 
     /// Renames a column in the table description.

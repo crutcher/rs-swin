@@ -28,43 +28,44 @@ mod tests {
             class_name_column: &str,
             class_code_column: &str,
         ) {
-            schema.add_column(
-                ColumnSchema::new::<String>(class_name_column)
-                    .with_description("category class name"),
-            );
-            schema.add_column(
-                ColumnSchema::new::<u32>(class_code_column).with_description("category class code"),
-            );
-
-            // TODO: with input/output data type maps; the output columns can be built from the build plan
-            // by a utility builder method.
-
             schema
-                .add_build_plan(
-                    ColumnBuildPlan::new(OperatorId::new("example", "path_to_class"))
+                .add_build_plan_and_outputs(
+                    BuildPlan::for_operator(("example", "path_to_class"))
                         .with_description("Extracts class name from image path")
                         .with_inputs(&[("source", path_column)])
                         .with_outputs(&[("name", class_name_column), ("code", class_code_column)]),
+                    &[
+                        (
+                            "name",
+                            DataTypeDescription::new::<String>(),
+                            "category class name",
+                        ),
+                        (
+                            "code",
+                            DataTypeDescription::new::<u32>(),
+                            "category class code",
+                        ),
+                    ],
                 )
                 .unwrap();
         }
 
-        type ImageStandIn = Vec<u8>;
         fn plan_image_load(
             schema: &mut TableSchema,
             path_column: &str,
             image_column: &str,
         ) {
-            schema.add_column(
-                ColumnSchema::new::<ImageStandIn>(image_column)
-                    .with_description("Image loaded from disk"),
-            );
             schema
-                .add_build_plan(
-                    ColumnBuildPlan::new(OperatorId::new("example", "load_image"))
+                .add_build_plan_and_outputs(
+                    BuildPlan::for_operator(("example", "load_image"))
                         .with_description("Loads image from disk")
                         .with_inputs(&[("path", path_column)])
                         .with_outputs(&[("image", image_column)]),
+                    &[(
+                        "image",
+                        DataTypeDescription::new::<Vec<u8>>(),
+                        "Image loaded from disk",
+                    )],
                 )
                 .unwrap();
         }
@@ -81,16 +82,18 @@ mod tests {
             output_column: &str,
             config: ImageAugConfig,
         ) {
-            schema.add_column(
-                ColumnSchema::new::<Vec<u8>>(output_column).with_description("augmented image"),
-            );
             schema
-                .add_build_plan(
-                    ColumnBuildPlan::new(OperatorId::new("example", "image_aug"))
+                .add_build_plan_and_outputs(
+                    BuildPlan::for_operator(("example", "image_aug"))
                         .with_description("Augments image with blur and brightness")
                         .with_config(config)
                         .with_inputs(&[("source", source_column)])
                         .with_outputs(&[("augmented", output_column)]),
+                    &[(
+                        "augmented",
+                        DataTypeDescription::new::<Vec<u8>>(),
+                        "augmented image",
+                    )],
                 )
                 .unwrap();
         }
@@ -166,13 +169,11 @@ mod tests {
                   ],
                   "build_plans": [
                     {
-                      "operator": {
-                        "id": {
-                          "namespace": "example",
-                          "name": "path_to_class"
-                        },
-                        "description": "Extracts class name from image path"
+                      "operator_id": {
+                        "namespace": "example",
+                        "name": "path_to_class"
                       },
+                      "description": "Extracts class name from image path",
                       "inputs": {
                         "source": "path"
                       },
@@ -182,13 +183,11 @@ mod tests {
                       }
                     },
                     {
-                      "operator": {
-                        "id": {
-                          "namespace": "example",
-                          "name": "load_image"
-                        },
-                        "description": "Loads image from disk"
+                      "operator_id": {
+                        "namespace": "example",
+                        "name": "load_image"
                       },
+                      "description": "Loads image from disk",
                       "inputs": {
                         "path": "path"
                       },
@@ -197,16 +196,14 @@ mod tests {
                       }
                     },
                     {
-                      "operator": {
-                        "id": {
-                          "namespace": "example",
-                          "name": "image_aug"
-                        },
-                        "description": "Augments image with blur and brightness",
-                        "config": {
-                          "blur": 2.0,
-                          "brightness": 0.5
-                        }
+                      "operator_id": {
+                        "namespace": "example",
+                        "name": "image_aug"
+                      },
+                      "description": "Augments image with blur and brightness",
+                      "config": {
+                        "blur": 2.0,
+                        "brightness": 0.5
                       },
                       "inputs": {
                         "source": "raw_image"

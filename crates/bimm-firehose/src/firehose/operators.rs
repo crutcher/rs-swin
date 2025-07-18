@@ -1,6 +1,4 @@
-use crate::firehose::{
-    AnyArc, BuildOperatorSpec, ColumnBuildPlan, DataTypeDescription, Row, TableSchema,
-};
+use crate::firehose::{AnyArc, BuildPlan, DataTypeDescription, Row, TableSchema};
 use std::any::Any;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
@@ -66,7 +64,7 @@ pub struct ColumnBuilder {
     pub table_schema: TableSchema,
 
     /// A reference to the build plan that this operator is part of.
-    pub build_plan: ColumnBuildPlan,
+    pub build_plan: BuildPlan,
 
     /// Maps from input parameter names to their slot indices in the input row.
     input_slot_map: BTreeMap<String, usize>,
@@ -83,9 +81,17 @@ impl Debug for ColumnBuilder {
         &self,
         f: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
-        f.debug_struct("ColumnOperatorRunner")
-            .field("build_plan", &self.build_plan)
-            .finish()
+        if !f.alternate() {
+            f.debug_struct("ColumnBuilder")
+                .field("id", &self.build_plan.operator_id)
+                .field("inputs", &self.build_plan.inputs)
+                .field("outputs", &self.build_plan.outputs)
+                .finish()
+        } else {
+            f.debug_struct("ColumnBuilder")
+                .field("build_plan", &self.build_plan)
+                .finish()
+        }
     }
 }
 
@@ -104,11 +110,11 @@ impl ColumnBuilder {
     #[must_use]
     pub fn bind_plan<F>(
         table_schema: &TableSchema,
-        build_plan: &ColumnBuildPlan,
+        build_plan: &BuildPlan,
         factory: &F,
     ) -> Result<ColumnBuilder, String>
     where
-        F: FirehoseBuildOperatorFactory,
+        F: BuildOperatorFactory,
     {
         let table_schema = table_schema.clone();
         let build_plan = build_plan.clone();
@@ -135,7 +141,7 @@ impl ColumnBuilder {
             })
             .collect::<BTreeMap<_, _>>();
 
-        let operator = factory.init_operator(&build_plan.operator, &input_types, &output_types)?;
+        let operator = factory.init_operator(&build_plan, &input_types, &output_types)?;
 
         let input_slot_map = build_plan
             .inputs
@@ -200,12 +206,12 @@ impl ColumnBuilder {
 }
 
 /// Factory trait for building operators in a `BuildPlan`.
-pub trait FirehoseBuildOperatorFactory: Debug {
+pub trait BuildOperatorFactory: Debug {
     /// Initialize an operator based on the provided specification and input/output types.
     ///
     /// # Arguments
     ///
-    /// * `spec` - The specification of the operator to be initialized.
+    /// * `build_plan` - The build plan of the operator to be initialized.
     /// * `input_types` - A map of input names to their data type descriptions.
     /// * `output_types` - A map of output names to their data type descriptions.
     ///
@@ -214,7 +220,7 @@ pub trait FirehoseBuildOperatorFactory: Debug {
     /// A result containing a boxed `BuildOperator` if initialization is successful, or an error message if it fails.
     fn init_operator(
         &self,
-        spec: &BuildOperatorSpec,
+        build_plan: &BuildPlan,
         input_types: &BTreeMap<String, DataTypeDescription>,
         output_types: &BTreeMap<String, DataTypeDescription>,
     ) -> Result<Box<dyn BuildOperator>, String>;
@@ -227,7 +233,7 @@ pub struct NamespaceOperatorFactory {
     pub namespace: String,
 
     /// The operator factory to be used for building operators.
-    pub operations: BTreeMap<String, Arc<dyn FirehoseBuildOperatorFactory>>,
+    pub operations: BTreeMap<String, Arc<dyn BuildOperatorFactory>>,
 }
 
 impl NamespaceOperatorFactory {
@@ -254,7 +260,7 @@ impl NamespaceOperatorFactory {
     pub fn add_operation(
         &mut self,
         operation: &str,
-        factory: Arc<dyn FirehoseBuildOperatorFactory>,
+        factory: Arc<dyn BuildOperatorFactory>,
     ) {
         if self.operations.contains_key(operation) {
             panic!(
@@ -266,19 +272,19 @@ impl NamespaceOperatorFactory {
     }
 }
 
-impl FirehoseBuildOperatorFactory for NamespaceOperatorFactory {
+impl BuildOperatorFactory for NamespaceOperatorFactory {
     fn init_operator(
         &self,
-        spec: &BuildOperatorSpec,
+        build_plan: &BuildPlan,
         input_types: &BTreeMap<String, DataTypeDescription>,
         output_types: &BTreeMap<String, DataTypeDescription>,
     ) -> Result<Box<dyn BuildOperator>, String> {
-        if let Some(factory) = self.operations.get(&spec.id.name) {
-            factory.init_operator(spec, input_types, output_types)
+        if let Some(factory) = self.operations.get(&build_plan.operator_id.name) {
+            factory.init_operator(build_plan, input_types, output_types)
         } else {
             Err(format!(
                 "No operator factory registered for operation '{}' in namespace '{}'",
-                spec.id.name, self.namespace
+                build_plan.operator_id.name, self.namespace
             ))
         }
     }
@@ -289,9 +295,9 @@ mod tests {
     use super::*;
 
     use crate::firehose::{
-        AnyArc, BuildOperatorSpec, ColumnBuildPlan, ColumnSchema, DataTypeDescription, OperatorId,
-        RowBatch, TableSchema,
+        AnyArc, BuildPlan, ColumnSchema, DataTypeDescription, OperatorId, RowBatch, TableSchema,
     };
+    use indoc::indoc;
     use serde::{Deserialize, Serialize};
     use std::any::Any;
     use std::collections::BTreeMap;
@@ -304,10 +310,10 @@ mod tests {
     #[derive(Debug)]
     struct AddOperatorFactory {}
 
-    impl FirehoseBuildOperatorFactory for AddOperatorFactory {
+    impl BuildOperatorFactory for AddOperatorFactory {
         fn init_operator(
             &self,
-            spec: &BuildOperatorSpec,
+            build_plan: &BuildPlan,
             input_types: &BTreeMap<String, DataTypeDescription>,
             output_types: &BTreeMap<String, DataTypeDescription>,
         ) -> Result<Box<dyn BuildOperator>, String> {
@@ -329,7 +335,7 @@ mod tests {
                 return Err("Output 'result' must be of type i32".to_string());
             }
 
-            let op: AddOperator = serde_json::from_value(spec.config.clone())
+            let op: AddOperator = serde_json::from_value(build_plan.config.clone())
                 .map_err(|e| format!("Failed to parse operator config: {e}"))?;
 
             Ok(Box::new(op))
@@ -372,24 +378,13 @@ mod tests {
         ]);
 
         schema
-            .add_build_plan(ColumnBuildPlan {
-                operator: BuildOperatorSpec {
-                    id: OperatorId {
-                        namespace: EXAMPLE_NAMESPACE.to_string(),
-                        name: "add".to_string(),
-                    },
-                    description: Some("Adds inputs with a bias".to_string()),
-                    config: serde_json::json!({ "bias": 10 }),
-                },
-                inputs: [("a", "a"), ("b", "b")]
-                    .iter()
-                    .map(|(p, c)| (p.to_string(), c.to_string()))
-                    .collect(),
-                outputs: [("result", "c")]
-                    .iter()
-                    .map(|(p, c)| (p.to_string(), c.to_string()))
-                    .collect(),
-            })
+            .add_build_plan(
+                BuildPlan::for_operator(OperatorId::new(EXAMPLE_NAMESPACE, "add"))
+                    .with_description("Adds inputs with a bias")
+                    .with_config(AddOperator { bias: 10 })
+                    .with_inputs(&[("a", "a"), ("b", "b")])
+                    .with_outputs(&[("result", "c")]),
+            )
             .unwrap();
 
         let factory = AddOperatorFactory {};
@@ -407,24 +402,13 @@ mod tests {
         ]);
 
         schema
-            .add_build_plan(ColumnBuildPlan {
-                operator: BuildOperatorSpec {
-                    id: OperatorId {
-                        namespace: EXAMPLE_NAMESPACE.to_string(),
-                        name: "add".to_string(),
-                    },
-                    description: Some("Adds inputs with a bias".to_string()),
-                    config: serde_json::json!({ "bias": 10 }),
-                },
-                inputs: [("a", "a"), ("b", "b")]
-                    .iter()
-                    .map(|(p, c)| (p.to_string(), c.to_string()))
-                    .collect(),
-                outputs: [("result", "c")]
-                    .iter()
-                    .map(|(p, c)| (p.to_string(), c.to_string()))
-                    .collect(),
-            })
+            .add_build_plan(
+                BuildPlan::for_operator(OperatorId::new(EXAMPLE_NAMESPACE, "add"))
+                    .with_description("Adds inputs with a bias")
+                    .with_config(AddOperator { bias: 10 })
+                    .with_inputs(&[("x", "a"), ("x", "b")])
+                    .with_outputs(&[("result", "c")]),
+            )
             .unwrap();
 
         let factory = AddOperatorFactory {};
@@ -441,24 +425,13 @@ mod tests {
         ]);
 
         schema
-            .add_build_plan(ColumnBuildPlan {
-                operator: BuildOperatorSpec {
-                    id: OperatorId {
-                        namespace: EXAMPLE_NAMESPACE.to_string(),
-                        name: "add".to_string(),
-                    },
-                    description: Some("Adds inputs with a bias".to_string()),
-                    config: serde_json::json!({ "bias": 10 }),
-                },
-                inputs: [("a", "a"), ("b", "b")]
-                    .iter()
-                    .map(|(p, c)| (p.to_string(), c.to_string()))
-                    .collect(),
-                outputs: [("result", "c")]
-                    .iter()
-                    .map(|(p, c)| (p.to_string(), c.to_string()))
-                    .collect(),
-            })
+            .add_build_plan(
+                BuildPlan::for_operator(OperatorId::new(EXAMPLE_NAMESPACE, "add"))
+                    .with_description("Adds inputs with a bias")
+                    .with_config(AddOperator { bias: 10 })
+                    .with_inputs(&[("x", "a"), ("y", "b")])
+                    .with_outputs(&[("result", "c")]),
+            )
             .unwrap();
 
         let factory = AddOperatorFactory {};
@@ -467,13 +440,39 @@ mod tests {
 
         assert_eq!(
             format!("{builder:?}"),
-            "ColumnOperatorRunner { build_plan: ColumnBuildPlan { operator: BuildOperatorSpec { id: OperatorId { namespace: \"example\", name: \"add\" }, description: Some(\"Adds inputs with a bias\"), config: Object {\"bias\": Number(10)} }, inputs: {\"a\": \"a\", \"b\": \"b\"}, outputs: {\"result\": \"c\"} } }"
+            "ColumnBuilder { id: OperatorId { namespace: \"example\", name: \"add\" }, inputs: {\"x\": \"a\", \"y\": \"b\"}, outputs: {\"result\": \"c\"} }"
+        );
+
+        assert_eq!(
+            format!("{builder:#?}"),
+            indoc! {r#"
+               ColumnBuilder {
+                   build_plan: BuildPlan {
+                       operator_id: OperatorId {
+                           namespace: "example",
+                           name: "add",
+                       },
+                       description: Some(
+                           "Adds inputs with a bias",
+                       ),
+                       config: Object {
+                           "bias": Number(10),
+                       },
+                       inputs: {
+                           "x": "a",
+                           "y": "b",
+                       },
+                       outputs: {
+                           "result": "c",
+                       },
+                   },
+               }"#}
         );
 
         assert_eq!(builder.effective_batch_size(), 1);
 
         assert_eq!(
-            builder.build_plan.operator.id,
+            builder.build_plan.operator_id,
             OperatorId {
                 namespace: EXAMPLE_NAMESPACE.to_string(),
                 name: "add".to_string()
@@ -502,24 +501,13 @@ mod tests {
         ]);
 
         schema
-            .add_build_plan(ColumnBuildPlan {
-                operator: BuildOperatorSpec {
-                    id: OperatorId {
-                        namespace: "example".to_string(),
-                        name: "add".to_string(),
-                    },
-                    description: Some("Adds inputs with a bias".to_string()),
-                    config: serde_json::json!({ "bias": 10 }),
-                },
-                inputs: [("a", "a"), ("b", "b")]
-                    .iter()
-                    .map(|(p, c)| (p.to_string(), c.to_string()))
-                    .collect(),
-                outputs: [("result", "c")]
-                    .iter()
-                    .map(|(p, c)| (p.to_string(), c.to_string()))
-                    .collect(),
-            })
+            .add_build_plan(
+                BuildPlan::for_operator(OperatorId::new(EXAMPLE_NAMESPACE, "add"))
+                    .with_description("Adds inputs with a bias")
+                    .with_config(AddOperator { bias: 10 })
+                    .with_inputs(&[("x", "a"), ("x", "b")])
+                    .with_outputs(&[("result", "c")]),
+            )
             .unwrap();
 
         // The operation isn't registered in the factory, so this should fail.
