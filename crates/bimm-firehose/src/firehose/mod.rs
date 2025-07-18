@@ -18,82 +18,6 @@ mod tests {
 
     #[test]
     fn test_example() {
-        fn plan_class_extraction(
-            schema: &mut TableSchema,
-            path_column: &str,
-            class_name_column: &str,
-            class_code_column: &str,
-        ) {
-            schema
-                .add_build_plan_and_outputs(
-                    BuildPlan::for_operator(("example", "path_to_class"))
-                        .with_description("Extracts class name from image path")
-                        .with_inputs(&[("source", path_column)])
-                        .with_outputs(&[("name", class_name_column), ("code", class_code_column)]),
-                    &[
-                        (
-                            "name",
-                            DataTypeDescription::new::<String>(),
-                            "category class name",
-                        ),
-                        (
-                            "code",
-                            DataTypeDescription::new::<u32>(),
-                            "category class code",
-                        ),
-                    ],
-                )
-                .unwrap();
-        }
-
-        fn plan_image_load(
-            schema: &mut TableSchema,
-            path_column: &str,
-            image_column: &str,
-        ) {
-            schema
-                .add_build_plan_and_outputs(
-                    BuildPlan::for_operator(("example", "load_image"))
-                        .with_description("Loads image from disk")
-                        .with_inputs(&[("path", path_column)])
-                        .with_outputs(&[("image", image_column)]),
-                    &[(
-                        "image",
-                        DataTypeDescription::new::<Vec<u8>>(),
-                        "Image loaded from disk",
-                    )],
-                )
-                .unwrap();
-        }
-
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct ImageAugConfig {
-            blur: f64,
-            brightness: f64,
-        }
-
-        fn plan_image_augmentation(
-            schema: &mut TableSchema,
-            source_column: &str,
-            output_column: &str,
-            config: ImageAugConfig,
-        ) {
-            schema
-                .add_build_plan_and_outputs(
-                    BuildPlan::for_operator(("example", "image_aug"))
-                        .with_description("Augments image with blur and brightness")
-                        .with_config(config)
-                        .with_inputs(&[("source", source_column)])
-                        .with_outputs(&[("augmented", output_column)]),
-                    &[(
-                        "augmented",
-                        DataTypeDescription::new::<Vec<u8>>(),
-                        "augmented image",
-                    )],
-                )
-                .unwrap();
-        }
-
         // TODO: building up fluent schema builder pattern; some kind of op/builder to construct this.
         // - bound operator environment (name <-> implementation mapping)
         // - symbolic column def (wth some basic source type / op argument checking ...)
@@ -108,19 +32,64 @@ mod tests {
             ColumnSchema::new::<String>("path").with_description("path to the image")
         ]);
 
-        plan_class_extraction(&mut schema, "path", "class_name", "class_code");
+        schema
+            .add_build_plan_and_outputs(
+                BuildPlan::for_operator(("example", "path_to_class"))
+                    .with_description("Extracts class name from image path")
+                    .with_inputs(&[("source", "path")])
+                    .with_outputs(&[("name", "class_name"), ("code", "class_code")]),
+                &[
+                    (
+                        "name",
+                        DataTypeDescription::new::<String>(),
+                        "category class name",
+                    ),
+                    (
+                        "code",
+                        DataTypeDescription::new::<u32>(),
+                        "category class code",
+                    ),
+                ],
+            )
+            .expect("failed to add build plan");
 
-        plan_image_load(&mut schema, "path", "raw_image");
+        schema
+            .add_build_plan_and_outputs(
+                BuildPlan::for_operator(("example", "load_image"))
+                    .with_description("Loads image from disk")
+                    .with_inputs(&[("path", "path")])
+                    .with_outputs(&[("image", "raw_image")]),
+                &[(
+                    "image",
+                    DataTypeDescription::new::<Vec<u8>>(),
+                    "Image loaded from disk",
+                )],
+            )
+            .expect("failed to add build plan");
 
-        plan_image_augmentation(
-            &mut schema,
-            "raw_image",
-            "aug_image",
-            ImageAugConfig {
-                blur: 2.0,
-                brightness: 0.5,
-            },
-        );
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct ImageAugConfig {
+            blur: f64,
+            brightness: f64,
+        }
+        let config = ImageAugConfig {
+            blur: 2.0,
+            brightness: 0.5,
+        };
+        schema
+            .add_build_plan_and_outputs(
+                BuildPlan::for_operator(("example", "image_aug"))
+                    .with_description("Augments image with blur and brightness")
+                    .with_config(config)
+                    .with_inputs(&[("source", "raw_image")])
+                    .with_outputs(&[("augmented", "aug_image")]),
+                &[(
+                    "augmented",
+                    DataTypeDescription::new::<Vec<u8>>(),
+                    "augmented image",
+                )],
+            )
+            .expect("failed to add build plan");
 
         assert_eq!(
             serde_json::to_string_pretty(&schema).unwrap(),
