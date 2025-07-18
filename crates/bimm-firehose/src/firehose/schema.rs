@@ -1,4 +1,4 @@
-use crate::data::firehose::identifiers;
+use crate::firehose::identifiers;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::ops::{Index, IndexMut};
@@ -375,7 +375,7 @@ impl TableSchema {
     /// ## Example
     ///
     /// ```rust
-    /// use bimm::data::firehose::{TableSchema, ColumnSchema};
+    /// use bimm_firehose::firehose::{TableSchema, ColumnSchema};
     /// let table = TableSchema::from_columns(&[
     ///     ColumnSchema::new::<i32>("foo"),
     ///     ColumnSchema::new::<String>("bar"),

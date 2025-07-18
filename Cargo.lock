@@ -201,10 +201,8 @@ dependencies = [
  "bimm-contracts",
  "burn",
  "hamcrest",
- "indoc",
  "num-traits",
  "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -222,6 +220,16 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "bimm-firehose"
+version = "0.1.9"
+dependencies = [
+ "burn",
+ "indoc",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

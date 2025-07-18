@@ -1,5 +1,6 @@
-use crate::data::firehose::{AnyArc, ColumnBuildPlan, Row, TableSchema};
-use crate::data::firehose::{BuildOperatorSpec, DataTypeDescription};
+use crate::firehose::{
+    AnyArc, BuildOperatorSpec, ColumnBuildPlan, DataTypeDescription, Row, TableSchema,
+};
 use std::any::Any;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
@@ -287,7 +288,10 @@ impl FirehoseBuildOperatorFactory for NamespaceOperatorFactory {
 mod tests {
     use super::*;
 
-    use crate::data::firehose::{ColumnSchema, OperatorId, RowBatch};
+    use crate::firehose::{
+        AnyArc, BuildOperatorSpec, ColumnBuildPlan, ColumnSchema, DataTypeDescription, OperatorId,
+        RowBatch, TableSchema,
+    };
     use serde::{Deserialize, Serialize};
     use std::any::Any;
     use std::collections::BTreeMap;

@@ -18,9 +18,6 @@ pub(crate) mod compat;
 #[allow(dead_code)]
 pub(crate) mod testing;
 
-/// Data Load Pipeline.
-pub mod data;
-
 /// Common low-level modules for adding layers and operations in Burn.
 pub mod layers;
 
