@@ -6,13 +6,13 @@ pub use attention_mask::*;
 pub use pos_bias::*;
 pub use pos_grid::*;
 
-use crate::compat::linalg::l2_normalize;
 use bimm_contracts::{ShapeContract, run_every_nth, shape_contract};
 use burn::config::Config;
 use burn::module::{Module, Param, ParamId};
 use burn::nn::{Dropout, DropoutConfig, Linear, LinearConfig};
 use burn::prelude::{Backend, Tensor};
 use burn::tensor::activation::softmax;
+use burn::tensor::linalg::{Norm, vector_normalize};
 
 /// EPS is a small constant used to avoid numerical instability in calculations.
 pub const EPS: f64 = 1e-12;
@@ -234,10 +234,10 @@ impl<B: Backend> WindowAttention<B> {
         mask: Option<Tensor<B, 3>>,
     ) -> Tensor<B, 4> {
         // cosine attention
-        let q = l2_normalize(q, 3, EPS);
+        let q = vector_normalize(q, Norm::L2, 3, EPS);
         // (b_nw, num_heads, ws*ws, c_per_head)
 
-        let k = l2_normalize(k, 3, EPS).swap_dims(2, 3);
+        let k = vector_normalize(k, Norm::L2, 3, EPS).swap_dims(2, 3);
         // (b_nw, num_heads, c_per_head, ws*ws)
 
         let attn = q.matmul(k);

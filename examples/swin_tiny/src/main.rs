@@ -252,7 +252,7 @@ fn main() {
     .with_learning_rate(1.0e-3)
     .with_num_epochs(40)
     .with_batch_size(512)
-    .with_num_workers(4);
+    .with_num_workers(1);
 
     let devices = vec![Default::default()];
     // This always crashes on the transition from train to valid step,

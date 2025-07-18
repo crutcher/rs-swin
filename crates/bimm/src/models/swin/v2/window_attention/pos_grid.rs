@@ -1,5 +1,5 @@
-use crate::compat::grid::{IndexPos, meshgrid_stack};
 use burn::prelude::{Backend, Int, Tensor};
+use burn::tensor::grid::{IndexPos, meshgrid_stack};
 
 /// Creates a grid of 2D offset indices for a given window shape.
 ///

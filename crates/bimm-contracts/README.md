@@ -5,6 +5,8 @@
 
 #### Recent Changes
 
+* **0.2.0**
+  * bumped `burn` dependency to `0.18.0`.
 * **0.1.9**
    * Improved docs and examples.
    * Internal refactoring for labeled DimMatchers (not supported by macro yet).

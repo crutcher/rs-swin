@@ -1,4 +1,3 @@
-use crate::compat::ops::roll;
 use crate::models::swin::v2::window_attention::sw_attn_mask;
 use crate::models::swin::v2::window_attention::{
     WindowAttention, WindowAttentionConfig, WindowAttentionMeta,
@@ -185,7 +184,7 @@ where
 
     // Cyclic shift for shifted window attention.
     let x = if shift != 0 {
-        roll(x, &dims, &[-shift, -shift])
+        x.roll(&dims, &[-shift, -shift])
     } else {
         x
     };
@@ -194,7 +193,7 @@ where
 
     // Reverse cyclic shift.
     if shift != 0 {
-        roll(x, &dims, &[shift, shift])
+        x.roll(&dims, &[shift, shift])
     } else {
         x
     }
@@ -710,9 +709,9 @@ mod tests {
             .assert_eq(
                 &({
                     let x = input.clone();
-                    let x = roll(x, &[1, 2], &[-1, -1]);
+                    let x = x.roll(&[1, 2], &[-1, -1]);
                     let x = x + idx.clone();
-                    roll(x, &[1, 2], &[1, 1])
+                    x.roll(&[1, 2], &[1, 1])
                 })
                 .to_data(),
                 true,
