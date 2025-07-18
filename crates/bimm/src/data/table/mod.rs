@@ -1,12 +1,10 @@
 mod batch;
-mod column_builders;
 mod identifiers;
 mod operators;
 mod rows;
 mod schema;
 
 pub use batch::*;
-pub use column_builders::*;
 pub use identifiers::*;
 pub use operators::*;
 pub use rows::*;
@@ -41,7 +39,7 @@ mod tests {
             schema
                 .add_build_plan(BuildPlan {
                     operator: OperatorSpec {
-                        id: ColumnOperatorId {
+                        id: OperatorId {
                             namespace: "example".to_string(),
                             name: "path_to_class".to_string(),
                         },
@@ -73,7 +71,7 @@ mod tests {
             schema
                 .add_build_plan(BuildPlan {
                     operator: OperatorSpec {
-                        id: ColumnOperatorId {
+                        id: OperatorId {
                             namespace: "example".to_string(),
                             name: "load_image".to_string(),
                         },
@@ -111,7 +109,7 @@ mod tests {
             schema
                 .add_build_plan(BuildPlan {
                     operator: OperatorSpec {
-                        id: ColumnOperatorId {
+                        id: OperatorId {
                             namespace: "example".to_string(),
                             name: "image_aug".to_string(),
                         },

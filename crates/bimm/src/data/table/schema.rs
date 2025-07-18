@@ -29,7 +29,7 @@ impl BimmDataTypeDescription {
 
 /// Namespace and name of a column operator.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct ColumnOperatorId {
+pub struct OperatorId {
     /// The namespace of the operator.
     pub namespace: String,
 
@@ -41,7 +41,7 @@ pub struct ColumnOperatorId {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct OperatorSpec {
     /// The ID of the operator.
-    pub id: ColumnOperatorId,
+    pub id: OperatorId,
 
     /// The description of the operator.
     #[serde(skip_serializing_if = "Option::is_none")]
