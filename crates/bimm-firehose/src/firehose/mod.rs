@@ -14,14 +14,10 @@ pub use schema::*;
 mod tests {
 
     use super::*;
-    use indoc::indoc;
+    use indoc::formatdoc;
 
     #[test]
     fn test_example() {
-        // TODO: improve relationship between the symbolic builder mechanism,
-        // used here to define build info; and the column builder machinery,
-        // used to actually build the columns.
-
         fn plan_class_extraction(
             schema: &mut TableSchema,
             path_column: &str,
@@ -98,10 +94,6 @@ mod tests {
                 .unwrap();
         }
 
-        let mut schema = TableSchema::from_columns(&[
-            ColumnSchema::new::<String>("path").with_description("path to the image")
-        ]);
-
         // TODO: building up fluent schema builder pattern; some kind of op/builder to construct this.
         // - bound operator environment (name <-> implementation mapping)
         // - symbolic column def (wth some basic source type / op argument checking ...)
@@ -111,6 +103,10 @@ mod tests {
         // - could mark columns as intermediate (did, but removed for now).
         // - what pins an intermediate column?
         //   - in the dep graph for missing non-intermediate columns?
+
+        let mut schema = TableSchema::from_columns(&[
+            ColumnSchema::new::<String>("path").with_description("path to the image")
+        ]);
 
         plan_class_extraction(&mut schema, "path", "class_name", "class_code");
 
@@ -128,92 +124,98 @@ mod tests {
 
         assert_eq!(
             serde_json::to_string_pretty(&schema).unwrap(),
-            indoc! {r#"
-                {
+            formatdoc! {r#"
+                {{
                   "columns": [
-                    {
+                    {{
                       "name": "path",
                       "description": "path to the image",
-                      "data_type": {
+                      "data_type": {{
                         "type_name": "alloc::string::String"
-                      }
-                    },
-                    {
+                      }}
+                    }},
+                    {{
                       "name": "class_name",
                       "description": "category class name",
-                      "data_type": {
+                      "data_type": {{
                         "type_name": "alloc::string::String"
-                      }
-                    },
-                    {
+                      }}
+                    }},
+                    {{
                       "name": "class_code",
                       "description": "category class code",
-                      "data_type": {
+                      "data_type": {{
                         "type_name": "u32"
-                      }
-                    },
-                    {
+                      }}
+                    }},
+                    {{
                       "name": "raw_image",
                       "description": "Image loaded from disk",
-                      "data_type": {
+                      "data_type": {{
                         "type_name": "alloc::vec::Vec<u8>"
-                      }
-                    },
-                    {
+                      }}
+                    }},
+                    {{
                       "name": "aug_image",
                       "description": "augmented image",
-                      "data_type": {
+                      "data_type": {{
                         "type_name": "alloc::vec::Vec<u8>"
-                      }
-                    }
+                      }}
+                    }}
                   ],
                   "build_plans": [
-                    {
-                      "operator_id": {
+                    {{
+                      "id": "{:?}",
+                      "operator": {{
                         "namespace": "example",
                         "name": "path_to_class"
-                      },
+                      }},
                       "description": "Extracts class name from image path",
-                      "inputs": {
+                      "inputs": {{
                         "source": "path"
-                      },
-                      "outputs": {
+                      }},
+                      "outputs": {{
                         "code": "class_code",
                         "name": "class_name"
-                      }
-                    },
-                    {
-                      "operator_id": {
+                      }}
+                    }},
+                    {{
+                      "id": "{:?}",
+                      "operator": {{
                         "namespace": "example",
                         "name": "load_image"
-                      },
+                      }},
                       "description": "Loads image from disk",
-                      "inputs": {
+                      "inputs": {{
                         "path": "path"
-                      },
-                      "outputs": {
+                      }},
+                      "outputs": {{
                         "image": "raw_image"
-                      }
-                    },
-                    {
-                      "operator_id": {
+                      }}
+                    }},
+                    {{
+                      "id": "{:?}",
+                      "operator": {{
                         "namespace": "example",
                         "name": "image_aug"
-                      },
+                      }},
                       "description": "Augments image with blur and brightness",
-                      "config": {
+                      "config": {{
                         "blur": 2.0,
                         "brightness": 0.5
-                      },
-                      "inputs": {
+                      }},
+                      "inputs": {{
                         "source": "raw_image"
-                      },
-                      "outputs": {
+                      }},
+                      "outputs": {{
                         "augmented": "aug_image"
-                      }
-                    }
+                      }}
+                    }}
                   ]
-                }"#
+                }}"#,
+                schema.build_plans[0].id,
+                schema.build_plans[1].id,
+                schema.build_plans[2].id,
             }
         );
     }

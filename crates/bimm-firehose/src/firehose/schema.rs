@@ -67,8 +67,12 @@ impl From<[&str; 2]> for OperatorId {
 /// A build plan for columns in a table schema.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct BuildPlan {
+    /// The unique identifier for the build plan.
+    #[serde(default = "uuid::Uuid::new_v4")]
+    pub id: uuid::Uuid,
+
     /// The ID of the operator.
-    pub operator_id: OperatorId,
+    pub operator: OperatorId,
 
     /// The description of the operator.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -98,7 +102,8 @@ impl BuildPlan {
         I: Into<OperatorId>,
     {
         BuildPlan {
-            operator_id: id.into(),
+            id: uuid::Uuid::new_v4(),
+            operator: id.into(),
             description: None,
             config: serde_json::Value::Null,
             inputs: BTreeMap::new(),
@@ -301,16 +306,6 @@ impl IndexMut<&str> for TableSchema {
         let idx = self.check_column_index(name).expect("Column not found");
         &mut self.columns[idx]
     }
-}
-
-/// Topological build order for columns in a table schema.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
-pub struct ColumnBuildOrder {
-    /// Non-buildable columns (those without build info).
-    pub static_columns: Vec<String>,
-
-    /// The order in which columns can be built.
-    pub topo_order: Vec<String>,
 }
 
 impl TableSchema {

@@ -83,7 +83,7 @@ impl Debug for ColumnBuilder {
     ) -> std::fmt::Result {
         if !f.alternate() {
             f.debug_struct("ColumnBuilder")
-                .field("id", &self.build_plan.operator_id)
+                .field("id", &self.build_plan.operator)
                 .field("inputs", &self.build_plan.inputs)
                 .field("outputs", &self.build_plan.outputs)
                 .finish()
@@ -279,12 +279,12 @@ impl BuildOperatorFactory for NamespaceOperatorFactory {
         input_types: &BTreeMap<String, DataTypeDescription>,
         output_types: &BTreeMap<String, DataTypeDescription>,
     ) -> Result<Box<dyn BuildOperator>, String> {
-        if let Some(factory) = self.operations.get(&build_plan.operator_id.name) {
+        if let Some(factory) = self.operations.get(&build_plan.operator.name) {
             factory.init_operator(build_plan, input_types, output_types)
         } else {
             Err(format!(
                 "No operator factory registered for operation '{}' in namespace '{}'",
-                build_plan.operator_id.name, self.namespace
+                build_plan.operator.name, self.namespace
             ))
         }
     }
@@ -297,7 +297,7 @@ mod tests {
     use crate::firehose::{
         AnyArc, BuildPlan, ColumnSchema, DataTypeDescription, OperatorId, RowBatch, TableSchema,
     };
-    use indoc::indoc;
+    use indoc::formatdoc;
     use serde::{Deserialize, Serialize};
     use std::any::Any;
     use std::collections::BTreeMap;
@@ -445,34 +445,36 @@ mod tests {
 
         assert_eq!(
             format!("{builder:#?}"),
-            indoc! {r#"
-               ColumnBuilder {
-                   build_plan: BuildPlan {
-                       operator_id: OperatorId {
+            formatdoc! {r#"
+               ColumnBuilder {{
+                   build_plan: BuildPlan {{
+                       id: {:?},
+                       operator: OperatorId {{
                            namespace: "example",
                            name: "add",
-                       },
+                       }},
                        description: Some(
                            "Adds inputs with a bias",
                        ),
-                       config: Object {
+                       config: Object {{
                            "bias": Number(10),
-                       },
-                       inputs: {
+                       }},
+                       inputs: {{
                            "x": "a",
                            "y": "b",
-                       },
-                       outputs: {
+                       }},
+                       outputs: {{
                            "result": "c",
-                       },
-                   },
-               }"#}
+                       }},
+                   }},
+               }}"#,
+            builder.build_plan.id}
         );
 
         assert_eq!(builder.effective_batch_size(), 1);
 
         assert_eq!(
-            builder.build_plan.operator_id,
+            builder.build_plan.operator,
             OperatorId {
                 namespace: EXAMPLE_NAMESPACE.to_string(),
                 name: "add".to_string()
