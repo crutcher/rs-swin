@@ -390,6 +390,18 @@ impl TableSchema {
         Ok(())
     }
 
+    /// Adds a build plan and its output columns to the table description.
+    ///
+    /// ## Arguments
+    ///
+    /// - `plan`: The build plan to add.
+    /// - `output_info`: A slice of tuples where each tuple contains the output column name, its data type, and a description.
+    ///
+    /// ## Returns
+    ///
+    /// A `Result<(), String>` where:
+    /// - `Ok(())` indicates success.
+    /// - `Err(String)` contains an error message if the operation fails.
     pub fn add_build_plan_and_outputs(
         &mut self,
         plan: BuildPlan,
