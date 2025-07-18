@@ -1,5 +1,5 @@
-use crate::data::table::{AnyArc, BimmRow, BimmTableSchema, BuildPlan};
-use crate::data::table::{BimmDataTypeDescription, OperatorSpec};
+use crate::data::firehose::{AnyArc, ColumnBuildPlan, Row, TableSchema};
+use crate::data::firehose::{BuildOperatorSpec, DataTypeDescription};
 use std::any::Any;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
@@ -62,10 +62,10 @@ pub trait BuildOperator {
 /// A runner for a column operator that applies a `BuildOperator` to rows in a table schema.
 pub struct ColumnBuilder {
     /// The table schema that this operator is bound to.
-    pub table_schema: BimmTableSchema,
+    pub table_schema: TableSchema,
 
     /// A reference to the build plan that this operator is part of.
-    pub build_plan: BuildPlan,
+    pub build_plan: ColumnBuildPlan,
 
     /// Maps from input parameter names to their slot indices in the input row.
     input_slot_map: BTreeMap<String, usize>,
@@ -102,12 +102,12 @@ impl ColumnBuilder {
     /// A result containing a `BoundPlanBuilder` if successful, or an error message if the binding fails.
     #[must_use]
     pub fn bind_plan<F>(
-        table_schema: &BimmTableSchema,
-        build_plan: &BuildPlan,
+        table_schema: &TableSchema,
+        build_plan: &ColumnBuildPlan,
         factory: &F,
     ) -> Result<ColumnBuilder, String>
     where
-        F: BuildOperatorFactory,
+        F: FirehoseBuildOperatorFactory,
     {
         let table_schema = table_schema.clone();
         let build_plan = build_plan.clone();
@@ -173,7 +173,7 @@ impl ColumnBuilder {
     /// A result indicating success or an error message if the operation fails.
     pub fn apply_batch(
         &self,
-        rows: &mut [BimmRow],
+        rows: &mut [Row],
     ) -> Result<(), String> {
         let batch_inputs: Vec<BuildInputRefMap> = rows
             .iter()
@@ -199,7 +199,7 @@ impl ColumnBuilder {
 }
 
 /// Factory trait for building operators in a `BuildPlan`.
-pub trait BuildOperatorFactory: Debug {
+pub trait FirehoseBuildOperatorFactory: Debug {
     /// Initialize an operator based on the provided specification and input/output types.
     ///
     /// # Arguments
@@ -213,9 +213,9 @@ pub trait BuildOperatorFactory: Debug {
     /// A result containing a boxed `BuildOperator` if initialization is successful, or an error message if it fails.
     fn init_operator(
         &self,
-        spec: &OperatorSpec,
-        input_types: &BTreeMap<String, BimmDataTypeDescription>,
-        output_types: &BTreeMap<String, BimmDataTypeDescription>,
+        spec: &BuildOperatorSpec,
+        input_types: &BTreeMap<String, DataTypeDescription>,
+        output_types: &BTreeMap<String, DataTypeDescription>,
     ) -> Result<Box<dyn BuildOperator>, String>;
 }
 
@@ -226,7 +226,7 @@ pub struct NamespaceOperatorFactory {
     pub namespace: String,
 
     /// The operator factory to be used for building operators.
-    pub operations: BTreeMap<String, Arc<dyn BuildOperatorFactory>>,
+    pub operations: BTreeMap<String, Arc<dyn FirehoseBuildOperatorFactory>>,
 }
 
 impl NamespaceOperatorFactory {
@@ -253,7 +253,7 @@ impl NamespaceOperatorFactory {
     pub fn add_operation(
         &mut self,
         operation: &str,
-        factory: Arc<dyn BuildOperatorFactory>,
+        factory: Arc<dyn FirehoseBuildOperatorFactory>,
     ) {
         if self.operations.contains_key(operation) {
             panic!(
@@ -265,12 +265,12 @@ impl NamespaceOperatorFactory {
     }
 }
 
-impl BuildOperatorFactory for NamespaceOperatorFactory {
+impl FirehoseBuildOperatorFactory for NamespaceOperatorFactory {
     fn init_operator(
         &self,
-        spec: &OperatorSpec,
-        input_types: &BTreeMap<String, BimmDataTypeDescription>,
-        output_types: &BTreeMap<String, BimmDataTypeDescription>,
+        spec: &BuildOperatorSpec,
+        input_types: &BTreeMap<String, DataTypeDescription>,
+        output_types: &BTreeMap<String, DataTypeDescription>,
     ) -> Result<Box<dyn BuildOperator>, String> {
         if let Some(factory) = self.operations.get(&spec.id.name) {
             factory.init_operator(spec, input_types, output_types)
@@ -287,7 +287,7 @@ impl BuildOperatorFactory for NamespaceOperatorFactory {
 mod tests {
     use super::*;
 
-    use crate::data::table::{BimmColumnSchema, BimmRowBatch, OperatorId};
+    use crate::data::firehose::{ColumnSchema, OperatorId, RowBatch};
     use serde::{Deserialize, Serialize};
     use std::any::Any;
     use std::collections::BTreeMap;
@@ -300,15 +300,15 @@ mod tests {
     #[derive(Debug)]
     struct AddOperatorFactory {}
 
-    impl BuildOperatorFactory for AddOperatorFactory {
+    impl FirehoseBuildOperatorFactory for AddOperatorFactory {
         fn init_operator(
             &self,
-            spec: &OperatorSpec,
-            input_types: &BTreeMap<String, BimmDataTypeDescription>,
-            output_types: &BTreeMap<String, BimmDataTypeDescription>,
+            spec: &BuildOperatorSpec,
+            input_types: &BTreeMap<String, DataTypeDescription>,
+            output_types: &BTreeMap<String, DataTypeDescription>,
         ) -> Result<Box<dyn BuildOperator>, String> {
             // Verify that all inputs are i32
-            let expected_type = BimmDataTypeDescription::new::<i32>();
+            let expected_type = DataTypeDescription::new::<i32>();
             for (name, data_type) in input_types {
                 if data_type.type_name != expected_type.type_name {
                     return Err(format!(
@@ -361,15 +361,15 @@ mod tests {
     #[test]
     #[should_panic(expected = "Input 'a' must be of type i32")]
     fn test_bad_input_data_type() {
-        let mut schema = BimmTableSchema::from_columns(&[
-            BimmColumnSchema::new::<String>("a").with_description("First input"),
-            BimmColumnSchema::new::<i32>("b").with_description("First input"),
-            BimmColumnSchema::new::<i32>("c").with_description("Output"),
+        let mut schema = TableSchema::from_columns(&[
+            ColumnSchema::new::<String>("a").with_description("First input"),
+            ColumnSchema::new::<i32>("b").with_description("Second input"),
+            ColumnSchema::new::<i32>("c").with_description("Output"),
         ]);
 
         schema
-            .add_build_plan(BuildPlan {
-                operator: OperatorSpec {
+            .add_build_plan(ColumnBuildPlan {
+                operator: BuildOperatorSpec {
                     id: OperatorId {
                         namespace: EXAMPLE_NAMESPACE.to_string(),
                         name: "add".to_string(),
@@ -396,15 +396,15 @@ mod tests {
     #[test]
     #[should_panic(expected = "Output 'result' must be of type i32")]
     fn test_bad_output_data_type() {
-        let mut schema = BimmTableSchema::from_columns(&[
-            BimmColumnSchema::new::<i32>("a").with_description("First input"),
-            BimmColumnSchema::new::<i32>("b").with_description("First input"),
-            BimmColumnSchema::new::<String>("c").with_description("Output"),
+        let mut schema = TableSchema::from_columns(&[
+            ColumnSchema::new::<i32>("a").with_description("First input"),
+            ColumnSchema::new::<i32>("b").with_description("Second input"),
+            ColumnSchema::new::<String>("c").with_description("Output"),
         ]);
 
         schema
-            .add_build_plan(BuildPlan {
-                operator: OperatorSpec {
+            .add_build_plan(ColumnBuildPlan {
+                operator: BuildOperatorSpec {
                     id: OperatorId {
                         namespace: EXAMPLE_NAMESPACE.to_string(),
                         name: "add".to_string(),
@@ -430,15 +430,15 @@ mod tests {
 
     #[test]
     fn test_simple_op() {
-        let mut schema = BimmTableSchema::from_columns(&[
-            BimmColumnSchema::new::<i32>("a").with_description("First input"),
-            BimmColumnSchema::new::<i32>("b").with_description("First input"),
-            BimmColumnSchema::new::<i32>("c").with_description("Output"),
+        let mut schema = TableSchema::from_columns(&[
+            ColumnSchema::new::<i32>("a").with_description("First input"),
+            ColumnSchema::new::<i32>("b").with_description("Second input"),
+            ColumnSchema::new::<i32>("c").with_description("Output"),
         ]);
 
         schema
-            .add_build_plan(BuildPlan {
-                operator: OperatorSpec {
+            .add_build_plan(ColumnBuildPlan {
+                operator: BuildOperatorSpec {
                     id: OperatorId {
                         namespace: EXAMPLE_NAMESPACE.to_string(),
                         name: "add".to_string(),
@@ -463,7 +463,7 @@ mod tests {
 
         assert_eq!(
             format!("{builder:?}"),
-            "ColumnOperatorRunner { build_plan: BuildPlan { operator: OperatorSpec { id: OperatorId { namespace: \"example\", name: \"add\" }, description: Some(\"Adds inputs with a bias\"), config: Object {\"bias\": Number(10)} }, inputs: {\"a\": \"a\", \"b\": \"b\"}, outputs: {\"result\": \"c\"} } }"
+            "ColumnOperatorRunner { build_plan: ColumnBuildPlan { operator: BuildOperatorSpec { id: OperatorId { namespace: \"example\", name: \"add\" }, description: Some(\"Adds inputs with a bias\"), config: Object {\"bias\": Number(10)} }, inputs: {\"a\": \"a\", \"b\": \"b\"}, outputs: {\"result\": \"c\"} } }"
         );
 
         assert_eq!(builder.effective_batch_size(), 1);
@@ -476,7 +476,7 @@ mod tests {
             }
         );
 
-        let mut batch = BimmRowBatch::with_size(Arc::new(schema.clone()), 2);
+        let mut batch = RowBatch::with_size(Arc::new(schema.clone()), 2);
         batch[0].set_columns(&schema, &["a", "b"], [Arc::new(10), Arc::new(20)]);
         batch[1].set_columns(&schema, &["a", "b"], [Arc::new(-5), Arc::new(2)]);
 
@@ -491,15 +491,15 @@ mod tests {
         let mut factory = NamespaceOperatorFactory::new(EXAMPLE_NAMESPACE);
 
         // Create a table schema with a build plan for the add operator
-        let mut schema = BimmTableSchema::from_columns(&[
-            BimmColumnSchema::new::<i32>("a").with_description("First input"),
-            BimmColumnSchema::new::<i32>("b").with_description("Second input"),
-            BimmColumnSchema::new::<i32>("c").with_description("Output"),
+        let mut schema = TableSchema::from_columns(&[
+            ColumnSchema::new::<i32>("a").with_description("First input"),
+            ColumnSchema::new::<i32>("b").with_description("Second input"),
+            ColumnSchema::new::<i32>("c").with_description("Output"),
         ]);
 
         schema
-            .add_build_plan(BuildPlan {
-                operator: OperatorSpec {
+            .add_build_plan(ColumnBuildPlan {
+                operator: BuildOperatorSpec {
                     id: OperatorId {
                         namespace: "example".to_string(),
                         name: "add".to_string(),

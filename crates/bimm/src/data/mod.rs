@@ -2,4 +2,4 @@
 pub mod pipeline;
 
 /// New Data Table module.
-pub mod table;
+pub mod firehose;

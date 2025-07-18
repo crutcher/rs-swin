@@ -23,22 +23,21 @@ mod tests {
         // used to actually build the columns.
 
         fn plan_class_extraction(
-            schema: &mut BimmTableSchema,
+            schema: &mut TableSchema,
             path_column: &str,
             class_name_column: &str,
             class_code_column: &str,
         ) {
             schema.add_column(
-                BimmColumnSchema::new::<String>(class_name_column)
+                ColumnSchema::new::<String>(class_name_column)
                     .with_description("category class name"),
             );
             schema.add_column(
-                BimmColumnSchema::new::<u32>(class_code_column)
-                    .with_description("category class code"),
+                ColumnSchema::new::<u32>(class_code_column).with_description("category class code"),
             );
             schema
-                .add_build_plan(BuildPlan {
-                    operator: OperatorSpec {
+                .add_build_plan(ColumnBuildPlan {
+                    operator: BuildOperatorSpec {
                         id: OperatorId {
                             namespace: "example".to_string(),
                             name: "path_to_class".to_string(),
@@ -60,17 +59,17 @@ mod tests {
 
         type ImageStandIn = Vec<u8>;
         fn plan_image_load(
-            schema: &mut BimmTableSchema,
+            schema: &mut TableSchema,
             path_column: &str,
             image_column: &str,
         ) {
             schema.add_column(
-                BimmColumnSchema::new::<ImageStandIn>(image_column)
+                ColumnSchema::new::<ImageStandIn>(image_column)
                     .with_description("Image loaded from disk"),
             );
             schema
-                .add_build_plan(BuildPlan {
-                    operator: OperatorSpec {
+                .add_build_plan(ColumnBuildPlan {
+                    operator: BuildOperatorSpec {
                         id: OperatorId {
                             namespace: "example".to_string(),
                             name: "load_image".to_string(),
@@ -97,18 +96,18 @@ mod tests {
         }
 
         fn plan_image_augmentation(
-            schema: &mut BimmTableSchema,
+            schema: &mut TableSchema,
             source_column: &str,
             output_column: &str,
             config: ImageAugConfig,
         ) {
             schema.add_column(
-                BimmColumnSchema::new::<Vec<u8>>(output_column).with_description("augmented image"),
+                ColumnSchema::new::<Vec<u8>>(output_column).with_description("augmented image"),
             );
 
             schema
-                .add_build_plan(BuildPlan {
-                    operator: OperatorSpec {
+                .add_build_plan(ColumnBuildPlan {
+                    operator: BuildOperatorSpec {
                         id: OperatorId {
                             namespace: "example".to_string(),
                             name: "image_aug".to_string(),
@@ -128,8 +127,8 @@ mod tests {
                 .unwrap();
         }
 
-        let mut schema = BimmTableSchema::from_columns(&[
-            BimmColumnSchema::new::<String>("path").with_description("path to the image")
+        let mut schema = TableSchema::from_columns(&[
+            ColumnSchema::new::<String>("path").with_description("path to the image")
         ]);
 
         // TODO: building up fluent schema builder pattern; some kind of op/builder to construct this.
