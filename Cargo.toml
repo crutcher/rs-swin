@@ -24,6 +24,7 @@ bimm = { version = "0.2.0", path = "crates/bimm" }
 bimm-contracts = { version = "0.2.0", path = "crates/bimm-contracts" }
 bimm-contracts-macros = { version = "0.2.0", path = "crates/bimm-contracts-macros" }
 
+image = { version = "^0.25.6" }
 uuid = { version = "^1.17.0" }
 
 # Burn coupled-dependencies
@@ -41,3 +42,4 @@ indoc = { version = "^2.0.6" }
 rand = {  version = "^0.9.1"  }
 num-traits = { version = "^0.2.19" }
 hamcrest = { version = "^0.1.5" }
+tempfile = { version = "^3.20.0" }

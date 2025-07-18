@@ -1,11 +1,42 @@
-use crate::firehose::{AnyArc, BuildPlan, DataTypeDescription, Row, TableSchema};
+use crate::core::{AnyArc, BuildPlan, DataTypeDescription, Row, RowBatch, TableSchema};
 use std::any::Any;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::sync::Arc;
 
+/// Driver for executing a batch of build plans against a `RowBatch`.
+///
+/// This function applies the build plans defined in the `RowBatch` schema to the rows in the batch.
+///
+/// # Arguments
+///
+/// * `batch` - A mutable reference to the `RowBatch` containing the rows to be processed.
+/// * `factory` - A reference to a factory that can create the operators defined in the build plans.
+///
+/// # Returns
+///
+/// A result indicating success or an error message if the operation fails.
+pub fn experimental_run_batch<F>(
+    batch: &mut RowBatch,
+    factory: &F,
+) -> Result<(), String>
+where
+    F: BuildOperatorFactory,
+{
+    let schema = batch.schema.as_ref();
+
+    let (_base, plans) = schema.build_order()?;
+    // TODO: ensure that the base is present in the batch rows.
+
+    for plan in &plans {
+        let builder = ColumnBuilder::bind_plan(schema, plan, factory)?;
+        builder.apply_batch(batch.rows.as_mut_slice()).unwrap();
+    }
+    Ok(())
+}
+
 type BuildInputRefMap<'a> = BTreeMap<&'a str, Option<&'a dyn Any>>;
-type BuildOutputArcMap<'a> = BTreeMap<&'a str, Option<AnyArc>>;
+type BuildOutputArcMap<'a> = BTreeMap<String, Option<AnyArc>>;
 
 /// Implementation of a `BuildPlan` operator.
 pub trait BuildOperator {
@@ -196,7 +227,7 @@ impl ColumnBuilder {
 
         for (idx, outputs) in batch_outputs.iter().enumerate() {
             let row = &mut rows[idx];
-            for (&pname, value) in outputs.iter() {
+            for (pname, value) in outputs.iter() {
                 row.set_slot(self.output_slot_map[pname], value.clone());
             }
         }
@@ -294,7 +325,7 @@ impl BuildOperatorFactory for NamespaceOperatorFactory {
 mod tests {
     use super::*;
 
-    use crate::firehose::{
+    use crate::core::{
         AnyArc, BuildPlan, ColumnSchema, DataTypeDescription, OperatorId, RowBatch, TableSchema,
     };
     use indoc::formatdoc;
@@ -351,7 +382,7 @@ mod tests {
         fn apply(
             &self,
             inputs: &BTreeMap<&str, Option<&dyn Any>>,
-        ) -> Result<BTreeMap<&str, Option<AnyArc>>, String> {
+        ) -> Result<BTreeMap<String, Option<AnyArc>>, String> {
             let sum: i32 = inputs
                 .values()
                 .map(|v| v.unwrap().downcast_ref::<i32>().unwrap())
@@ -362,7 +393,7 @@ mod tests {
 
             // Return the result as a single output
             let mut outputs = BTreeMap::new();
-            outputs.insert("result", Some(Arc::new(result) as AnyArc));
+            outputs.insert("result".to_string(), Some(Arc::new(result) as AnyArc));
 
             Ok(outputs)
         }

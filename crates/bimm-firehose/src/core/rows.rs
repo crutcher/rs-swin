@@ -1,4 +1,4 @@
-use crate::firehose::TableSchema;
+use crate::core::TableSchema;
 use std::sync::Arc;
 
 /// Represents a boxed value that can hold any type.
@@ -174,7 +174,7 @@ impl Row {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::firehose::ColumnSchema;
+    use crate::core::ColumnSchema;
     use burn::backend::NdArray;
     use burn::prelude::Tensor;
     use burn::tensor::TensorData;
