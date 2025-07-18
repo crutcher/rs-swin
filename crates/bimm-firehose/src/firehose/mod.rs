@@ -12,9 +12,9 @@ pub use schema::*;
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
     use indoc::indoc;
-    use serde_json::json;
 
     #[test]
     fn test_example() {
@@ -35,26 +35,18 @@ mod tests {
             schema.add_column(
                 ColumnSchema::new::<u32>(class_code_column).with_description("category class code"),
             );
+
+            // TODO: with input/output data type maps; the output columns can be built from the build plan
+            // by a utility builder method.
+
             schema
-                .add_build_plan(ColumnBuildPlan {
-                    operator: BuildOperatorSpec {
-                        id: OperatorId {
-                            namespace: "example".to_string(),
-                            name: "path_to_class".to_string(),
-                        },
-                        description: Some("Extracts class name from image path".to_string()),
-                        config: json!(null),
-                    },
-                    inputs: [("source", path_column)]
-                        .iter()
-                        .map(|(p, c)| (p.to_string(), c.to_string()))
-                        .collect(),
-                    outputs: [("name", class_name_column), ("code", class_code_column)]
-                        .iter()
-                        .map(|(p, c)| (p.to_string(), c.to_string()))
-                        .collect(),
-                })
-                .unwrap()
+                .add_build_plan(
+                    ColumnBuildPlan::new(OperatorId::new("example", "path_to_class"))
+                        .with_description("Extracts class name from image path")
+                        .with_inputs(&[("source", path_column)])
+                        .with_outputs(&[("name", class_name_column), ("code", class_code_column)]),
+                )
+                .unwrap();
         }
 
         type ImageStandIn = Vec<u8>;
@@ -68,25 +60,13 @@ mod tests {
                     .with_description("Image loaded from disk"),
             );
             schema
-                .add_build_plan(ColumnBuildPlan {
-                    operator: BuildOperatorSpec {
-                        id: OperatorId {
-                            namespace: "example".to_string(),
-                            name: "load_image".to_string(),
-                        },
-                        description: Some("Loads image from disk".to_string()),
-                        config: json!(null),
-                    },
-                    inputs: [("path", path_column)]
-                        .iter()
-                        .map(|(p, c)| (p.to_string(), c.to_string()))
-                        .collect(),
-                    outputs: [("image", image_column)]
-                        .iter()
-                        .map(|(p, c)| (p.to_string(), c.to_string()))
-                        .collect(),
-                })
-                .unwrap()
+                .add_build_plan(
+                    ColumnBuildPlan::new(OperatorId::new("example", "load_image"))
+                        .with_description("Loads image from disk")
+                        .with_inputs(&[("path", path_column)])
+                        .with_outputs(&[("image", image_column)]),
+                )
+                .unwrap();
         }
 
         #[derive(serde::Serialize, serde::Deserialize)]
@@ -104,26 +84,14 @@ mod tests {
             schema.add_column(
                 ColumnSchema::new::<Vec<u8>>(output_column).with_description("augmented image"),
             );
-
             schema
-                .add_build_plan(ColumnBuildPlan {
-                    operator: BuildOperatorSpec {
-                        id: OperatorId {
-                            namespace: "example".to_string(),
-                            name: "image_aug".to_string(),
-                        },
-                        description: Some("Augments image with blur and brightness".to_string()),
-                        config: serde_json::to_value(config).unwrap(),
-                    },
-                    inputs: [("source", source_column)]
-                        .iter()
-                        .map(|(p, c)| (p.to_string(), c.to_string()))
-                        .collect(),
-                    outputs: [("augmented", output_column)]
-                        .iter()
-                        .map(|(p, c)| (p.to_string(), c.to_string()))
-                        .collect(),
-                })
+                .add_build_plan(
+                    ColumnBuildPlan::new(OperatorId::new("example", "image_aug"))
+                        .with_description("Augments image with blur and brightness")
+                        .with_config(config)
+                        .with_inputs(&[("source", source_column)])
+                        .with_outputs(&[("augmented", output_column)]),
+                )
                 .unwrap();
         }
 

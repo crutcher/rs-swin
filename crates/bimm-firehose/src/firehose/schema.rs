@@ -69,6 +69,58 @@ pub struct BuildOperatorSpec {
     pub config: serde_json::Value,
 }
 
+impl BuildOperatorSpec {
+    /// Creates a new `BuildOperatorSpec` with the given ID, description, and configuration.
+    pub fn new(id: OperatorId) -> Self {
+        BuildOperatorSpec {
+            id,
+            description: None,
+            config: serde_json::Value::Null,
+        }
+    }
+
+    /// Extends the operator spec with a description.
+    ///
+    /// ## Arguments
+    ///
+    /// - `description`: The description to attach to the operator.
+    ///
+    /// ## Returns
+    ///
+    /// A new `BuildOperatorSpec` with the description attached.
+    pub fn with_description(
+        self,
+        description: &str,
+    ) -> Self {
+        BuildOperatorSpec {
+            description: Some(description.to_string()),
+            ..self
+        }
+    }
+
+    /// Extends the operator spec with a configuration.
+    ///
+    /// ## Arguments
+    ///
+    /// - `config`: The configuration to attach to the operator, serialized as JSON.
+    ///
+    /// ## Returns
+    ///
+    /// A new `BuildOperatorSpec` with the configuration attached.
+    pub fn with_config<T>(
+        self,
+        config: T,
+    ) -> Self
+    where
+        T: Serialize,
+    {
+        BuildOperatorSpec {
+            config: serde_json::to_value(config).expect("Failed to serialize config"),
+            ..self
+        }
+    }
+}
+
 /// A build plan for columns in a table schema.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ColumnBuildPlan {
@@ -84,6 +136,110 @@ pub struct ColumnBuildPlan {
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     #[serde(default)]
     pub outputs: BTreeMap<String, String>,
+}
+
+impl ColumnBuildPlan {
+    /// Creates a new `ColumnBuildPlan` with the given operator spec.
+    pub fn new(id: OperatorId) -> Self {
+        ColumnBuildPlan {
+            operator: BuildOperatorSpec::new(id),
+            inputs: BTreeMap::new(),
+            outputs: BTreeMap::new(),
+        }
+    }
+
+    /// Extends the build plan with a description.
+    ///
+    /// ## Arguments
+    ///
+    /// - `description`: The description to attach to the build plan.
+    ///
+    /// ## Returns
+    ///
+    /// A new `ColumnBuildPlan` with the description attached.
+    pub fn with_description(
+        self,
+        description: &str,
+    ) -> Self {
+        ColumnBuildPlan {
+            operator: self.operator.with_description(description),
+            ..self
+        }
+    }
+
+    /// Extends the build plan with a configuration.
+    ///
+    /// ## Arguments
+    ///
+    /// - `config`: The configuration to attach to the build plan, serialized as JSON.
+    ///
+    /// ## Returns
+    ///
+    /// A new `ColumnBuildPlan` with the configuration attached.
+    pub fn with_config<T>(
+        self,
+        config: T,
+    ) -> Self
+    where
+        T: Serialize,
+    {
+        ColumnBuildPlan {
+            operator: self.operator.with_config(config),
+            ..self
+        }
+    }
+
+    /// Extends the build plan with input columns.
+    ///
+    /// ## Arguments
+    ///
+    /// - `inputs`: A slice of tuples where each tuple contains a parameter name and a column name.
+    ///
+    /// ## Returns
+    ///
+    /// A new `ColumnBuildPlan` with the input columns attached.
+    pub fn with_inputs(
+        self,
+        inputs: &[(&str, &str)],
+    ) -> Self {
+        let mut btree = BTreeMap::new();
+        for (param, column) in inputs {
+            identifiers::check_ident(param).expect("Invalid parameter name");
+            identifiers::check_ident(column).expect("Invalid column name");
+            btree.insert(param.to_string(), column.to_string());
+        }
+
+        ColumnBuildPlan {
+            inputs: btree,
+            ..self
+        }
+    }
+
+    /// Extends the build plan with output columns.
+    ///
+    /// ## Arguments
+    ///
+    /// - `outputs`: A slice of tuples where each tuple contains a parameter name and a column name.
+    ///
+    /// ## Returns
+    ///
+    /// A new `ColumnBuildPlan` with the output columns attached.
+    pub fn with_outputs(
+        self,
+        outputs: &[(&str, &str)],
+    ) -> Self {
+        let mut btree = BTreeMap::new();
+        for (param, column) in outputs {
+            identifiers::check_ident(param).expect("Invalid parameter name");
+            identifiers::check_ident(column).expect("Invalid column name");
+            btree.insert(param.to_string(), column.to_string());
+        }
+
+        ColumnBuildPlan {
+            outputs: btree,
+            ..self
+        }
+    }
 }
 
 /// A description of a column in a data table.
