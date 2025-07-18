@@ -327,6 +327,9 @@ impl TableSchema {
         let mut scheduled_columns = base_columns.clone();
         let mut plan_order = Vec::new();
 
+        // TODO: build reified topo dep-graph;
+        // support printing, querying, cycle detection, etc.
+
         loop {
             let mut progress = false;
 
