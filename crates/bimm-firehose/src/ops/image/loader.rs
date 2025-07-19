@@ -1,12 +1,11 @@
 use crate::core::{BuildOperator, BuildOperatorFactory, BuildPlan, DataTypeDescription};
+use crate::ops::image::{ImageShape, color_util};
 use image::imageops::FilterType;
 use image::{ColorType, DynamicImage, GenericImageView};
 use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use crate::ops::image::{color_util, ImageShape};
-use crate::ops::image::color_util::TmpColorType;
 
 /// Factory for creating an `ImageLoader` operator.
 #[derive(Debug)]
@@ -76,22 +75,6 @@ impl ResizeSpec {
     }
 }
 
-impl From<TmpColorType> for ColorType {
-    fn from(color: TmpColorType) -> Self {
-        match color {
-            TmpColorType::L8 => ColorType::L8,
-            TmpColorType::La8 => ColorType::La8,
-            TmpColorType::Rgb8 => ColorType::Rgb8,
-            TmpColorType::Rgba8 => ColorType::Rgba8,
-            TmpColorType::L16 => ColorType::L16,
-            TmpColorType::La16 => ColorType::La16,
-            TmpColorType::Rgb16 => ColorType::Rgb16,
-            TmpColorType::Rgba16 => ColorType::Rgba16,
-            TmpColorType::Rgb32F => ColorType::Rgb32F,
-            TmpColorType::Rgba32F => ColorType::Rgba32F,
-        }
-    }
-}
 
 /// An operator that loads an image from disk and optionally resizes it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -204,30 +187,30 @@ mod tests {
     use super::*;
 
     use crate::core::{
-        experimental_run_batch, BuildPlan, ColumnSchema, DataTypeDescription, RowBatch, TableSchema,
+        BuildPlan, ColumnSchema, DataTypeDescription, RowBatch, TableSchema, experimental_run_batch,
     };
+    use crate::ops::image::test_util;
     use image::DynamicImage;
     use std::sync::Arc;
-    use crate::ops::image::test_util;
 
     #[test]
     fn test_image_loader() {
         let temp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
-        
+
         let image_path = temp_dir
             .path()
             .join("gradient.png")
             .to_string_lossy()
             .to_string();
 
-        let source_image = test_util::generate_gradient_pattern(
-            ImageShape {
-                width: 32,
-                height: 32,
-            }
-        );
+        let source_image = test_util::generate_gradient_pattern(ImageShape {
+            width: 32,
+            height: 32,
+        });
 
-        source_image.save(&image_path).expect("Failed to save test image");
+        source_image
+            .save(&image_path)
+            .expect("Failed to save test image");
 
         let mut schema = TableSchema::from_columns(&[ColumnSchema::new::<String>("path")]);
         schema

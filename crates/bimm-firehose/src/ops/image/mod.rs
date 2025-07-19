@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-/// Image loader operators.
-pub mod loader;
 /// `image::ColorType` utils.
 pub mod color_util;
+/// Image loader operators.
+pub mod loader;
 /// Image test utilities.
 pub mod test_util;
 

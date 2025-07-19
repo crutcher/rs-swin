@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use image::{ColorType, DynamicImage};
+use serde::{Deserialize, Serialize};
 
 /// Temporary color type (with support for serialization and deserialization).
 /// To be replaced with `image::ColorType` on the next release.
@@ -47,15 +47,32 @@ impl From<ColorType> for TmpColorType {
     }
 }
 
+impl From<TmpColorType> for ColorType {
+    fn from(color: TmpColorType) -> Self {
+        match color {
+            TmpColorType::L8 => ColorType::L8,
+            TmpColorType::La8 => ColorType::La8,
+            TmpColorType::Rgb8 => ColorType::Rgb8,
+            TmpColorType::Rgba8 => ColorType::Rgba8,
+            TmpColorType::L16 => ColorType::L16,
+            TmpColorType::La16 => ColorType::La16,
+            TmpColorType::Rgb16 => ColorType::Rgb16,
+            TmpColorType::Rgba16 => ColorType::Rgba16,
+            TmpColorType::Rgb32F => ColorType::Rgb32F,
+            TmpColorType::Rgba32F => ColorType::Rgba32F,
+        }
+    }
+}
+
 /// Convert an `image::DynamicImage` to a specific `ColorType`.
-/// 
+///
 /// # Parameters
-/// 
+///
 /// - `img`: The input image to convert.
 /// - `target_type`: The target color type to convert the image to.
-/// 
+///
 /// # Returns
-/// 
+///
 /// A new `DynamicImage` with the specified color type.
 pub fn convert_to_colortype(
     img: DynamicImage,
@@ -95,7 +112,6 @@ where
         color.serialize(serializer)
     }
 }
-
 
 /// Adapter Deserializer for `Option<ColorType>`.
 pub fn option_colortype_deserializer<'de, D>(deserializer: D) -> Result<Option<ColorType>, D::Error>
