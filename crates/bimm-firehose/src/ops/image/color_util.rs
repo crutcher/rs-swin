@@ -124,9 +124,9 @@ where
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::ops::image::ImageShape;
     use crate::ops::image::test_util::generate_gradient_pattern;
-    use super::*;
 
     #[derive(Debug, Serialize, Deserialize)]
     pub struct ExampleStruct {
@@ -180,7 +180,10 @@ mod tests {
 
     #[test]
     fn test_convert_to_colortype() {
-        let shape = ImageShape { width: 32, height: 32 };
+        let shape = ImageShape {
+            width: 32,
+            height: 32,
+        };
         let source = DynamicImage::from(generate_gradient_pattern(shape));
 
         assert_eq!(

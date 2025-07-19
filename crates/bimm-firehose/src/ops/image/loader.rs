@@ -75,7 +75,6 @@ impl ResizeSpec {
     }
 }
 
-
 /// An operator that loads an image from disk and optionally resizes it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageLoader {
