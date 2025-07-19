@@ -1,4 +1,5 @@
 use crate::core::{BuildOperator, BuildOperatorFactory, BuildPlan, DataTypeDescription};
+use crate::ops::image::{ImageShape, color_util};
 use image::imageops::FilterType;
 use image::{ColorType, DynamicImage, GenericImageView};
 use serde::{Deserialize, Serialize};
@@ -43,16 +44,6 @@ impl BuildOperatorFactory for ImageLoaderFactory {
     }
 }
 
-/// Represents the shape of an image.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ImageShape {
-    /// The width of the image in pixels.
-    pub width: u32,
-
-    /// The height of the image in pixels.
-    pub height: u32,
-}
-
 /// Represents the resize specification for an image.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResizeSpec {
@@ -84,112 +75,6 @@ impl ResizeSpec {
     }
 }
 
-/// Temporary color type (with support for serialization and deserialization).
-/// To be replaced with `image::ColorType` on the next release.
-#[derive(Copy, PartialEq, Eq, Debug, Clone, Hash, Serialize, Deserialize)]
-pub enum TmpColorType {
-    /// Pixel is 8-bit luminance
-    L8,
-    /// Pixel is 8-bit luminance with an alpha channel
-    La8,
-    /// Pixel contains 8-bit R, G and B channels
-    Rgb8,
-    /// Pixel is 8-bit RGB with an alpha channel
-    Rgba8,
-
-    /// Pixel is 16-bit luminance
-    L16,
-    /// Pixel is 16-bit luminance with an alpha channel
-    La16,
-    /// Pixel is 16-bit RGB
-    Rgb16,
-    /// Pixel is 16-bit RGBA
-    Rgba16,
-
-    /// Pixel is 32-bit float RGB
-    Rgb32F,
-    /// Pixel is 32-bit float RGBA
-    Rgba32F,
-}
-
-impl From<ColorType> for TmpColorType {
-    fn from(color: ColorType) -> Self {
-        match color {
-            ColorType::L8 => TmpColorType::L8,
-            ColorType::La8 => TmpColorType::La8,
-            ColorType::Rgb8 => TmpColorType::Rgb8,
-            ColorType::Rgba8 => TmpColorType::Rgba8,
-            ColorType::L16 => TmpColorType::L16,
-            ColorType::La16 => TmpColorType::La16,
-            ColorType::Rgb16 => TmpColorType::Rgb16,
-            ColorType::Rgba16 => TmpColorType::Rgba16,
-            ColorType::Rgb32F => TmpColorType::Rgb32F,
-            ColorType::Rgba32F => TmpColorType::Rgba32F,
-            _ => panic!("Unsupported ColorType: {color:?}"),
-        }
-    }
-}
-
-impl From<TmpColorType> for ColorType {
-    fn from(color: TmpColorType) -> Self {
-        match color {
-            TmpColorType::L8 => ColorType::L8,
-            TmpColorType::La8 => ColorType::La8,
-            TmpColorType::Rgb8 => ColorType::Rgb8,
-            TmpColorType::Rgba8 => ColorType::Rgba8,
-            TmpColorType::L16 => ColorType::L16,
-            TmpColorType::La16 => ColorType::La16,
-            TmpColorType::Rgb16 => ColorType::Rgb16,
-            TmpColorType::Rgba16 => ColorType::Rgba16,
-            TmpColorType::Rgb32F => ColorType::Rgb32F,
-            TmpColorType::Rgba32F => ColorType::Rgba32F,
-        }
-    }
-}
-
-fn convert_to_colortype(
-    img: DynamicImage,
-    target_type: ColorType,
-) -> DynamicImage {
-    match target_type {
-        ColorType::L8 => DynamicImage::ImageLuma8(img.to_luma8()),
-        ColorType::La8 => DynamicImage::ImageLumaA8(img.to_luma_alpha8()),
-        ColorType::Rgb8 => DynamicImage::ImageRgb8(img.to_rgb8()),
-        ColorType::Rgba8 => DynamicImage::ImageRgba8(img.to_rgba8()),
-        ColorType::L16 => DynamicImage::ImageLuma16(img.to_luma16()),
-        ColorType::La16 => DynamicImage::ImageLumaA16(img.to_luma_alpha16()),
-        ColorType::Rgb16 => DynamicImage::ImageRgb16(img.to_rgb16()),
-        ColorType::Rgba16 => DynamicImage::ImageRgba16(img.to_rgba16()),
-        ColorType::Rgb32F => DynamicImage::ImageRgb32F(img.to_rgb32f()),
-        ColorType::Rgba32F => DynamicImage::ImageRgba32F(img.to_rgba32f()),
-        _ => img, // fallback for unsupported types
-    }
-}
-
-fn colortype_serializer<S>(
-    color: &Option<ColorType>,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    if color.is_none() {
-        serializer.serialize_none()
-    } else {
-        let color = color.as_ref().unwrap();
-        let color: Option<TmpColorType> = Some((*color).into());
-        color.serialize(serializer)
-    }
-}
-
-fn colortype_deserializer<'de, D>(deserializer: D) -> Result<Option<ColorType>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let color: Option<TmpColorType> = Option::deserialize(deserializer)?;
-    Ok(color.map(|c| c.into()))
-}
-
 /// An operator that loads an image from disk and optionally resizes it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageLoader {
@@ -203,8 +88,8 @@ pub struct ImageLoader {
     /// Upstream `image::ColorType` is not serializable in the latest release;
     /// but *is* in the base repo, and this will change.
     #[serde(
-        serialize_with = "colortype_serializer",
-        deserialize_with = "colortype_deserializer"
+        serialize_with = "color_util::option_colortype_serializer",
+        deserialize_with = "color_util::option_colortype_deserializer"
     )]
     #[serde(default)]
     pub recolor: Option<ColorType>,
@@ -285,7 +170,7 @@ impl BuildOperator for ImageLoader {
 
         if let Some(color) = &self.recolor {
             let color: ColorType = *color;
-            image = convert_to_colortype(image, color);
+            image = color_util::convert_to_colortype(image, color);
         }
 
         {
@@ -303,24 +188,13 @@ mod tests {
     use crate::core::{
         BuildPlan, ColumnSchema, DataTypeDescription, RowBatch, TableSchema, experimental_run_batch,
     };
-    use image::{DynamicImage, ImageBuffer, Rgb, RgbImage};
+    use crate::ops::image::test_util;
+    use image::DynamicImage;
     use std::sync::Arc;
-
-    fn generate_gradient_pattern() -> RgbImage {
-        ImageBuffer::from_fn(32, 32, |x, y| {
-            let r = ((x as f32 / 31.0) * 255.0) as u8;
-            let g = ((y as f32 / 31.0) * 255.0) as u8;
-            let b = (((x + y) as f32 / 62.0) * 255.0) as u8;
-
-            Rgb([r, g, b])
-        })
-    }
 
     #[test]
     fn test_image_loader() {
-        let temp_dir = tempfile::tempdir().unwrap();
-
-        let image = generate_gradient_pattern();
+        let temp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
 
         let image_path = temp_dir
             .path()
@@ -328,7 +202,14 @@ mod tests {
             .to_string_lossy()
             .to_string();
 
-        image.save(&image_path).expect("Failed to save test image");
+        let source_image = test_util::generate_gradient_pattern(ImageShape {
+            width: 32,
+            height: 32,
+        });
+
+        source_image
+            .save(&image_path)
+            .expect("Failed to save test image");
 
         let mut schema = TableSchema::from_columns(&[ColumnSchema::new::<String>("path")]);
         schema
