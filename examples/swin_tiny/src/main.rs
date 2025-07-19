@@ -137,6 +137,10 @@ pub fn train<B: AutodiffBackend>(
         let mut items = index.train.items.clone();
         items.extend(index.test.items.clone());
 
+        // Work around split bug in MultiThreadedDataLoader
+        let mut rng = rng();
+        items.shuffle(&mut rng);
+
         DataLoaderBuilder::new(batcher.clone())
             .batch_size(config.batch_size)
             .shuffle(config.seed)
@@ -252,7 +256,7 @@ fn main() {
     .with_learning_rate(1.0e-3)
     .with_num_epochs(40)
     .with_batch_size(512)
-    .with_num_workers(1);
+    .with_num_workers(8);
 
     let devices = vec![Default::default()];
     // This always crashes on the transition from train to valid step,

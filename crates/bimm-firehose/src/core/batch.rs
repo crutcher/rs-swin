@@ -1,4 +1,4 @@
-use crate::firehose::{Row, TableSchema};
+use crate::core::{Row, TableSchema};
 use std::ops::{Index, IndexMut};
 use std::sync::Arc;
 
@@ -151,7 +151,7 @@ impl RowBatch {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::firehose::{ColumnSchema, Row, TableSchema};
+    use crate::core::{ColumnSchema, Row, TableSchema};
     use std::sync::Arc;
 
     #[test]
