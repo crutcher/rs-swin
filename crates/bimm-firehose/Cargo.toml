@@ -14,6 +14,7 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
 image = { workspace = true, features = ["jpeg", "png", "gif", "serde"] }
+image-compare = { workspace = true }
 uuid = { workspace = true, features = ["v4", "serde"] }
 
 [dev-dependencies]

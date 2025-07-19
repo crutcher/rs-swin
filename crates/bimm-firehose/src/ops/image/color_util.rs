@@ -82,16 +82,16 @@ pub fn convert_to_colortype(
         return img;
     }
     match target_type {
-        ColorType::L8 => DynamicImage::ImageLuma8(img.to_luma8()),
-        ColorType::La8 => DynamicImage::ImageLumaA8(img.to_luma_alpha8()),
-        ColorType::Rgb8 => DynamicImage::ImageRgb8(img.to_rgb8()),
-        ColorType::Rgba8 => DynamicImage::ImageRgba8(img.to_rgba8()),
-        ColorType::L16 => DynamicImage::ImageLuma16(img.to_luma16()),
-        ColorType::La16 => DynamicImage::ImageLumaA16(img.to_luma_alpha16()),
-        ColorType::Rgb16 => DynamicImage::ImageRgb16(img.to_rgb16()),
-        ColorType::Rgba16 => DynamicImage::ImageRgba16(img.to_rgba16()),
-        ColorType::Rgb32F => DynamicImage::ImageRgb32F(img.to_rgb32f()),
-        ColorType::Rgba32F => DynamicImage::ImageRgba32F(img.to_rgba32f()),
+        ColorType::L8 => img.to_luma8().into(),
+        ColorType::La8 => img.to_luma_alpha8().into(),
+        ColorType::Rgb8 => img.to_rgb8().into(),
+        ColorType::Rgba8 => img.to_rgba8().into(),
+        ColorType::L16 => img.to_luma16().into(),
+        ColorType::La16 => img.to_luma_alpha16().into(),
+        ColorType::Rgb16 => img.to_rgb16().into(),
+        ColorType::Rgba16 => img.to_rgba16().into(),
+        ColorType::Rgb32F => img.to_rgb32f().into(),
+        ColorType::Rgba32F => img.to_rgba32f().into(),
         _ => panic!("Unsupported ColorType: {target_type:?}"),
     }
 }
@@ -120,4 +120,108 @@ where
 {
     let color: Option<TmpColorType> = Option::deserialize(deserializer)?;
     Ok(color.map(|c| c.into()))
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::ops::image::ImageShape;
+    use crate::ops::image::test_util::generate_gradient_pattern;
+    use super::*;
+
+    #[derive(Debug, Serialize, Deserialize)]
+    pub struct ExampleStruct {
+        #[serde(
+            serialize_with = "option_colortype_serializer",
+            deserialize_with = "option_colortype_deserializer"
+        )]
+        color: Option<ColorType>,
+    }
+
+    #[test]
+    fn test_example_struct_serialization() {
+        let example = ExampleStruct {
+            color: Some(ColorType::Rgba8),
+        };
+        let serialized = serde_json::to_string(&example).unwrap();
+        assert!(serialized.contains("\"color\":\"Rgba8\""));
+
+        let deserialized: ExampleStruct = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(deserialized.color, Some(ColorType::Rgba8));
+
+        let example_none = ExampleStruct { color: None };
+        let serialized_none = serde_json::to_string(&example_none).unwrap();
+        assert!(serialized_none.contains("\"color\":null"));
+
+        let deserialized_none: ExampleStruct = serde_json::from_str(&serialized_none).unwrap();
+        assert_eq!(deserialized_none.color, None);
+    }
+
+    #[test]
+    fn test_to_from_color_type() {
+        let color_types = [
+            ColorType::L8,
+            ColorType::La8,
+            ColorType::Rgb8,
+            ColorType::Rgba8,
+            ColorType::L16,
+            ColorType::La16,
+            ColorType::Rgb16,
+            ColorType::Rgba16,
+            ColorType::Rgb32F,
+            ColorType::Rgba32F,
+        ];
+
+        for color in color_types {
+            let tmp_color: TmpColorType = color.into();
+            let back_to_color: ColorType = tmp_color.into();
+            assert_eq!(color, back_to_color);
+        }
+    }
+
+    #[test]
+    fn test_convert_to_colortype() {
+        let shape = ImageShape { width: 32, height: 32 };
+        let source = DynamicImage::from(generate_gradient_pattern(shape));
+
+        assert_eq!(
+            convert_to_colortype(source.clone(), ColorType::L8),
+            DynamicImage::from(source.clone().to_luma8())
+        );
+        assert_eq!(
+            convert_to_colortype(source.clone(), ColorType::La8),
+            DynamicImage::from(source.clone().to_luma_alpha8())
+        );
+        assert_eq!(
+            convert_to_colortype(source.clone(), ColorType::Rgb8),
+            DynamicImage::from(source.clone().to_rgb8())
+        );
+        assert_eq!(
+            convert_to_colortype(source.clone(), ColorType::Rgba8),
+            DynamicImage::from(source.clone().to_rgba8())
+        );
+        assert_eq!(
+            convert_to_colortype(source.clone(), ColorType::L16),
+            DynamicImage::from(source.clone().to_luma16())
+        );
+        assert_eq!(
+            convert_to_colortype(source.clone(), ColorType::La16),
+            DynamicImage::from(source.clone().to_luma_alpha16())
+        );
+        assert_eq!(
+            convert_to_colortype(source.clone(), ColorType::Rgb16),
+            DynamicImage::from(source.clone().to_rgb16())
+        );
+        assert_eq!(
+            convert_to_colortype(source.clone(), ColorType::Rgba16),
+            DynamicImage::from(source.clone().to_rgba16())
+        );
+        assert_eq!(
+            convert_to_colortype(source.clone(), ColorType::Rgb32F),
+            DynamicImage::from(source.clone().to_rgb32f())
+        );
+        assert_eq!(
+            convert_to_colortype(source.clone(), ColorType::Rgba32F),
+            DynamicImage::from(source.clone().to_rgba32f())
+        );
+    }
 }
