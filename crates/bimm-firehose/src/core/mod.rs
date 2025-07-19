@@ -10,6 +10,37 @@ pub use operators::*;
 pub use rows::*;
 pub use schema::*;
 
+/// Driver for executing a batch of build plans against a `RowBatch`.
+///
+/// This function applies the build plans defined in the `RowBatch` schema to the rows in the batch.
+///
+/// # Arguments
+///
+/// * `batch` - A mutable reference to the `RowBatch` containing the rows to be processed.
+/// * `factory` - A reference to a factory that can create the operators defined in the build plans.
+///
+/// # Returns
+///
+/// A result indicating success or an error message if the operation fails.
+pub fn experimental_run_batch<F>(
+    batch: &mut RowBatch,
+    factory: &F,
+) -> Result<(), String>
+where
+    F: BuildOperatorFactory,
+{
+    let schema = batch.schema.as_ref();
+
+    let (_base, plans) = schema.build_order()?;
+    // TODO: ensure that the base is present in the batch rows.
+
+    for plan in &plans {
+        let builder = ColumnBuilder::bind_plan(schema, plan, factory)?;
+        builder.apply_batch(batch.rows.as_mut_slice()).unwrap();
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
 

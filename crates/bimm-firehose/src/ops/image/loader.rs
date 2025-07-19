@@ -63,6 +63,27 @@ pub struct ResizeSpec {
     pub filter: FilterType,
 }
 
+impl ResizeSpec {
+    /// Creates a new `ResizeSpec` with the specified shape and filter.
+    pub fn new(shape: ImageShape) -> Self {
+        ResizeSpec {
+            shape,
+            filter: FilterType::CatmullRom,
+        }
+    }
+
+    /// Extends the `ResizeSpec` with a new shape, keeping the existing filter type.
+    pub fn with_filter(
+        self,
+        filter: FilterType,
+    ) -> Self {
+        ResizeSpec {
+            shape: self.shape,
+            filter,
+        }
+    }
+}
+
 /// Temporary color type (with support for serialization and deserialization).
 /// To be replaced with `image::ColorType` on the next release.
 #[derive(Copy, PartialEq, Eq, Debug, Clone, Hash, Serialize, Deserialize)]
@@ -145,6 +166,30 @@ fn convert_to_colortype(
     }
 }
 
+fn colortype_serializer<S>(
+    color: &Option<ColorType>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    if color.is_none() {
+        serializer.serialize_none()
+    } else {
+        let color = color.as_ref().unwrap();
+        let color: Option<TmpColorType> = Some((*color).into());
+        color.serialize(serializer)
+    }
+}
+
+fn colortype_deserializer<'de, D>(deserializer: D) -> Result<Option<ColorType>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let color: Option<TmpColorType> = Option::deserialize(deserializer)?;
+    Ok(color.map(|c| c.into()))
+}
+
 /// An operator that loads an image from disk and optionally resizes it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageLoader {
@@ -155,8 +200,68 @@ pub struct ImageLoader {
 
     /// If enabled, the loader will recolor images to the specified color type.
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Upstream `image::ColorType` is not serializable in the latest release;
+    /// but *is* in the base repo, and this will change.
+    #[serde(
+        serialize_with = "colortype_serializer",
+        deserialize_with = "colortype_deserializer"
+    )]
     #[serde(default)]
-    pub recolor: Option<TmpColorType>,
+    pub recolor: Option<ColorType>,
+}
+
+impl Default for ImageLoader {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ImageLoader {
+    /// Creates a new `ImageLoader` with optional resize and recolor specifications.
+    pub fn new() -> Self {
+        ImageLoader {
+            resize: None,
+            recolor: None,
+        }
+    }
+
+    /// Extends the `ImageLoader` with a resize specification.
+    ///
+    /// ## Arguments
+    ///
+    /// * `resize`: The resize specification to apply to the image.
+    ///
+    /// ## Returns
+    ///
+    /// A new `ImageLoader` instance with the specified resize applied.
+    pub fn with_resize(
+        self,
+        resize: ResizeSpec,
+    ) -> Self {
+        ImageLoader {
+            resize: Some(resize),
+            recolor: self.recolor,
+        }
+    }
+
+    /// Extends the `ImageLoader` with a recolor specification.
+    ///
+    /// ## Arguments
+    ///
+    /// * `recolor`: The color type to convert the image to.
+    ///
+    /// ## Returns
+    ///
+    /// A new `ImageLoader` instance with the specified recolor applied.
+    pub fn with_recolor(
+        self,
+        recolor: ColorType,
+    ) -> Self {
+        ImageLoader {
+            resize: self.resize,
+            recolor: Some(recolor),
+        }
+    }
 }
 
 impl BuildOperator for ImageLoader {
@@ -179,7 +284,7 @@ impl BuildOperator for ImageLoader {
         }
 
         if let Some(color) = &self.recolor {
-            let color: ColorType = (*color).into();
+            let color: ColorType = *color;
             image = convert_to_colortype(image, color);
         }
 
@@ -232,10 +337,7 @@ mod tests {
                     .with_description("Loads image from disk")
                     .with_inputs(&[("path", "path")])
                     .with_outputs(&[("image", "image")])
-                    .with_config(ImageLoader {
-                        resize: None,
-                        recolor: None,
-                    }),
+                    .with_config(ImageLoader::new()),
                 &[(
                     "image",
                     DataTypeDescription::new::<DynamicImage>(),
@@ -249,16 +351,14 @@ mod tests {
                     .with_description("Loads image from disk")
                     .with_inputs(&[("path", "path")])
                     .with_outputs(&[("image", "resized_gray")])
-                    .with_config(ImageLoader {
-                        resize: Some(ResizeSpec {
-                            shape: ImageShape {
+                    .with_config(
+                        ImageLoader::new()
+                            .with_resize(ResizeSpec::new(ImageShape {
                                 width: 16,
                                 height: 16,
-                            },
-                            filter: image::imageops::FilterType::Nearest,
-                        }),
-                        recolor: Some(ColorType::L16.into()),
-                    }),
+                            }))
+                            .with_recolor(ColorType::L16),
+                    ),
                 &[(
                     "image",
                     DataTypeDescription::new::<DynamicImage>(),
@@ -281,6 +381,7 @@ mod tests {
         assert_eq!(loaded_image.width(), 32);
         assert_eq!(loaded_image.height(), 32);
         assert_eq!(loaded_image.color(), ColorType::Rgb8);
+        // TODO: compare pixel values
 
         let gray_image = batch[0]
             .get_column::<DynamicImage>(&schema, "resized_gray")
@@ -288,5 +389,6 @@ mod tests {
         assert_eq!(gray_image.width(), 16);
         assert_eq!(gray_image.height(), 16);
         assert_eq!(gray_image.color(), ColorType::L16);
+        // TODO: compare pixel values
     }
 }
