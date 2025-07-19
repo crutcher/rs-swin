@@ -54,7 +54,7 @@ where A: Into<BlendInput<'a>>, B: Into<BlendInput<'a>>,
 ///
 /// * `actual` - The actual image to compare.
 /// * `expected` - The expected image to compare against.
-/// # `tolerance` - An optional tolerance value for the similarity score. If not provided, defaults to 0.01.
+/// * `tolerance` - An optional tolerance value for the similarity score. If not provided, defaults to 0.01.
 ///
 /// # Panics
 ///
