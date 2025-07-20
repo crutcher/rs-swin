@@ -90,7 +90,7 @@ mod tests {
     use super::*;
     use crate::core::op_spec::ParameterSpec;
     use crate::ops::image::loader::{ImageLoader, ImageLoaderFactory};
-    use indoc::formatdoc;
+    use indoc::indoc;
 
     #[test]
     fn test_example() -> Result<(), String> {
@@ -129,69 +129,69 @@ mod tests {
 
         assert_eq!(
             serde_json::to_string_pretty(&schema).unwrap(),
-            formatdoc! {r#"
-                {{
+            indoc! {r#"
+                {
                   "columns": [
-                    {{
+                    {
                       "name": "path",
                       "description": "path to the image",
-                      "data_type": {{
+                      "data_type": {
                         "type_name": "alloc::string::String"
-                      }}
-                    }},
-                    {{
+                      }
+                    },
+                    {
                       "name": "class_name",
                       "description": "category class name",
-                      "data_type": {{
+                      "data_type": {
                         "type_name": "alloc::string::String"
-                      }}
-                    }},
-                    {{
+                      }
+                    },
+                    {
                       "name": "class_code",
                       "description": "category class code",
-                      "data_type": {{
+                      "data_type": {
                         "type_name": "u32"
-                      }}
-                    }},
-                    {{
+                      }
+                    },
+                    {
                       "name": "raw_image",
                       "description": "Image loaded from disk.",
-                      "data_type": {{
+                      "data_type": {
                         "type_name": "image::dynimage::DynamicImage"
-                      }}
-                    }}
+                      }
+                    }
                   ],
                   "build_plans": [
-                    {{
-                      "operator": {{
+                    {
+                      "operator": {
                         "namespace": "example",
                         "name": "path_to_class"
-                      }},
+                      },
                       "description": "Extracts class name from image path",
-                      "inputs": {{
+                      "inputs": {
                         "path": "path"
-                      }},
-                      "outputs": {{
+                      },
+                      "outputs": {
                         "code": "class_code",
                         "name": "class_name"
-                      }}
-                    }},
-                    {{
-                      "operator": {{
+                      }
+                    },
+                    {
+                      "operator": {
                         "namespace": "image",
                         "name": "load_image"
-                      }},
+                      },
                       "description": "Loads an image from disk.",
-                      "config": {{}},
-                      "inputs": {{
+                      "config": {},
+                      "inputs": {
                         "path": "path"
-                      }},
-                      "outputs": {{
+                      },
+                      "outputs": {
                         "image": "raw_image"
-                      }}
-                    }}
+                      }
+                    }
                   ]
-                }}"#,
+                }"#,
             }
         );
 
