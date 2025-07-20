@@ -20,6 +20,7 @@ uuid = { workspace = true, features = ["v4", "serde"] }
 [dev-dependencies]
 burn = { workspace = true, features = ["ndarray"] }
 
+anyhow = { workspace = true }
 indoc = { workspace = true }
 tempfile = { workspace = true }
 

@@ -1,3 +1,4 @@
+use crate::core::op_spec::{OperatorSpec, ParameterSpec};
 use crate::core::{BuildOperator, BuildOperatorFactory, BuildPlan, DataTypeDescription};
 use crate::ops::image::{ImageShape, color_util};
 use image::imageops::FilterType;
@@ -11,6 +12,15 @@ use std::sync::Arc;
 #[derive(Debug)]
 pub struct ImageLoaderFactory {}
 
+impl ImageLoaderFactory {
+    fn load_image_op_spec() -> OperatorSpec {
+        OperatorSpec::new()
+            .with_input(ParameterSpec::new::<String>("path"))
+            .with_output(ParameterSpec::new::<DynamicImage>("image"))
+            .with_description("Loads an image from disk and optionally resizes it.")
+    }
+}
+
 impl BuildOperatorFactory for ImageLoaderFactory {
     fn init_operator(
         &self,
@@ -18,24 +28,7 @@ impl BuildOperatorFactory for ImageLoaderFactory {
         input_types: &BTreeMap<String, DataTypeDescription>,
         output_types: &BTreeMap<String, DataTypeDescription>,
     ) -> Result<Box<dyn BuildOperator>, String> {
-        let expected_type = DataTypeDescription::new::<DynamicImage>();
-
-        if !input_types.contains_key("path") || input_types.len() != 1 {
-            return Err(format!(
-                "ImageLoader expects a single input 'path' of type {expected_type:?}, but got: {input_types:?}"
-            ));
-        }
-        if !output_types.contains_key("image") || output_types.len() != 1 {
-            return Err(format!(
-                "ImageLoader expects a single output 'image' of type {expected_type:?}, but got: {output_types:?}"
-            ));
-        }
-        if output_types["image"] != expected_type {
-            return Err(format!(
-                "ImageLoader expects output 'image' to be of type {:?}, but got: {:?}",
-                expected_type, output_types["image"]
-            ));
-        }
+        Self::load_image_op_spec().validate(input_types, output_types)?;
 
         let factory: ImageLoader =
             serde_json::from_value(build_plan.config.clone()).expect("Invalid config");
@@ -186,14 +179,16 @@ mod tests {
     use super::*;
 
     use crate::core::{
-        BuildPlan, ColumnSchema, DataTypeDescription, RowBatch, TableSchema, experimental_run_batch,
+        ColumnSchema, OperatorId, RowBatch, TableSchema, experimental_plan_columns,
+        experimental_run_batch,
     };
     use crate::ops::image::test_util;
+    use crate::ops::image::test_util::assert_image_close;
     use image::DynamicImage;
     use std::sync::Arc;
 
     #[test]
-    fn test_image_loader() {
+    fn test_image_loader() -> Result<(), String> {
         let temp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
 
         let image_path = temp_dir
@@ -202,51 +197,47 @@ mod tests {
             .to_string_lossy()
             .to_string();
 
-        let source_image = test_util::generate_gradient_pattern(ImageShape {
+        let source_image: DynamicImage = test_util::generate_gradient_pattern(ImageShape {
             width: 32,
             height: 32,
-        });
+        })
+        .into();
 
         source_image
             .save(&image_path)
             .expect("Failed to save test image");
 
         let mut schema = TableSchema::from_columns(&[ColumnSchema::new::<String>("path")]);
-        schema
-            .add_build_plan_and_outputs(
-                BuildPlan::for_operator(("image", "load_image"))
-                    .with_description("Loads image from disk")
-                    .with_inputs(&[("path", "path")])
-                    .with_outputs(&[("image", "image")])
-                    .with_config(ImageLoader::new()),
-                &[(
-                    "image",
-                    DataTypeDescription::new::<DynamicImage>(),
-                    "Loaded image",
-                )],
-            )
-            .expect("Failed to add build plan");
-        schema
-            .add_build_plan_and_outputs(
-                BuildPlan::for_operator(("image", "load_image"))
-                    .with_description("Loads image from disk")
-                    .with_inputs(&[("path", "path")])
-                    .with_outputs(&[("image", "resized_gray")])
-                    .with_config(
-                        ImageLoader::new()
-                            .with_resize(ResizeSpec::new(ImageShape {
-                                width: 16,
-                                height: 16,
-                            }))
-                            .with_recolor(ColorType::L16),
-                    ),
-                &[(
-                    "image",
-                    DataTypeDescription::new::<DynamicImage>(),
-                    "Loaded image",
-                )],
-            )
-            .expect("Failed to add build plan");
+
+        let load_image_op_id: OperatorId = ("image", "load_image").into();
+
+        experimental_plan_columns(
+            &mut schema,
+            &load_image_op_id,
+            &ImageLoaderFactory::load_image_op_spec(),
+            &[("path", "path")],
+            &[("image", "image")],
+            Some(ImageLoader::new()),
+        )?;
+
+        experimental_plan_columns(
+            &mut schema,
+            &load_image_op_id,
+            &ImageLoaderFactory::load_image_op_spec(),
+            &[("path", "path")],
+            &[("image", "resized_gray")],
+            Some(
+                ImageLoader::new()
+                    .with_resize(
+                        ResizeSpec::new(ImageShape {
+                            width: 16,
+                            height: 16,
+                        })
+                        .with_filter(FilterType::Nearest),
+                    )
+                    .with_recolor(ColorType::L16),
+            ),
+        )?;
 
         let schema = Arc::new(schema);
 
@@ -254,7 +245,7 @@ mod tests {
         batch[0].set_column(&schema, "path", Some(Arc::new(image_path)));
 
         let factory = ImageLoaderFactory {};
-        experimental_run_batch(&mut batch, &factory).expect("Failed to complete batch");
+        experimental_run_batch(&mut batch, &factory)?;
 
         let loaded_image = batch[0]
             .get_column::<DynamicImage>(&schema, "image")
@@ -262,7 +253,7 @@ mod tests {
         assert_eq!(loaded_image.width(), 32);
         assert_eq!(loaded_image.height(), 32);
         assert_eq!(loaded_image.color(), ColorType::Rgb8);
-        // TODO: compare pixel values
+        assert_image_close(loaded_image, &source_image, None);
 
         let gray_image = batch[0]
             .get_column::<DynamicImage>(&schema, "resized_gray")
@@ -270,6 +261,15 @@ mod tests {
         assert_eq!(gray_image.width(), 16);
         assert_eq!(gray_image.height(), 16);
         assert_eq!(gray_image.color(), ColorType::L16);
-        // TODO: compare pixel values
+        assert_image_close(
+            gray_image,
+            &source_image
+                .resize(16, 16, FilterType::Nearest)
+                .to_luma8()
+                .into(),
+            None,
+        );
+
+        Ok(())
     }
 }
