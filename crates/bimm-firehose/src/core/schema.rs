@@ -67,10 +67,6 @@ impl From<[&str; 2]> for OperatorId {
 /// A build plan for columns in a table schema.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct BuildPlan {
-    /// The unique identifier for the build plan.
-    #[serde(default = "uuid::Uuid::new_v4")]
-    pub id: uuid::Uuid,
-
     /// The ID of the operator.
     pub operator: OperatorId,
 
@@ -102,7 +98,6 @@ impl BuildPlan {
         I: Into<OperatorId>,
     {
         BuildPlan {
-            id: uuid::Uuid::new_v4(),
             operator: id.into(),
             description: None,
             config: serde_json::Value::Null,

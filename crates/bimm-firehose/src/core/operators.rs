@@ -297,7 +297,7 @@ mod tests {
     use crate::core::{
         AnyArc, BuildPlan, ColumnSchema, DataTypeDescription, OperatorId, RowBatch, TableSchema,
     };
-    use indoc::formatdoc;
+    use indoc::indoc;
     use serde::{Deserialize, Serialize};
     use std::any::Any;
     use std::collections::BTreeMap;
@@ -445,30 +445,29 @@ mod tests {
 
         assert_eq!(
             format!("{builder:#?}"),
-            formatdoc! {r#"
-               ColumnBuilder {{
-                   build_plan: BuildPlan {{
-                       id: {:?},
-                       operator: OperatorId {{
+            indoc! {r#"
+               ColumnBuilder {
+                   build_plan: BuildPlan {
+                       operator: OperatorId {
                            namespace: "example",
                            name: "add",
-                       }},
+                       },
                        description: Some(
                            "Adds inputs with a bias",
                        ),
-                       config: Object {{
+                       config: Object {
                            "bias": Number(10),
-                       }},
-                       inputs: {{
+                       },
+                       inputs: {
                            "x": "a",
                            "y": "b",
-                       }},
-                       outputs: {{
+                       },
+                       outputs: {
                            "result": "c",
-                       }},
-                   }},
-               }}"#,
-            builder.build_plan.id}
+                       },
+                   },
+               }"#,
+            }
         );
 
         assert_eq!(builder.effective_batch_size(), 1);

@@ -1,5 +1,7 @@
 use crate::core::op_spec::{OperatorSpec, ParameterSpec};
-use crate::core::{BuildOperator, BuildOperatorFactory, BuildPlan, DataTypeDescription};
+use crate::core::{
+    BuildOperator, BuildOperatorFactory, BuildPlan, DataTypeDescription, OperatorId,
+};
 use crate::ops::image::{ImageShape, color_util};
 use image::imageops::FilterType;
 use image::{ColorType, DynamicImage, GenericImageView};
@@ -13,11 +15,20 @@ use std::sync::Arc;
 pub struct ImageLoaderFactory {}
 
 impl ImageLoaderFactory {
-    fn load_image_op_spec() -> OperatorSpec {
+    /// Returns the operator ID for the image loader.
+    pub fn load_image_op_id() -> OperatorId {
+        OperatorId::new("image", "load_image")
+    }
+
+    /// Returns the operator specification for loading an image.
+    pub fn load_image_op_spec() -> OperatorSpec {
         OperatorSpec::new()
             .with_input(ParameterSpec::new::<String>("path"))
-            .with_output(ParameterSpec::new::<DynamicImage>("image"))
-            .with_description("Loads an image from disk and optionally resizes it.")
+            .with_output(
+                ParameterSpec::new::<DynamicImage>("image")
+                    .with_description("Image loaded from disk."),
+            )
+            .with_description("Loads an image from disk.")
     }
 }
 
@@ -179,8 +190,7 @@ mod tests {
     use super::*;
 
     use crate::core::{
-        ColumnSchema, OperatorId, RowBatch, TableSchema, experimental_plan_columns,
-        experimental_run_batch,
+        ColumnSchema, RowBatch, TableSchema, experimental_plan_columns, experimental_run_batch,
     };
     use crate::ops::image::test_util;
     use crate::ops::image::test_util::assert_image_close;
@@ -209,11 +219,9 @@ mod tests {
 
         let mut schema = TableSchema::from_columns(&[ColumnSchema::new::<String>("path")]);
 
-        let load_image_op_id: OperatorId = ("image", "load_image").into();
-
         experimental_plan_columns(
             &mut schema,
-            &load_image_op_id,
+            &ImageLoaderFactory::load_image_op_id(),
             &ImageLoaderFactory::load_image_op_spec(),
             &[("path", "path")],
             &[("image", "image")],
@@ -222,7 +230,7 @@ mod tests {
 
         experimental_plan_columns(
             &mut schema,
-            &load_image_op_id,
+            &ImageLoaderFactory::load_image_op_id(),
             &ImageLoaderFactory::load_image_op_spec(),
             &[("path", "path")],
             &[("image", "resized_gray")],
