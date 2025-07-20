@@ -94,20 +94,6 @@ mod tests {
 
     #[test]
     fn test_example() -> Result<(), String> {
-        // TODO: building up fluent schema builder pattern; some kind of op/builder to construct this.
-        // - bound operator environment (name <-> implementation mapping)
-        // - symbolic column def (wth some basic source type / op argument checking ...)
-        // - extends column schema with build info
-
-        // TODO: garbage collection for intermediate columns.
-        // - could mark columns as intermediate (did, but removed for now).
-        // - what pins an intermediate column?
-        //   - in the dep graph for missing non-intermediate columns?
-
-        let mut schema = TableSchema::from_columns(&[
-            ColumnSchema::new::<String>("path").with_description("path to the image")
-        ]);
-
         let path_to_class_op_id: OperatorId = ("example", "path_to_class").into();
         let path_to_class_spec: OperatorSpec = OperatorSpec::new()
             .with_description("Extracts class name from image path")
@@ -118,6 +104,10 @@ mod tests {
                 ParameterSpec::new::<String>("name").with_description("category class name"),
             )
             .with_output(ParameterSpec::new::<u32>("code").with_description("category class code"));
+
+        let mut schema = TableSchema::from_columns(&[
+            ColumnSchema::new::<String>("path").with_description("path to the image")
+        ]);
 
         experimental_plan_columns(
             &mut schema,
