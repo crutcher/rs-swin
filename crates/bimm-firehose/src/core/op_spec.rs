@@ -83,7 +83,7 @@ impl ParameterSpec {
 /// Defines the complete input/output specification for an operator
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OperatorSpec {
-    /// Optional desscription.
+    /// Optional description.
     pub description: Option<String>,
 
     /// A list of input parameters for the operator.
@@ -221,16 +221,7 @@ impl OperatorSpec {
             if provided[&spec.name] != spec.data_type {
                 return Err(format!(
                     "{} parameter '{}' expected type {:?}, but got {:?}",
-                    param_type
-                        .chars()
-                        .next()
-                        .unwrap()
-                        .to_uppercase()
-                        .collect::<String>()
-                        + &param_type[1..],
-                    spec.name,
-                    spec.data_type,
-                    provided[&spec.name]
+                    param_type, spec.name, spec.data_type, provided[&spec.name]
                 ));
             }
         }
@@ -246,17 +237,7 @@ impl OperatorSpec {
                 Some(expected_type) => {
                     if data_type != *expected_type {
                         return Err(format!(
-                            "{} parameter '{}' expected type {:?}, but got {:?}",
-                            param_type
-                                .chars()
-                                .next()
-                                .unwrap()
-                                .to_uppercase()
-                                .collect::<String>()
-                                + &param_type[1..],
-                            name,
-                            expected_type,
-                            data_type
+                            "{param_type} parameter '{name}' expected type {expected_type:?}, but got {data_type:?}"
                         ));
                     }
                 }
