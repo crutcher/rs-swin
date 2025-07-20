@@ -88,10 +88,12 @@ where
 mod tests {
 
     use super::*;
+    use crate::core::op_spec::ParameterSpec;
+    use crate::ops::image::loader::{ImageLoader, ImageLoaderFactory};
     use indoc::formatdoc;
 
     #[test]
-    fn test_example() {
+    fn test_example() -> Result<(), String> {
         // TODO: building up fluent schema builder pattern; some kind of op/builder to construct this.
         // - bound operator environment (name <-> implementation mapping)
         // - symbolic column def (wth some basic source type / op argument checking ...)
@@ -106,64 +108,34 @@ mod tests {
             ColumnSchema::new::<String>("path").with_description("path to the image")
         ]);
 
-        schema
-            .add_build_plan_and_outputs(
-                BuildPlan::for_operator(("example", "path_to_class"))
-                    .with_description("Extracts class name from image path")
-                    .with_inputs(&[("source", "path")])
-                    .with_outputs(&[("name", "class_name"), ("code", "class_code")]),
-                &[
-                    (
-                        "name".to_string(),
-                        DataTypeDescription::new::<String>(),
-                        Some("category class name".to_string()),
-                    ),
-                    (
-                        "code".to_string(),
-                        DataTypeDescription::new::<u32>(),
-                        Some("category class code".to_string()),
-                    ),
-                ],
+        let path_to_class_op_id: OperatorId = ("example", "path_to_class").into();
+        let path_to_class_spec: OperatorSpec = OperatorSpec::new()
+            .with_description("Extracts class name from image path")
+            .with_input(
+                ParameterSpec::new::<String>("path").with_description("Path to segment for class."),
             )
-            .expect("failed to add build plan");
+            .with_output(
+                ParameterSpec::new::<String>("name").with_description("category class name"),
+            )
+            .with_output(ParameterSpec::new::<u32>("code").with_description("category class code"));
 
-        schema
-            .add_build_plan_and_outputs(
-                BuildPlan::for_operator(("example", "load_image"))
-                    .with_description("Loads image from disk")
-                    .with_inputs(&[("path", "path")])
-                    .with_outputs(&[("image", "raw_image")]),
-                &[(
-                    "image".to_string(),
-                    DataTypeDescription::new::<Vec<u8>>(),
-                    Some("Image loaded from disk".to_string()),
-                )],
-            )
-            .expect("failed to add build plan");
+        experimental_plan_columns(
+            &mut schema,
+            &path_to_class_op_id,
+            &path_to_class_spec,
+            &[("path", "path")],
+            &[("name", "class_name"), ("code", "class_code")],
+            None as Option<()>,
+        )?;
 
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct ImageAugConfig {
-            blur: f64,
-            brightness: f64,
-        }
-        let config = ImageAugConfig {
-            blur: 2.0,
-            brightness: 0.5,
-        };
-        schema
-            .add_build_plan_and_outputs(
-                BuildPlan::for_operator(("example", "image_aug"))
-                    .with_description("Augments image with blur and brightness")
-                    .with_config(config)
-                    .with_inputs(&[("source", "raw_image")])
-                    .with_outputs(&[("augmented", "aug_image")]),
-                &[(
-                    "augmented".to_string(),
-                    DataTypeDescription::new::<Vec<u8>>(),
-                    Some("augmented image".to_string()),
-                )],
-            )
-            .expect("failed to add build plan");
+        experimental_plan_columns(
+            &mut schema,
+            &ImageLoaderFactory::load_image_op_id(),
+            &ImageLoaderFactory::load_image_op_spec(),
+            &[("path", "path")],
+            &[("image", "raw_image")],
+            Some(ImageLoader::new()),
+        )?;
 
         assert_eq!(
             serde_json::to_string_pretty(&schema).unwrap(),
@@ -193,16 +165,9 @@ mod tests {
                     }},
                     {{
                       "name": "raw_image",
-                      "description": "Image loaded from disk",
+                      "description": "Image loaded from disk.",
                       "data_type": {{
-                        "type_name": "alloc::vec::Vec<u8>"
-                      }}
-                    }},
-                    {{
-                      "name": "aug_image",
-                      "description": "augmented image",
-                      "data_type": {{
-                        "type_name": "alloc::vec::Vec<u8>"
+                        "type_name": "image::dynimage::DynamicImage"
                       }}
                     }}
                   ],
@@ -215,7 +180,7 @@ mod tests {
                       }},
                       "description": "Extracts class name from image path",
                       "inputs": {{
-                        "source": "path"
+                        "path": "path"
                       }},
                       "outputs": {{
                         "code": "class_code",
@@ -225,41 +190,25 @@ mod tests {
                     {{
                       "id": "{:?}",
                       "operator": {{
-                        "namespace": "example",
+                        "namespace": "image",
                         "name": "load_image"
                       }},
-                      "description": "Loads image from disk",
+                      "description": "Loads an image from disk.",
+                      "config": {{}},
                       "inputs": {{
                         "path": "path"
                       }},
                       "outputs": {{
                         "image": "raw_image"
                       }}
-                    }},
-                    {{
-                      "id": "{:?}",
-                      "operator": {{
-                        "namespace": "example",
-                        "name": "image_aug"
-                      }},
-                      "description": "Augments image with blur and brightness",
-                      "config": {{
-                        "blur": 2.0,
-                        "brightness": 0.5
-                      }},
-                      "inputs": {{
-                        "source": "raw_image"
-                      }},
-                      "outputs": {{
-                        "augmented": "aug_image"
-                      }}
                     }}
                   ]
                 }}"#,
                 schema.build_plans[0].id,
                 schema.build_plans[1].id,
-                schema.build_plans[2].id,
             }
         );
+
+        Ok(())
     }
 }
