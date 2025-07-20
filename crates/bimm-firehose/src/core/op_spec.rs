@@ -1,4 +1,4 @@
-use crate::core::DataTypeDescription;
+use crate::core::{DataTypeDescription, OperatorId};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -83,6 +83,9 @@ impl ParameterSpec {
 /// Defines the complete input/output specification for an operator
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OperatorSpec {
+    /// The identifier for the operator.
+    pub operator_id: Option<OperatorId>,
+
     /// Optional description.
     pub description: Option<String>,
 
@@ -103,9 +106,26 @@ impl OperatorSpec {
     /// Creates a new `OperatorSpec` with no inputs or outputs.
     pub const fn new() -> Self {
         Self {
+            operator_id: None,
             description: None,
             inputs: Vec::new(),
             outputs: Vec::new(),
+        }
+    }
+
+    /// Extends the operator specification with an operator ID.
+    pub fn with_operator_id<I>(
+        self,
+        operator_id: I,
+    ) -> Self
+    where
+        I: Into<OperatorId>,
+    {
+        Self {
+            operator_id: Some(operator_id.into()),
+            description: self.description,
+            inputs: self.inputs,
+            outputs: self.outputs,
         }
     }
 
@@ -115,6 +135,7 @@ impl OperatorSpec {
         description: &str,
     ) -> Self {
         Self {
+            operator_id: self.operator_id,
             description: Some(description.to_string()),
             inputs: self.inputs,
             outputs: self.outputs,
@@ -133,6 +154,7 @@ impl OperatorSpec {
         let mut inputs = self.inputs;
         inputs.push(spec);
         Self {
+            operator_id: self.operator_id,
             description: self.description,
             inputs,
             outputs: self.outputs,
@@ -165,6 +187,7 @@ impl OperatorSpec {
         let mut outputs = self.outputs;
         outputs.push(spec);
         Self {
+            operator_id: self.operator_id,
             description: self.description,
             inputs: self.inputs,
             outputs,

@@ -53,6 +53,36 @@ impl Row {
         }
     }
 
+    /// Gets the value at the specified index, downcasting it to the specified type.
+    ///
+    /// This method checks if the value exists and can be downcast to the specified type.
+    ///
+    /// ## Arguments
+    ///
+    /// * `index`: The index of the value to retrieve.
+    ///
+    /// ## Returns
+    ///
+    /// A `Result` that is `Ok(Some(&T))` if the value exists and can be downcast,
+    /// `Ok(None)` if the value does not exist,
+    /// and `Err(String)` if the value exists but cannot be downcast to the specified type.
+    pub fn get_slot_checked<T: 'static>(
+        &self,
+        index: usize,
+    ) -> Result<Option<&T>, String> {
+        match self.get_untyped_slot(index) {
+            None => Ok(None),
+            Some(value) => match value.downcast_ref::<T>() {
+                Some(value) => Ok(Some(value)),
+                None => Err(format!(
+                    "Value at index {} cannot be downcast to type {}",
+                    index,
+                    std::any::type_name::<T>()
+                )),
+            },
+        }
+    }
+
     /// Gets the untyped value at the specified index.
     ///
     /// ## Arguments
@@ -106,6 +136,31 @@ impl Row {
 
         let index = schema.check_column_index(column_name).unwrap();
         self.get_slot::<T>(index)
+    }
+
+    /// Gets the value of a column by its name, downcasting it to the specified type.
+    ///
+    /// This method checks if the value exists and can be downcast to the specified type.
+    ///
+    /// ## Arguments
+    ///
+    /// * `schema`: The schema of the table to which this row belongs.
+    /// * `column_name`: The name of the column to retrieve the value from.
+    ///
+    /// ## Returns
+    ///
+    /// A `Result` that is `Ok(Some(&T))` if the value exists and can be downcast,
+    /// `Ok(None)` if the value does not exist,
+    /// and `Err(String)` if the value exists but cannot be downcast to the specified type.
+    pub fn get_column_checked<T: 'static>(
+        &self,
+        schema: &TableSchema,
+        column_name: &str,
+    ) -> Result<Option<&T>, String> {
+        self.fastcheck_schema(schema).unwrap();
+
+        let index = schema.check_column_index(column_name).unwrap();
+        self.get_slot_checked::<T>(index)
     }
 
     /// Sets the value of a column by its name.
@@ -224,6 +279,28 @@ mod tests {
 
         assert_eq!(row.get_slot::<i32>(0), Some(&42));
         assert_eq!(row.get_slot::<String>(1), Some(&"Hello".to_string()));
+    }
+
+    #[test]
+    fn test_get_checked() {
+        let schema = TableSchema::from_columns(&[
+            ColumnSchema::new::<i32>("foo"),
+            ColumnSchema::new::<String>("bar"),
+        ]);
+
+        let row = Row::new_with_columns(&schema, &["foo"], [Arc::new(42)]);
+
+        // Valid type access
+        assert_eq!(
+            row.get_column_checked::<i32>(&schema, "foo").unwrap(),
+            Some(&42)
+        );
+
+        // Invalid type access
+        assert!(row.get_column_checked::<f64>(&schema, "foo").is_err());
+
+        // Accessing an empty column
+        assert_eq!(row.get_column_checked::<i32>(&schema, "bar"), Ok(None));
     }
 
     #[test]

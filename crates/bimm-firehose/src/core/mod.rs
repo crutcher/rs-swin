@@ -47,20 +47,89 @@ where
     Ok(())
 }
 
-/// Plans an operation in the schema, adding a build plan and output columns.
-pub fn experimental_plan_columns<I, T>(
+/// Extends the schema with an operator specification, adding a build plan and output columns.
+///
+/// This function is a convenience wrapper that does not require a configuration parameter.
+///
+/// # Arguments
+///
+/// * `schema` - A mutable reference to the `TableSchema` to be extended.
+/// * `spec` - A reference to the `OperatorSpec` defining the operator.
+/// * `input_bindings` - A slice of tuples mapping input parameter names to column names in the schema.
+/// * `output_bindings` - A slice of tuples mapping output parameter names to column names in the schema.
+///
+/// # Returns
+///
+/// A result indicating success or an error message if the operation fails.
+pub fn extend_schema_with_operator(
     schema: &mut TableSchema,
-    operator_id: &I,
+    spec: &OperatorSpec,
+    input_bindings: &[(&str, &str)],
+    output_bindings: &[(&str, &str)],
+) -> Result<(), String> {
+    extend_schema_with_operator_impl(schema, spec, input_bindings, output_bindings, None::<()>)
+}
+
+/// Extends the schema with an operator specification, adding a build plan and output columns,
+///
+/// This function allows for a configuration parameter to be passed, which is serialized and included in the build plan.
+///
+/// # Arguments
+///
+/// * `schema` - A mutable reference to the `TableSchema` to be extended.
+/// * `spec` - A reference to the `OperatorSpec` defining the operator.
+/// * `input_bindings` - A slice of tuples mapping input parameter names to column names in the schema.
+/// * `output_bindings` - A slice of tuples mapping output parameter names to column names in the schema.
+/// * `config` - A configuration parameter of type `T` that implements `Serialize`.
+///   This will be serialized and included in the build plan.
+///
+/// # Returns
+///
+/// A result indicating success or an error message if the operation fails.
+pub fn extend_schema_with_operator_and_config<T>(
+    schema: &mut TableSchema,
+    spec: &OperatorSpec,
+    input_bindings: &[(&str, &str)],
+    output_bindings: &[(&str, &str)],
+    config: T,
+) -> Result<(), String>
+where
+    T: Serialize,
+{
+    extend_schema_with_operator_impl(schema, spec, input_bindings, output_bindings, Some(config))
+}
+
+/// Extends the schema with an operator specification, adding a build plan and output columns.
+///
+/// This function is a generic implementation that can handle both the case with and without a configuration parameter.
+///
+/// # Arguments
+///
+/// * `schema` - A mutable reference to the `TableSchema` to be extended.
+/// * `spec` - A reference to the `OperatorSpec` defining the operator.
+/// * `input_bindings` - A slice of tuples mapping input parameter names to column names in the schema.
+/// * `output_bindings` - A slice of tuples mapping output parameter names to column names in the schema.
+/// * `config` - An optional configuration parameter of type `T` that implements `Serialize`.
+///   If provided, it will be serialized and included in the build plan.
+///
+/// # Returns
+///
+/// A result indicating success or an error message if the operation fails.
+pub fn extend_schema_with_operator_impl<T>(
+    schema: &mut TableSchema,
     spec: &OperatorSpec,
     input_bindings: &[(&str, &str)],
     output_bindings: &[(&str, &str)],
     config: Option<T>,
 ) -> Result<(), String>
 where
-    I: Into<OperatorId> + Clone,
     T: Serialize,
 {
-    let operator_id: OperatorId = operator_id.to_owned().into();
+    let operator_id = spec
+        .operator_id
+        .as_ref()
+        .expect("OperatorId is required")
+        .to_owned();
 
     let input_types: BTreeMap<String, DataTypeDescription> = input_bindings
         .iter()
@@ -94,8 +163,8 @@ mod tests {
 
     #[test]
     fn test_example() -> Result<(), String> {
-        let path_to_class_op_id: OperatorId = ("example", "path_to_class").into();
         let path_to_class_spec: OperatorSpec = OperatorSpec::new()
+            .with_operator_id(("example", "path_to_class"))
             .with_description("Extracts class name from image path")
             .with_input(
                 ParameterSpec::new::<String>("path").with_description("Path to segment for class."),
@@ -109,22 +178,19 @@ mod tests {
             ColumnSchema::new::<String>("path").with_description("path to the image")
         ]);
 
-        experimental_plan_columns(
+        extend_schema_with_operator(
             &mut schema,
-            &path_to_class_op_id,
             &path_to_class_spec,
             &[("path", "path")],
             &[("name", "class_name"), ("code", "class_code")],
-            None as Option<()>,
         )?;
 
-        experimental_plan_columns(
+        extend_schema_with_operator_and_config(
             &mut schema,
-            &ImageLoaderFactory::load_image_op_id(),
             &ImageLoaderFactory::load_image_op_spec(),
             &[("path", "path")],
             &[("image", "raw_image")],
-            Some(ImageLoader::new()),
+            ImageLoader::default(),
         )?;
 
         assert_eq!(

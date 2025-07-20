@@ -23,6 +23,7 @@ impl ImageLoaderFactory {
     /// Returns the operator specification for loading an image.
     pub fn load_image_op_spec() -> OperatorSpec {
         OperatorSpec::new()
+            .with_operator_id(Self::load_image_op_id())
             .with_input(ParameterSpec::new::<String>("path"))
             .with_output(
                 ParameterSpec::new::<DynamicImage>("image")
@@ -190,7 +191,8 @@ mod tests {
     use super::*;
 
     use crate::core::{
-        ColumnSchema, RowBatch, TableSchema, experimental_plan_columns, experimental_run_batch,
+        ColumnSchema, RowBatch, TableSchema, experimental_run_batch,
+        extend_schema_with_operator_and_config,
     };
     use crate::ops::image::test_util;
     use crate::ops::image::test_util::assert_image_close;
@@ -219,32 +221,28 @@ mod tests {
 
         let mut schema = TableSchema::from_columns(&[ColumnSchema::new::<String>("path")]);
 
-        experimental_plan_columns(
+        extend_schema_with_operator_and_config(
             &mut schema,
-            &ImageLoaderFactory::load_image_op_id(),
             &ImageLoaderFactory::load_image_op_spec(),
             &[("path", "path")],
             &[("image", "image")],
-            Some(ImageLoader::new()),
+            ImageLoader::default(),
         )?;
 
-        experimental_plan_columns(
+        extend_schema_with_operator_and_config(
             &mut schema,
-            &ImageLoaderFactory::load_image_op_id(),
             &ImageLoaderFactory::load_image_op_spec(),
             &[("path", "path")],
             &[("image", "resized_gray")],
-            Some(
-                ImageLoader::new()
-                    .with_resize(
-                        ResizeSpec::new(ImageShape {
-                            width: 16,
-                            height: 16,
-                        })
-                        .with_filter(FilterType::Nearest),
-                    )
-                    .with_recolor(ColorType::L16),
-            ),
+            ImageLoader::default()
+                .with_resize(
+                    ResizeSpec::new(ImageShape {
+                        width: 16,
+                        height: 16,
+                    })
+                    .with_filter(FilterType::Nearest),
+                )
+                .with_recolor(ColorType::L16),
         )?;
 
         let schema = Arc::new(schema);
