@@ -448,7 +448,6 @@ mod tests {
             formatdoc! {r#"
                ColumnBuilder {{
                    build_plan: BuildPlan {{
-                       id: {:?},
                        operator: OperatorId {{
                            namespace: "example",
                            name: "add",
@@ -468,7 +467,7 @@ mod tests {
                        }},
                    }},
                }}"#,
-            builder.build_plan.id}
+            }
         );
 
         assert_eq!(builder.effective_batch_size(), 1);

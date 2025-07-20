@@ -163,7 +163,6 @@ mod tests {
                   ],
                   "build_plans": [
                     {{
-                      "id": "{:?}",
                       "operator": {{
                         "namespace": "example",
                         "name": "path_to_class"
@@ -178,7 +177,6 @@ mod tests {
                       }}
                     }},
                     {{
-                      "id": "{:?}",
                       "operator": {{
                         "namespace": "image",
                         "name": "load_image"
@@ -194,8 +192,6 @@ mod tests {
                     }}
                   ]
                 }}"#,
-                schema.build_plans[0].id,
-                schema.build_plans[1].id,
             }
         );
 
