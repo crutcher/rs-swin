@@ -1,6 +1,6 @@
 use crate::core::identifiers;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::ops::{Index, IndexMut};
 
 /// A serializable description of a data type.
@@ -378,6 +378,57 @@ impl TableSchema {
     /// - `Err(String)` contains an error message if the build order cannot be determined.
     pub fn build_order(&self) -> Result<(Vec<String>, Vec<BuildPlan>), String> {
         Self::check_graph(&self.columns, &self.build_plans)
+    }
+
+    /// Computes the build order for a target set of columns, given the extant columns.
+    ///
+    /// This function determines which build plans are needed to produce the target columns, based on the extant columns.
+    ///
+    /// ## Arguments
+    ///
+    /// - `extant_columns`: A vector of column names that already exist in the table.
+    /// - `target_columns`: A vector of column names that we want to build.
+    ///
+    /// ## Returns
+    ///
+    /// A `Result<Vec<BuildPlan>, String>` where:
+    /// - `Ok(Vec<BuildPlan>)` contains the ordered build plans needed to produce the target columns.
+    /// - `Err(String)` contains an error message if the build order cannot be determined.
+    pub fn target_build_order(
+        &self,
+        extant_columns: &[&str],
+        target_columns: &[&str],
+    ) -> Result<Vec<BuildPlan>, String> {
+        let (_, plans) = self.build_order()?;
+
+        let mut needed: HashSet<String> = HashSet::new();
+        for cname in target_columns {
+            if !extant_columns.contains(cname) {
+                needed.insert(cname.to_string());
+            }
+        }
+
+        let mut order: Vec<BuildPlan> = Vec::new();
+
+        for plan in plans.iter().rev() {
+            if plan
+                .outputs
+                .iter()
+                .any(|(_, cname)| needed.contains(cname.as_str()))
+            {
+                order.push(plan.clone());
+
+                for (_, cname) in plan.inputs.iter() {
+                    if !extant_columns.contains(&cname.as_str()) {
+                        needed.insert(cname.clone());
+                    }
+                }
+            }
+        }
+
+        order.reverse();
+
+        Ok(order)
     }
 
     /// Creates a new `DataTableDescription` with the given columns.
