@@ -38,6 +38,7 @@ syn = { version = "^2.0.104" }
 quote = { version = "^1.0.40" }
 
 # Test and/or Examples dependencies
+anyhow = { version = "^1.0.98" }
 indoc = { version = "^2.0.6" }
 rand = {  version = "^0.9.1"  }
 num-traits = { version = "^0.2.19" }

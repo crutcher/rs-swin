@@ -4,11 +4,17 @@ mod operators;
 mod rows;
 mod schema;
 
+/// Operator specification utils.
+pub mod op_spec;
+
+use crate::core::op_spec::OperatorSpec;
 pub use batch::*;
 pub use identifiers::*;
 pub use operators::*;
 pub use rows::*;
 pub use schema::*;
+use serde::Serialize;
+use std::collections::BTreeMap;
 
 /// Driver for executing a batch of build plans against a `RowBatch`.
 ///
@@ -41,6 +47,43 @@ where
     Ok(())
 }
 
+/// Plans an operation in the schema, adding a build plan and output columns.
+pub fn experimental_plan_columns<I, T>(
+    schema: &mut TableSchema,
+    operator_id: &I,
+    spec: &OperatorSpec,
+    input_bindings: &[(&str, &str)],
+    output_bindings: &[(&str, &str)],
+    config: Option<T>,
+) -> Result<(), String>
+where
+    I: Into<OperatorId> + Clone,
+    T: Serialize,
+{
+    let operator_id: OperatorId = operator_id.to_owned().into();
+
+    let input_types: BTreeMap<String, DataTypeDescription> = input_bindings
+        .iter()
+        .map(|(pname, cname)| (pname.to_string(), schema[*cname].data_type.clone()))
+        .collect();
+
+    spec.validate_inputs(&input_types)?;
+
+    let mut plan = BuildPlan::for_operator(operator_id)
+        .with_inputs(input_bindings)
+        .with_outputs(output_bindings);
+
+    if let Some(description) = &spec.description {
+        plan = plan.with_description(description);
+    }
+    if let Some(config) = config {
+        plan = plan.with_config(config);
+    }
+
+    schema.add_build_plan_and_outputs(plan, &spec.output_plan())?;
+
+    Ok(())
+}
 #[cfg(test)]
 mod tests {
 
@@ -71,14 +114,14 @@ mod tests {
                     .with_outputs(&[("name", "class_name"), ("code", "class_code")]),
                 &[
                     (
-                        "name",
+                        "name".to_string(),
                         DataTypeDescription::new::<String>(),
-                        "category class name",
+                        Some("category class name".to_string()),
                     ),
                     (
-                        "code",
+                        "code".to_string(),
                         DataTypeDescription::new::<u32>(),
-                        "category class code",
+                        Some("category class code".to_string()),
                     ),
                 ],
             )
@@ -91,9 +134,9 @@ mod tests {
                     .with_inputs(&[("path", "path")])
                     .with_outputs(&[("image", "raw_image")]),
                 &[(
-                    "image",
+                    "image".to_string(),
                     DataTypeDescription::new::<Vec<u8>>(),
-                    "Image loaded from disk",
+                    Some("Image loaded from disk".to_string()),
                 )],
             )
             .expect("failed to add build plan");
@@ -115,9 +158,9 @@ mod tests {
                     .with_inputs(&[("source", "raw_image")])
                     .with_outputs(&[("augmented", "aug_image")]),
                 &[(
-                    "augmented",
+                    "augmented".to_string(),
                     DataTypeDescription::new::<Vec<u8>>(),
-                    "augmented image",
+                    Some("augmented image".to_string()),
                 )],
             )
             .expect("failed to add build plan");

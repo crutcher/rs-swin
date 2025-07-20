@@ -152,6 +152,16 @@ impl BuildPlan {
         }
     }
 
+    fn build_name_map(assoc: &[(&str, &str)]) -> BTreeMap<String, String> {
+        let mut btree = BTreeMap::new();
+        for (param, column) in assoc {
+            identifiers::check_ident(param).expect("Invalid parameter name");
+            identifiers::check_ident(column).expect("Invalid column name");
+            btree.insert(param.to_string(), column.to_string());
+        }
+        btree
+    }
+
     /// Extends the build plan with input columns.
     ///
     /// ## Arguments
@@ -165,15 +175,8 @@ impl BuildPlan {
         self,
         inputs: &[(&str, &str)],
     ) -> Self {
-        let mut btree = BTreeMap::new();
-        for (param, column) in inputs {
-            identifiers::check_ident(param).expect("Invalid parameter name");
-            identifiers::check_ident(column).expect("Invalid column name");
-            btree.insert(param.to_string(), column.to_string());
-        }
-
         BuildPlan {
-            inputs: btree,
+            inputs: Self::build_name_map(inputs),
             ..self
         }
     }
@@ -191,15 +194,8 @@ impl BuildPlan {
         self,
         outputs: &[(&str, &str)],
     ) -> Self {
-        let mut btree = BTreeMap::new();
-        for (param, column) in outputs {
-            identifiers::check_ident(param).expect("Invalid parameter name");
-            identifiers::check_ident(column).expect("Invalid column name");
-            btree.insert(param.to_string(), column.to_string());
-        }
-
         BuildPlan {
-            outputs: btree,
+            outputs: Self::build_name_map(outputs),
             ..self
         }
     }
@@ -413,7 +409,7 @@ impl TableSchema {
         &self,
         name: &str,
     ) -> Result<(), String> {
-        identifiers::check_ident(name).unwrap();
+        identifiers::check_ident(name)?;
 
         if self.columns.iter().any(|c| c.name == name) {
             Err(format!("Duplicate column name '{name}'"))
@@ -486,14 +482,14 @@ impl TableSchema {
     pub fn add_build_plan_and_outputs(
         &mut self,
         plan: BuildPlan,
-        output_info: &[(&str, DataTypeDescription, &str)],
+        output_info: &[(String, DataTypeDescription, Option<String>)],
     ) -> Result<(), String> {
         // Now add the output columns.
-        for (pname, data_type, desc) in output_info {
-            let cname = plan.outputs.get(*pname).expect("Output column not found");
+        for (pname, data_type, description) in output_info {
+            let cname = plan.outputs.get(pname).expect("Output column not found");
             let column = ColumnSchema {
                 name: cname.to_string(),
-                description: Some(desc.to_string()),
+                description: description.clone(),
                 data_type: data_type.clone(),
             };
             self.add_column(column);
