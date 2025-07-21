@@ -1,6 +1,5 @@
-use crate::core::op_spec::{OperatorSpec, ParameterSpec};
-use crate::core::{BuildOperator, BuildOperatorFactory, BuildPlan, DataTypeDescription};
-use crate::define_operator_id;
+use crate::core::{BuildOperator, BuildOperatorFactory, BuildPlan, DataTypeDescription, OperatorSpec, ParameterSpec, OpKey};
+use crate::{define_reflexive_id, register_op};
 use crate::ops::image::{ImageShape, color_util};
 use image::imageops::FilterType;
 use image::{ColorType, DynamicImage, GenericImageView};
@@ -9,11 +8,25 @@ use std::any::Any;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+
+register_op!(
+    LOAD_IMAGE,
+    spec: OperatorSpec::new()
+        .with_description("Loads an image from disk.")
+        .with_input(
+            ParameterSpec::new::<String>("path")
+                .with_description("Path to the image file."))
+        .with_output(
+            ParameterSpec::new::<DynamicImage>("image")
+                .with_description("Image loaded from disk."),
+        ),
+    || Arc::new(ImageLoaderFactory {})
+);
+
 /// Factory for creating an `ImageLoader` operator.
 #[derive(Debug)]
 pub struct ImageLoaderFactory {}
 
-define_operator_id!(LOAD_IMAGE);
 
 impl ImageLoaderFactory {
     /// Returns the operator specification for loading an image.
@@ -186,10 +199,7 @@ impl BuildOperator for ImageLoader {
 mod tests {
     use super::*;
 
-    use crate::core::{
-        ColumnSchema, RowBatch, TableSchema, experimental_run_batch,
-        extend_schema_with_operator_and_config,
-    };
+    use crate::core::{ColumnSchema, RowBatch, TableSchema, experimental_run_batch, extend_schema_with_operator_and_config, autofactory};
     use crate::ops::image::test_util;
     use crate::ops::image::test_util::assert_image_close;
     use image::DynamicImage;
@@ -246,7 +256,7 @@ mod tests {
         let mut batch = RowBatch::with_size(schema.clone(), 1);
         batch[0].set_column(&schema, "path", Some(Arc::new(image_path)));
 
-        let factory = ImageLoaderFactory {};
+        let factory = autofactory();
         experimental_run_batch(&mut batch, &factory)?;
 
         let loaded_image = batch[0]

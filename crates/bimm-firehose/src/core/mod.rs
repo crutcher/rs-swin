@@ -3,16 +3,16 @@ mod identifiers;
 mod operators;
 mod rows;
 mod schema;
+mod op_spec;
+mod op_reg;
 
-/// Operator specification utils.
-pub mod op_spec;
-
-use crate::core::op_spec::OperatorSpec;
 pub use batch::*;
 pub use identifiers::*;
 pub use operators::*;
 pub use rows::*;
 pub use schema::*;
+pub use op_spec::*;
+pub use op_reg::*;
 use serde::Serialize;
 use std::collections::BTreeMap;
 
