@@ -52,13 +52,13 @@ pub fn path_ident_regex() -> &'static Regex {
 }
 
 /// Parses a path identifier into its components.
-/// 
+///
 /// ## Arguments
-/// 
+///
 /// - `ident`: The path identifier string to parse.
-/// 
+///
 /// ## Returns
-/// 
+///
 /// - `Ok(Vec<String>)` containing the components of the path identifier,
 /// - `Err(String)` if the identifier is invalid.
 pub fn parse_path_ident(ident: &str) -> Result<Vec<String>, String> {
@@ -72,15 +72,15 @@ pub fn parse_path_ident(ident: &str) -> Result<Vec<String>, String> {
 }
 
 /// Defines a static operator ID.
-/// 
+///
 /// ## Arguments
-/// 
+///
 /// - `$name`: The name of the operator ID to define.
-/// 
+///
 /// ## Example
 /// ```
 /// use bimm_firehose::define_operator_id;
-/// 
+///
 /// define_operator_id!(foo);
 /// // This will create a static variable `foo` with the value
 /// // concat!(module_path!(), "::foo").
@@ -145,7 +145,7 @@ mod tests {
     #[test]
     fn test_path_ident() {
         define_operator_id!(FOO);
-        
+
         assert_eq!(FOO, concat!(module_path!(), "::FOO"));
     }
 }

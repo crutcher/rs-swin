@@ -8,6 +8,16 @@ It is *very* early in development, and is not yet ready for production use.
 The Burn ecosystem is still missing a number of image-model related features,
 particularly in the area of image datasets and transforms.
 
+## Active Surface
+
+Image models require complex data loading and augmentation pipelines,
+and the current active surface is focused on building a SQL-inspired
+table + operations framework for modular data pipeline construction.
+
+This is being done in the [bimm-firehose](crates/bimm-firehose) crate,
+which will be a general-purpose data loading and augmentation framework,
+but is not yet ready for use.
+
 ## Crates
 
 ### [bimm](crates/bimm) - the main crate for image models.
