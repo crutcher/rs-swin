@@ -29,6 +29,8 @@ regex-macro = { version = "^0.3.0" }
 
 image = { version = "^0.25.6" }
 
+inventory = { version = "^0.3.20" }
+
 # Burn coupled-dependencies
 serde = { version = "^1.0.219" }
 serde_json = { version = "^1.0.140" }

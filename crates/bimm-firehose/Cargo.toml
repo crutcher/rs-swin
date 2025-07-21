@@ -13,6 +13,8 @@ burn = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
+inventory = { workspace = true }
+
 regex = { workspace = true }
 regex-macro = { workspace = true }
 
