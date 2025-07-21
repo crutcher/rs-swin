@@ -26,49 +26,11 @@ impl DataTypeDescription {
     }
 }
 
-/// Namespace and name of a column operator.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct OperatorId {
-    /// The namespace of the operator.
-    pub namespace: String,
-
-    /// The name of the operator.
-    pub name: String,
-}
-
-impl OperatorId {
-    /// Creates a new `OperatorId` with the given namespace and name.
-    pub fn new(
-        namespace: &str,
-        name: &str,
-    ) -> Self {
-        identifiers::check_ident(namespace).expect("Invalid namespace");
-        identifiers::check_ident(name).expect("Invalid name");
-
-        OperatorId {
-            namespace: namespace.to_string(),
-            name: name.to_string(),
-        }
-    }
-}
-
-impl From<(&str, &str)> for OperatorId {
-    fn from(val: (&str, &str)) -> Self {
-        OperatorId::new(val.0, val.1)
-    }
-}
-
-impl From<[&str; 2]> for OperatorId {
-    fn from(val: [&str; 2]) -> Self {
-        OperatorId::new(val[0], val[1])
-    }
-}
-
 /// A build plan for columns in a table schema.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct BuildPlan {
     /// The ID of the operator.
-    pub operator: OperatorId,
+    pub operator: String,
 
     /// The description of the operator.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -93,12 +55,12 @@ pub struct BuildPlan {
 
 impl BuildPlan {
     /// Creates a new `ColumnBuildPlan` with the given operator spec.
-    pub fn for_operator<I>(id: I) -> Self
+    pub fn for_operator<S>(id: S) -> Self
     where
-        I: Into<OperatorId>,
+        S: AsRef<str>,
     {
         BuildPlan {
-            operator: id.into(),
+            operator: id.as_ref().to_string(),
             description: None,
             config: serde_json::Value::Null,
             inputs: BTreeMap::new(),

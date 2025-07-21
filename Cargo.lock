@@ -288,10 +288,11 @@ dependencies = [
  "image",
  "image-compare",
  "indoc",
+ "regex 1.11.1",
+ "regex-macro",
  "serde",
  "serde_json",
  "tempfile",
- "uuid",
 ]
 
 [[package]]
@@ -4279,6 +4280,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "regex-macro"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7d306632607af6ec61c0b117971d57a96381b6317cf18ae419b5558048fe016e"
+dependencies = [
+ "regex 1.11.1",
+]
+
+[[package]]
 name = "regex-syntax"
 version = "0.5.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5698,7 +5708,6 @@ dependencies = [
  "getrandom 0.3.1",
  "js-sys",
  "rand 0.9.1",
- "serde",
  "wasm-bindgen",
 ]
 

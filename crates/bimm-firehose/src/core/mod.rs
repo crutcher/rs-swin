@@ -138,7 +138,7 @@ where
 
     spec.validate_inputs(&input_types)?;
 
-    let mut plan = BuildPlan::for_operator(operator_id)
+    let mut plan = BuildPlan::for_operator(&operator_id)
         .with_inputs(input_bindings)
         .with_outputs(output_bindings);
 
@@ -164,7 +164,7 @@ mod tests {
     #[test]
     fn test_example() -> Result<(), String> {
         let path_to_class_spec: OperatorSpec = OperatorSpec::new()
-            .with_operator_id(("example", "path_to_class"))
+            .with_operator_id("example::path_to_class")
             .with_description("Extracts class name from image path")
             .with_input(
                 ParameterSpec::new::<String>("path").with_description("Path to segment for class."),
@@ -229,10 +229,7 @@ mod tests {
                   ],
                   "build_plans": [
                     {
-                      "operator": {
-                        "namespace": "example",
-                        "name": "path_to_class"
-                      },
+                      "operator": "example::path_to_class",
                       "description": "Extracts class name from image path",
                       "inputs": {
                         "path": "path"
@@ -243,10 +240,7 @@ mod tests {
                       }
                     },
                     {
-                      "operator": {
-                        "namespace": "image",
-                        "name": "load_image"
-                      },
+                      "operator": "bimm_firehose::ops::image::loader::LOAD_IMAGE",
                       "description": "Loads an image from disk.",
                       "config": {},
                       "inputs": {

@@ -13,9 +13,11 @@ burn = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
+regex = { workspace = true }
+regex-macro = { workspace = true }
+
 image = { workspace = true, features = ["jpeg", "png", "gif", "serde"] }
 image-compare = { workspace = true }
-uuid = { workspace = true, features = ["v4", "serde"] }
 
 [dev-dependencies]
 burn = { workspace = true, features = ["ndarray"] }
