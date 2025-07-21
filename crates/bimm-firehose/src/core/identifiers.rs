@@ -1,6 +1,14 @@
 use regex::Regex;
 use regex_macro::regex;
 
+/// Regular expression pattern for a valid identifier.
+static IDENT_PATTERN: &str = r"^[A-Za-z_][A-Za-z0-9_]*$";
+
+/// Returns a static regex for matching valid identifiers.
+pub fn ident_regex() -> &'static Regex {
+    regex!(IDENT_PATTERN)
+}
+
 /// Checks if a string is a valid identifier.
 ///
 /// ## Arguments
@@ -11,17 +19,7 @@ use regex_macro::regex;
 ///
 /// `true` if the string is a valid identifier, `false` otherwise.
 pub fn is_ident(s: &str) -> bool {
-    // This is to avoid using regex for perf and no-std compatibility.
-    for (idx, c) in s.chars().enumerate() {
-        if c.is_alphabetic() || c == '_' {
-            continue;
-        }
-        if idx > 0 && c.is_numeric() {
-            continue;
-        }
-        return false;
-    }
-    !s.is_empty()
+    ident_regex().is_match(s)
 }
 
 /// Checks if a string is a valid identifier.
