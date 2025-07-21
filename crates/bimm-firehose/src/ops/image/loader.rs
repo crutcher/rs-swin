@@ -1,7 +1,6 @@
 use crate::core::op_spec::{OperatorSpec, ParameterSpec};
-use crate::core::{
-    BuildOperator, BuildOperatorFactory, BuildPlan, DataTypeDescription, OperatorId,
-};
+use crate::core::{BuildOperator, BuildOperatorFactory, BuildPlan, DataTypeDescription};
+use crate::define_operator_id;
 use crate::ops::image::{ImageShape, color_util};
 use image::imageops::FilterType;
 use image::{ColorType, DynamicImage, GenericImageView};
@@ -14,16 +13,13 @@ use std::sync::Arc;
 #[derive(Debug)]
 pub struct ImageLoaderFactory {}
 
-impl ImageLoaderFactory {
-    /// Returns the operator ID for the image loader.
-    pub fn load_image_op_id() -> OperatorId {
-        OperatorId::new("image", "load_image")
-    }
+define_operator_id!(LOAD_IMAGE);
 
+impl ImageLoaderFactory {
     /// Returns the operator specification for loading an image.
     pub fn load_image_op_spec() -> OperatorSpec {
         OperatorSpec::new()
-            .with_operator_id(Self::load_image_op_id())
+            .with_operator_id(LOAD_IMAGE)
             .with_input(ParameterSpec::new::<String>("path"))
             .with_output(
                 ParameterSpec::new::<DynamicImage>("image")

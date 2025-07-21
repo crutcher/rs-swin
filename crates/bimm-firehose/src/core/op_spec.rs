@@ -1,4 +1,4 @@
-use crate::core::{DataTypeDescription, OperatorId};
+use crate::core::DataTypeDescription;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -84,7 +84,7 @@ impl ParameterSpec {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OperatorSpec {
     /// The identifier for the operator.
-    pub operator_id: Option<OperatorId>,
+    pub operator_id: Option<String>,
 
     /// Optional description.
     pub description: Option<String>,
@@ -114,13 +114,10 @@ impl OperatorSpec {
     }
 
     /// Extends the operator specification with an operator ID.
-    pub fn with_operator_id<I>(
+    pub fn with_operator_id(
         self,
-        operator_id: I,
-    ) -> Self
-    where
-        I: Into<OperatorId>,
-    {
+        operator_id: &str,
+    ) -> Self {
         Self {
             operator_id: Some(operator_id.into()),
             description: self.description,

@@ -24,8 +24,10 @@ bimm = { version = "0.2.0", path = "crates/bimm" }
 bimm-contracts = { version = "0.2.0", path = "crates/bimm-contracts" }
 bimm-contracts-macros = { version = "0.2.0", path = "crates/bimm-contracts-macros" }
 
+regex = { version = "^1.11.1" }
+regex-macro = { version = "^0.3.0" }
+
 image = { version = "^0.25.6" }
-uuid = { version = "^1.17.0" }
 
 # Burn coupled-dependencies
 serde = { version = "^1.0.219" }

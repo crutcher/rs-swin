@@ -228,24 +228,21 @@ pub trait BuildOperatorFactory: Debug {
 
 /// A factory for building operators within a specific namespace.
 #[derive(Debug)]
-pub struct NamespaceOperatorFactory {
-    /// The namespace of the operator factory.
-    pub namespace: String,
-
+pub struct MapOperatorFactory {
     /// The operator factory to be used for building operators.
     pub operations: BTreeMap<String, Arc<dyn BuildOperatorFactory>>,
 }
 
-impl NamespaceOperatorFactory {
-    /// Create a new `NamespaceOperatorFactory`.
-    ///
-    /// # Arguments
-    ///
-    /// * `namespace` - The namespace for the operator factory.
-    /// * `factory` - The operator factory to be used for building operators.
-    pub fn new(namespace: &str) -> Self {
-        NamespaceOperatorFactory {
-            namespace: namespace.to_string(),
+impl Default for MapOperatorFactory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl MapOperatorFactory {
+    /// Create a new `MapOperatorFactory`.
+    pub fn new() -> Self {
+        MapOperatorFactory {
             operations: Default::default(),
         }
     }
@@ -263,28 +260,25 @@ impl NamespaceOperatorFactory {
         factory: Arc<dyn BuildOperatorFactory>,
     ) {
         if self.operations.contains_key(operation) {
-            panic!(
-                "Operator factory for operation '{}' already registered in namespace '{}'",
-                operation, self.namespace
-            );
+            panic!("Operation '{operation}' is already registered in the factory");
         }
         self.operations.insert(operation.to_string(), factory);
     }
 }
 
-impl BuildOperatorFactory for NamespaceOperatorFactory {
+impl BuildOperatorFactory for MapOperatorFactory {
     fn init_operator(
         &self,
         build_plan: &BuildPlan,
         input_types: &BTreeMap<String, DataTypeDescription>,
         output_types: &BTreeMap<String, DataTypeDescription>,
     ) -> Result<Box<dyn BuildOperator>, String> {
-        if let Some(factory) = self.operations.get(&build_plan.operator.name) {
+        if let Some(factory) = self.operations.get(&build_plan.operator) {
             factory.init_operator(build_plan, input_types, output_types)
         } else {
             Err(format!(
                 "No operator factory registered for operation '{}' in namespace '{}'",
-                build_plan.operator.name, self.namespace
+                build_plan.operator, build_plan.operator
             ))
         }
     }
@@ -295,7 +289,7 @@ mod tests {
     use super::*;
 
     use crate::core::{
-        AnyArc, BuildPlan, ColumnSchema, DataTypeDescription, OperatorId, RowBatch, TableSchema,
+        AnyArc, BuildPlan, ColumnSchema, DataTypeDescription, RowBatch, TableSchema,
     };
     use indoc::indoc;
     use serde::{Deserialize, Serialize};
@@ -303,8 +297,6 @@ mod tests {
     use std::collections::BTreeMap;
     use std::fmt::Debug;
     use std::sync::Arc;
-
-    const EXAMPLE_NAMESPACE: &str = "example";
 
     // A simple add operator that adds inputs and applies a bias
     #[derive(Debug)]
@@ -379,7 +371,7 @@ mod tests {
 
         schema
             .add_build_plan(
-                BuildPlan::for_operator(OperatorId::new(EXAMPLE_NAMESPACE, "add"))
+                BuildPlan::for_operator("foo::add")
                     .with_description("Adds inputs with a bias")
                     .with_config(AddOperator { bias: 10 })
                     .with_inputs(&[("a", "a"), ("b", "b")])
@@ -403,7 +395,7 @@ mod tests {
 
         schema
             .add_build_plan(
-                BuildPlan::for_operator(OperatorId::new(EXAMPLE_NAMESPACE, "add"))
+                BuildPlan::for_operator("foo::add")
                     .with_description("Adds inputs with a bias")
                     .with_config(AddOperator { bias: 10 })
                     .with_inputs(&[("x", "a"), ("x", "b")])
@@ -426,7 +418,7 @@ mod tests {
 
         schema
             .add_build_plan(
-                BuildPlan::for_operator(OperatorId::new(EXAMPLE_NAMESPACE, "add"))
+                BuildPlan::for_operator("foo::add")
                     .with_description("Adds inputs with a bias")
                     .with_config(AddOperator { bias: 10 })
                     .with_inputs(&[("x", "a"), ("y", "b")])
@@ -439,19 +431,11 @@ mod tests {
         let builder = ColumnBuilder::bind_plan(&schema, &schema.build_plans[0], &factory).unwrap();
 
         assert_eq!(
-            format!("{builder:?}"),
-            "ColumnBuilder { id: OperatorId { namespace: \"example\", name: \"add\" }, inputs: {\"x\": \"a\", \"y\": \"b\"}, outputs: {\"result\": \"c\"} }"
-        );
-
-        assert_eq!(
             format!("{builder:#?}"),
             indoc! {r#"
                ColumnBuilder {
                    build_plan: BuildPlan {
-                       operator: OperatorId {
-                           namespace: "example",
-                           name: "add",
-                       },
+                       operator: "foo::add",
                        description: Some(
                            "Adds inputs with a bias",
                        ),
@@ -472,13 +456,7 @@ mod tests {
 
         assert_eq!(builder.effective_batch_size(), 1);
 
-        assert_eq!(
-            builder.build_plan.operator,
-            OperatorId {
-                namespace: EXAMPLE_NAMESPACE.to_string(),
-                name: "add".to_string()
-            }
-        );
+        assert_eq!(builder.build_plan.operator, "foo::add");
 
         let mut batch = RowBatch::with_size(Arc::new(schema.clone()), 2);
         batch[0].set_columns(&schema, &["a", "b"], [Arc::new(10), Arc::new(20)]);
@@ -488,40 +466,5 @@ mod tests {
 
         assert_eq!(batch[0].get_column::<i32>(&schema, "c").unwrap(), &40);
         assert_eq!(batch[1].get_column::<i32>(&schema, "c").unwrap(), &7);
-    }
-
-    #[test]
-    fn test_namespace_factory() {
-        let mut factory = NamespaceOperatorFactory::new(EXAMPLE_NAMESPACE);
-
-        // Create a table schema with a build plan for the add operator
-        let mut schema = TableSchema::from_columns(&[
-            ColumnSchema::new::<i32>("a").with_description("First input"),
-            ColumnSchema::new::<i32>("b").with_description("Second input"),
-            ColumnSchema::new::<i32>("c").with_description("Output"),
-        ]);
-
-        schema
-            .add_build_plan(
-                BuildPlan::for_operator(OperatorId::new(EXAMPLE_NAMESPACE, "add"))
-                    .with_description("Adds inputs with a bias")
-                    .with_config(AddOperator { bias: 10 })
-                    .with_inputs(&[("x", "a"), ("x", "b")])
-                    .with_outputs(&[("result", "c")]),
-            )
-            .unwrap();
-
-        // The operation isn't registered in the factory, so this should fail.
-        assert_eq!(
-            ColumnBuilder::bind_plan(&schema, &schema.build_plans[0], &factory).unwrap_err(),
-            "No operator factory registered for operation 'add' in namespace 'example'".to_string()
-        );
-
-        factory.add_operation("add", Arc::new(AddOperatorFactory {}));
-
-        // Bind the plan using the namespace map factory
-        let builder = ColumnBuilder::bind_plan(&schema, &schema.build_plans[0], &factory).unwrap();
-
-        assert_eq!(builder.effective_batch_size(), 1);
     }
 }
