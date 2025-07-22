@@ -1,18 +1,18 @@
 mod batch;
 mod identifiers;
+mod op_reg;
+mod op_spec;
 mod operators;
 mod rows;
 mod schema;
-mod op_spec;
-mod op_reg;
 
 pub use batch::*;
 pub use identifiers::*;
+pub use op_reg::*;
+pub use op_spec::*;
 pub use operators::*;
 pub use rows::*;
 pub use schema::*;
-pub use op_spec::*;
-pub use op_reg::*;
 use serde::Serialize;
 use std::collections::BTreeMap;
 

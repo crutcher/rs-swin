@@ -1,6 +1,5 @@
-use std::sync::Arc;
 use crate::core::{BuildOperatorFactory, MapOperatorFactory, OperatorSpec};
-use crate::define_reflexive_id;
+use std::sync::Arc;
 
 // TODO:
 // - check plan
@@ -16,23 +15,18 @@ inventory::collect!(OpKey);
 
 impl OpKey {
     pub fn get_spec(&self) -> OperatorSpec {
-        (self.get_spec)()
-            .with_operator_id(self.operator)
+        (self.get_spec)().with_operator_id(self.operator)
     }
 
     pub fn get_builder(&self) -> Arc<dyn BuildOperatorFactory> {
         (self.get_builder)()
     }
-
 }
 
 pub fn autofactory() -> MapOperatorFactory {
     let mut factory = MapOperatorFactory::new();
     for opkey in inventory::iter::<OpKey>() {
-        factory.add_operation(
-            opkey.operator,
-            opkey.get_builder()
-        );
+        factory.add_operation(opkey.operator, opkey.get_builder());
     }
     factory
 }
@@ -53,7 +47,4 @@ macro_rules! register_op {
 }
 
 #[cfg(test)]
-mod tests {
-
-
-}
+mod tests {}

@@ -8,6 +8,7 @@ use bimm::models::swin::v2::transformer::{
 use burn::backend::{Autodiff, Cuda};
 use burn::config::Config;
 use burn::data::dataloader::DataLoaderBuilder;
+use burn::data::dataset::transform::{ComposedDataset, ShuffledDataset};
 use burn::grad_clipping::GradientClippingConfig;
 use burn::lr_scheduler::cosine::CosineAnnealingLrSchedulerConfig;
 use burn::module::Module;
@@ -25,7 +26,6 @@ use burn::train::{
     ClassificationOutput, LearnerBuilder, MetricEarlyStoppingStrategy, StoppingCondition,
 };
 use burn::train::{TrainOutput, TrainStep, ValidStep};
-use rand::rng;
 use rand::seq::SliceRandom;
 use rs_cinic_10_index::Cinic10Index;
 use rs_cinic_10_index::index::ObjectClass;
@@ -134,36 +134,34 @@ pub fn train<B: AutodiffBackend>(
     let batcher = CinicBatcher::default();
 
     let dataloader_train = {
-        let mut items = index.train.items.clone();
-        items.extend(index.test.items.clone());
-
-        // Work around split bug in MultiThreadedDataLoader
-        let mut rng = rng();
-        items.shuffle(&mut rng);
+        let ds = ShuffledDataset::with_seed(
+            ComposedDataset::new(vec![
+                CinicDataset {
+                    items: index.train.items.clone(),
+                },
+                CinicDataset {
+                    items: index.test.items.clone(),
+                },
+            ]),
+            42,
+        );
 
         DataLoaderBuilder::new(batcher.clone())
             .batch_size(config.batch_size)
-            .shuffle(config.seed)
+            .shuffle(42)
             .num_workers(config.num_workers)
-            .build(CinicDataset { items })
+            .build(ds)
     };
 
-    let dataloader_test = {
-        // TODO: something less dumb, using PartialDataset and ShuffledDataset, or a wrapper.
-        let mut rg = rng();
-
-        let mut items = index.valid.items.clone();
-        items.shuffle(&mut rg);
-
-        let take = items.len() / 10;
-
-        let items = items.into_iter().take(take).collect::<Vec<_>>();
+    let dataloader_valid = {
+        let ds = CinicDataset {
+            items: index.valid.items.clone(),
+        };
 
         DataLoaderBuilder::new(batcher.clone())
             .batch_size(config.batch_size)
-            .shuffle(config.seed)
             .num_workers(config.num_workers)
-            .build(CinicDataset { items })
+            .build(ds)
     };
 
     let num_batches = dataloader_train.num_items() / config.batch_size;
@@ -211,7 +209,7 @@ pub fn train<B: AutodiffBackend>(
             lr_scheduler,
         );
 
-    let model_trained = learner.fit(dataloader_train, dataloader_test);
+    let model_trained = learner.fit(dataloader_train, dataloader_valid);
 
     model_trained
         .save_file(format!("{artifact_dir}/model"), &CompactRecorder::new())
@@ -256,7 +254,7 @@ fn main() {
     .with_learning_rate(1.0e-3)
     .with_num_epochs(40)
     .with_batch_size(512)
-    .with_num_workers(8);
+    .with_num_workers(12);
 
     let devices = vec![Default::default()];
     // This always crashes on the transition from train to valid step,
