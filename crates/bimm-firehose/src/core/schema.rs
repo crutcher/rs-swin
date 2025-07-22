@@ -30,7 +30,7 @@ impl DataTypeDescription {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct BuildPlan {
     /// The ID of the operator.
-    pub operator: String,
+    pub operator_id: String,
 
     /// The description of the operator.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -60,7 +60,7 @@ impl BuildPlan {
         S: AsRef<str>,
     {
         BuildPlan {
-            operator: id.as_ref().to_string(),
+            operator_id: id.as_ref().to_string(),
             description: None,
             config: serde_json::Value::Null,
             inputs: BTreeMap::new(),

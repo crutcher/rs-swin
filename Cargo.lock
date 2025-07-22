@@ -283,12 +283,10 @@ dependencies = [
 name = "bimm-firehose"
 version = "0.2.0"
 dependencies = [
- "anyhow",
  "burn",
  "image",
  "image-compare",
  "indoc",
- "inventory",
  "regex 1.11.1",
  "regex-macro",
  "serde",
@@ -2926,15 +2924,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "inventory"
-version = "0.3.20"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab08d7cd2c5897f2c949e5383ea7c7db03fb19130ffcfbf7eda795137ae3cb83"
-dependencies = [
- "rustversion",
 ]
 
 [[package]]

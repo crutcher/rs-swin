@@ -1,39 +1,24 @@
 mod batch;
 mod identifiers;
-mod op_reg;
-mod op_spec;
 mod operators;
 mod rows;
 mod schema;
 
 pub use batch::*;
 pub use identifiers::*;
-pub use op_reg::*;
-pub use op_spec::*;
 pub use operators::*;
 pub use rows::*;
 pub use schema::*;
 use serde::Serialize;
 use std::collections::BTreeMap;
 
-/// Driver for executing a batch of build plans against a `RowBatch`.
-///
-/// This function applies the build plans defined in the `RowBatch` schema to the rows in the batch.
-///
-/// # Arguments
-///
-/// * `batch` - A mutable reference to the `RowBatch` containing the rows to be processed.
-/// * `factory` - A reference to a factory that can create the operators defined in the build plans.
-///
-/// # Returns
-///
-/// A result indicating success or an error message if the operation fails.
-pub fn experimental_run_batch<F>(
+/// Runs a batch of rows through the operator environment, applying the build plans defined in the schema.
+pub fn experimental_run_batch_env<E>(
     batch: &mut RowBatch,
-    factory: &F,
+    env: &E,
 ) -> Result<(), String>
 where
-    F: BuildOperatorFactory,
+    E: OpEnvironment,
 {
     let schema = batch.schema.as_ref();
 
@@ -41,7 +26,7 @@ where
     // TODO: ensure that the base is present in the batch rows.
 
     for plan in &plans {
-        let builder = ColumnBuilder::bind_plan(schema, plan, factory)?;
+        let builder = ColumnBuilder::new_for_plan(schema, plan, env)?;
         builder.apply_batch(batch.rows.as_mut_slice()).unwrap();
     }
     Ok(())
@@ -157,8 +142,9 @@ where
 mod tests {
 
     use super::*;
-    use crate::core::op_spec::ParameterSpec;
-    use crate::ops::image::loader::{ImageLoader, ImageLoaderFactory};
+    use crate::core::operators::ParameterSpec;
+    use crate::ops::common_environment;
+    use crate::ops::image::loader::{ImageLoader, LOAD_IMAGE};
     use indoc::indoc;
 
     #[test]
@@ -185,9 +171,11 @@ mod tests {
             &[("name", "class_name"), ("code", "class_code")],
         )?;
 
+        let env = common_environment();
+
         extend_schema_with_operator_and_config(
             &mut schema,
-            &ImageLoaderFactory::load_image_op_spec(),
+            env.lookup_binding(LOAD_IMAGE).unwrap().spec(),
             &[("path", "path")],
             &[("image", "raw_image")],
             ImageLoader::default(),
@@ -229,7 +217,7 @@ mod tests {
                   ],
                   "build_plans": [
                     {
-                      "operator": "example::path_to_class",
+                      "operator_id": "example::path_to_class",
                       "description": "Extracts class name from image path",
                       "inputs": {
                         "path": "path"
@@ -240,7 +228,7 @@ mod tests {
                       }
                     },
                     {
-                      "operator": "bimm_firehose::ops::image::loader::LOAD_IMAGE",
+                      "operator_id": "bimm_firehose::ops::image::loader::LOAD_IMAGE",
                       "description": "Loads an image from disk.",
                       "config": {},
                       "inputs": {

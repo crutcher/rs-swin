@@ -69,32 +69,9 @@ pub fn parse_path_ident(ident: &str) -> Result<Vec<String>, String> {
     }
 }
 
-/// Defines a static operator ID.
-///
-/// ## Arguments
-///
-/// - `$name`: The name of the operator ID to define.
-///
-/// ## Example
-/// ```
-/// use bimm_firehose::define_reflexive_id;
-///
-/// define_reflexive_id!(foo);
-/// // This will create a static variable `foo` with the value
-/// // concat!(module_path!(), "::foo").
-/// ```
-#[macro_export]
-macro_rules! define_reflexive_id {
-    ($name:ident) => {
-        /// A string constant which names its own namespace path.
-        pub static $name: &str = concat!(module_path!(), "::", stringify!($name),);
-    };
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::define_reflexive_id;
 
     #[test]
     fn test_is_ident() {
@@ -138,12 +115,5 @@ mod tests {
             parse_path_ident("9a::x"),
             Err("Invalid path identifier: '9a::x'".to_string())
         );
-    }
-
-    #[test]
-    fn test_path_ident() {
-        define_reflexive_id!(FOO);
-
-        assert_eq!(FOO, concat!(module_path!(), "::FOO"));
     }
 }

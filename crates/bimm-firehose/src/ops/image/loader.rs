@@ -1,9 +1,6 @@
-use crate::core::{
-    BuildOperator, BuildOperatorFactory, BuildPlan, DataTypeDescription, OpKey, OperatorSpec,
-    ParameterSpec,
-};
+use crate::core::{BuildOperator, JsonConfigOpBinding, OperatorSpec, ParameterSpec};
+use crate::define_operator_id;
 use crate::ops::image::{ImageShape, color_util};
-use crate::{define_reflexive_id, register_op};
 use image::imageops::FilterType;
 use image::{ColorType, DynamicImage, GenericImageView};
 use serde::{Deserialize, Serialize};
@@ -11,52 +8,22 @@ use std::any::Any;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-register_op!(
-    LOAD_IMAGE,
-    spec: OperatorSpec::new()
-        .with_description("Loads an image from disk.")
-        .with_input(
-            ParameterSpec::new::<String>("path")
-                .with_description("Path to the image file."))
-        .with_output(
-            ParameterSpec::new::<DynamicImage>("image")
-                .with_description("Image loaded from disk."),
-        ),
-    || Arc::new(ImageLoaderFactory {})
-);
+define_operator_id!(LOAD_IMAGE);
 
-/// Factory for creating an `ImageLoader` operator.
-#[derive(Debug)]
-pub struct ImageLoaderFactory {}
-
-impl ImageLoaderFactory {
-    /// Returns the operator specification for loading an image.
-    pub fn load_image_op_spec() -> OperatorSpec {
+/// Creates a JSON configuration binding for the `LOAD_IMAGE` operation.
+pub fn load_image_op_binding() -> Arc<JsonConfigOpBinding<ImageLoader>> {
+    Arc::new(JsonConfigOpBinding::new(
         OperatorSpec::new()
             .with_operator_id(LOAD_IMAGE)
-            .with_input(ParameterSpec::new::<String>("path"))
+            .with_description("Loads an image from disk.")
+            .with_input(
+                ParameterSpec::new::<String>("path").with_description("Path to the image file."),
+            )
             .with_output(
                 ParameterSpec::new::<DynamicImage>("image")
                     .with_description("Image loaded from disk."),
-            )
-            .with_description("Loads an image from disk.")
-    }
-}
-
-impl BuildOperatorFactory for ImageLoaderFactory {
-    fn init_operator(
-        &self,
-        build_plan: &BuildPlan,
-        input_types: &BTreeMap<String, DataTypeDescription>,
-        output_types: &BTreeMap<String, DataTypeDescription>,
-    ) -> Result<Box<dyn BuildOperator>, String> {
-        Self::load_image_op_spec().validate(input_types, output_types)?;
-
-        let factory: ImageLoader =
-            serde_json::from_value(build_plan.config.clone()).expect("Invalid config");
-
-        Ok(Box::new(factory))
-    }
+            ),
+    ))
 }
 
 /// Represents the resize specification for an image.
@@ -201,9 +168,10 @@ mod tests {
     use super::*;
 
     use crate::core::{
-        ColumnSchema, RowBatch, TableSchema, autofactory, experimental_run_batch,
+        ColumnSchema, OpEnvironment, RowBatch, TableSchema, experimental_run_batch_env,
         extend_schema_with_operator_and_config,
     };
+    use crate::ops::common_environment;
     use crate::ops::image::test_util;
     use crate::ops::image::test_util::assert_image_close;
     use image::DynamicImage;
@@ -229,11 +197,13 @@ mod tests {
             .save(&image_path)
             .expect("Failed to save test image");
 
+        let env = common_environment();
+
         let mut schema = TableSchema::from_columns(&[ColumnSchema::new::<String>("path")]);
 
         extend_schema_with_operator_and_config(
             &mut schema,
-            &ImageLoaderFactory::load_image_op_spec(),
+            env.lookup_binding(LOAD_IMAGE).unwrap().spec(),
             &[("path", "path")],
             &[("image", "image")],
             ImageLoader::default(),
@@ -241,7 +211,7 @@ mod tests {
 
         extend_schema_with_operator_and_config(
             &mut schema,
-            &ImageLoaderFactory::load_image_op_spec(),
+            env.lookup_binding(LOAD_IMAGE).unwrap().spec(),
             &[("path", "path")],
             &[("image", "resized_gray")],
             ImageLoader::default()
@@ -260,8 +230,7 @@ mod tests {
         let mut batch = RowBatch::with_size(schema.clone(), 1);
         batch[0].set_column(&schema, "path", Some(Arc::new(image_path)));
 
-        let factory = autofactory();
-        experimental_run_batch(&mut batch, &factory)?;
+        experimental_run_batch_env(&mut batch, &env)?;
 
         let loaded_image = batch[0]
             .get_column::<DynamicImage>(&schema, "image")

@@ -26,7 +26,6 @@ use burn::train::{
     ClassificationOutput, LearnerBuilder, MetricEarlyStoppingStrategy, StoppingCondition,
 };
 use burn::train::{TrainOutput, TrainStep, ValidStep};
-use rand::seq::SliceRandom;
 use rs_cinic_10_index::Cinic10Index;
 use rs_cinic_10_index::index::ObjectClass;
 use strum::EnumCount;
