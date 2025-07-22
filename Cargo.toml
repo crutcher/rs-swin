@@ -29,8 +29,6 @@ regex-macro = { version = "^0.3.0" }
 
 image = { version = "^0.25.6" }
 
-inventory = { version = "^0.3.20" }
-
 # Burn coupled-dependencies
 serde = { version = "^1.0.219" }
 serde_json = { version = "^1.0.140" }
@@ -42,7 +40,6 @@ syn = { version = "^2.0.104" }
 quote = { version = "^1.0.40" }
 
 # Test and/or Examples dependencies
-anyhow = { version = "^1.0.98" }
 indoc = { version = "^2.0.6" }
 rand = {  version = "^0.9.1"  }
 num-traits = { version = "^0.2.19" }
