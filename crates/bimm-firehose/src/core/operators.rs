@@ -736,8 +736,175 @@ pub trait OpEnvironment {
         binding.validate_build_plan(build_plan, input_types, output_types)?;
         binding.init_operator(build_plan, input_types, output_types)
     }
+
+    /// Extends a schema with a new operation.
+    ///
+    /// Plans new output columns and adds a build plan for the operation.
+    ///
+    /// Validates the inputs, outputs, and configs against the environment.
+    ///
+    /// # Arguments
+    ///
+    /// * `schema` - A mutable reference to the `TableSchema` to be extended.
+    /// * `call` - A `CallBuilder` that describes the operation to be added.
+    ///
+    /// # Returns
+    ///
+    /// A `Result<BuildPlan, String>` where:
+    /// * `Ok` contains the build plan for the operation,
+    /// * `Err` contains an error message if the operation fails.
+    fn plan_operation(
+        &self,
+        schema: &mut TableSchema,
+        call: CallBuilder,
+    ) -> Result<BuildPlan, String> {
+        let operator_id = &call.operator_id;
+
+        let input_types: BTreeMap<String, DataTypeDescription> = call
+            .inputs
+            .iter()
+            .map(|(pname, cname)| (pname.to_string(), schema[cname.as_str()].data_type.clone()))
+            .collect();
+
+        let binding = self.lookup_binding(operator_id)?;
+        let spec = binding.spec();
+
+        spec.validate_inputs(&input_types)?;
+
+        let input_bindings: Vec<(&str, &str)> = call
+            .inputs
+            .iter()
+            .map(|(pname, cname)| (pname.as_str(), cname.as_str()))
+            .collect();
+
+        let output_bindings: Vec<(&str, &str)> = call
+            .outputs
+            .iter()
+            .map(|(pname, cname)| (pname.as_str(), cname.as_str()))
+            .collect();
+
+        let mut plan = BuildPlan::for_operator(operator_id)
+            .with_inputs(&input_bindings)
+            .with_outputs(&output_bindings);
+
+        if let Some(description) = &spec.description {
+            plan = plan.with_description(description);
+        }
+        if let Some(config) = &call.config {
+            plan = plan.with_config(config);
+        }
+
+        let output_plan = spec.output_plan();
+        let output_types: BTreeMap<String, DataTypeDescription> = output_plan
+            .iter()
+            .map(|(pname, dtype, _)| (pname.clone(), dtype.clone()))
+            .collect();
+
+        self.validate_build_plan(&plan, &input_types, &output_types)?;
+
+        schema.add_build_plan_and_outputs(plan.clone(), &spec.output_plan())?;
+
+        Ok(plan)
+    }
 }
 
+/// A builder for constructing a call to an operator in a `BuildPlan`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct CallBuilder {
+    /// The ID of the operator to be called.
+    pub operator_id: String,
+
+    /// A map from formal parameter names to column names for inputs.
+    pub inputs: BTreeMap<String, String>,
+
+    /// A map from formal parameter names to column names for outputs.
+    pub outputs: BTreeMap<String, String>,
+
+    /// An optional configuration for the call, serialized as JSON.
+    pub config: Option<serde_json::Value>,
+}
+
+impl CallBuilder {
+    /// Creates a new `CallBuilder` for the specified operator ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `operator_id` - The ID of the operator to be called.
+    pub fn new(operator_id: &str) -> Self {
+        Self {
+            operator_id: operator_id.to_string(),
+            inputs: BTreeMap::new(),
+            outputs: BTreeMap::new(),
+            config: None,
+        }
+    }
+
+    /// Adds an input parameter to the call builder.
+    ///
+    /// # Arguments
+    ///
+    /// * `pname` - The name of the input parameter.
+    /// * `cname` - The column name in the input table.
+    ///
+    /// # Returns
+    ///
+    /// The same `CallBuilder` instance with the input parameter added.
+    pub fn with_input(
+        mut self,
+        pname: &str,
+        cname: &str,
+    ) -> Self {
+        if self.inputs.contains_key(pname) {
+            panic!("Input parameter '{pname}' already exists.");
+        }
+        self.inputs.insert(pname.to_string(), cname.to_string());
+        self
+    }
+
+    /// Adds an output parameter to the call builder.
+    ///
+    /// # Arguments
+    ///
+    /// * `pname` - The name of the output parameter.
+    /// * `cname` - The column name in the output table.
+    ///
+    /// # Returns
+    ///
+    /// The same `CallBuilder` instance with the output parameter added.
+    pub fn with_output(
+        mut self,
+        pname: &str,
+        cname: &str,
+    ) -> Self {
+        if self.outputs.contains_key(pname) {
+            panic!("Output parameter '{pname}' already exists.");
+        }
+        self.outputs.insert(pname.to_string(), cname.to_string());
+        self
+    }
+
+    /// Adds a configuration to the call builder.
+    ///
+    /// The configuration is serialized to JSON and stored in the call.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - The configuration to be added, which must implement `Serialize`.
+    ///
+    /// # Returns
+    ///
+    /// The same `CallBuilder` instance with the configuration added.
+    pub fn with_config<T>(
+        mut self,
+        config: T,
+    ) -> Self
+    where
+        T: Serialize,
+    {
+        self.config = Some(serde_json::to_value(config).expect("Failed to serialize config"));
+        self
+    }
+}
 /// MapOpEnvironment is a simple implementation of OpEnvironment that uses a BTreeMap to store operators.
 pub struct MapOpEnvironment {
     operators: BTreeMap<String, Arc<dyn OpBinding>>,

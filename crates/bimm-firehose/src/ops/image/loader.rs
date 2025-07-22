@@ -168,8 +168,7 @@ mod tests {
     use super::*;
 
     use crate::core::{
-        ColumnSchema, OpEnvironment, RowBatch, TableSchema, experimental_run_batch_env,
-        extend_schema_with_operator_and_config,
+        CallBuilder, ColumnSchema, OpEnvironment, RowBatch, TableSchema, experimental_run_batch_env,
     };
     use crate::ops::common_environment;
     use crate::ops::image::test_util;
@@ -201,28 +200,30 @@ mod tests {
 
         let mut schema = TableSchema::from_columns(&[ColumnSchema::new::<String>("path")]);
 
-        extend_schema_with_operator_and_config(
+        env.plan_operation(
             &mut schema,
-            env.lookup_binding(LOAD_IMAGE).unwrap().spec(),
-            &[("path", "path")],
-            &[("image", "image")],
-            ImageLoader::default(),
+            CallBuilder::new(LOAD_IMAGE)
+                .with_input("path", "path")
+                .with_output("image", "image")
+                .with_config(ImageLoader::default()),
         )?;
 
-        extend_schema_with_operator_and_config(
+        env.plan_operation(
             &mut schema,
-            env.lookup_binding(LOAD_IMAGE).unwrap().spec(),
-            &[("path", "path")],
-            &[("image", "resized_gray")],
-            ImageLoader::default()
-                .with_resize(
-                    ResizeSpec::new(ImageShape {
-                        width: 16,
-                        height: 16,
-                    })
-                    .with_filter(FilterType::Nearest),
-                )
-                .with_recolor(ColorType::L16),
+            CallBuilder::new(LOAD_IMAGE)
+                .with_input("path", "path")
+                .with_output("image", "resized_gray")
+                .with_config(
+                    ImageLoader::default()
+                        .with_resize(
+                            ResizeSpec::new(ImageShape {
+                                width: 16,
+                                height: 16,
+                            })
+                            .with_filter(FilterType::Nearest),
+                        )
+                        .with_recolor(ColorType::L16),
+                ),
         )?;
 
         let schema = Arc::new(schema);
