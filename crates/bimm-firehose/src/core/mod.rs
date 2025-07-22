@@ -9,8 +9,6 @@ pub use identifiers::*;
 pub use operators::*;
 pub use rows::*;
 pub use schema::*;
-use serde::Serialize;
-use std::collections::BTreeMap;
 
 /// Runs a batch of rows through the operator environment, applying the build plans defined in the schema.
 pub fn experimental_run_batch_env<E>(
@@ -32,153 +30,42 @@ where
     Ok(())
 }
 
-/// Extends the schema with an operator specification, adding a build plan and output columns.
-///
-/// This function is a convenience wrapper that does not require a configuration parameter.
-///
-/// # Arguments
-///
-/// * `schema` - A mutable reference to the `TableSchema` to be extended.
-/// * `spec` - A reference to the `OperatorSpec` defining the operator.
-/// * `input_bindings` - A slice of tuples mapping input parameter names to column names in the schema.
-/// * `output_bindings` - A slice of tuples mapping output parameter names to column names in the schema.
-///
-/// # Returns
-///
-/// A result indicating success or an error message if the operation fails.
-pub fn extend_schema_with_operator(
-    schema: &mut TableSchema,
-    spec: &OperatorSpec,
-    input_bindings: &[(&str, &str)],
-    output_bindings: &[(&str, &str)],
-) -> Result<(), String> {
-    extend_schema_with_operator_impl(schema, spec, input_bindings, output_bindings, None::<()>)
-}
-
-/// Extends the schema with an operator specification, adding a build plan and output columns,
-///
-/// This function allows for a configuration parameter to be passed, which is serialized and included in the build plan.
-///
-/// # Arguments
-///
-/// * `schema` - A mutable reference to the `TableSchema` to be extended.
-/// * `spec` - A reference to the `OperatorSpec` defining the operator.
-/// * `input_bindings` - A slice of tuples mapping input parameter names to column names in the schema.
-/// * `output_bindings` - A slice of tuples mapping output parameter names to column names in the schema.
-/// * `config` - A configuration parameter of type `T` that implements `Serialize`.
-///   This will be serialized and included in the build plan.
-///
-/// # Returns
-///
-/// A result indicating success or an error message if the operation fails.
-pub fn extend_schema_with_operator_and_config<T>(
-    schema: &mut TableSchema,
-    spec: &OperatorSpec,
-    input_bindings: &[(&str, &str)],
-    output_bindings: &[(&str, &str)],
-    config: T,
-) -> Result<(), String>
-where
-    T: Serialize,
-{
-    extend_schema_with_operator_impl(schema, spec, input_bindings, output_bindings, Some(config))
-}
-
-/// Extends the schema with an operator specification, adding a build plan and output columns.
-///
-/// This function is a generic implementation that can handle both the case with and without a configuration parameter.
-///
-/// # Arguments
-///
-/// * `schema` - A mutable reference to the `TableSchema` to be extended.
-/// * `spec` - A reference to the `OperatorSpec` defining the operator.
-/// * `input_bindings` - A slice of tuples mapping input parameter names to column names in the schema.
-/// * `output_bindings` - A slice of tuples mapping output parameter names to column names in the schema.
-/// * `config` - An optional configuration parameter of type `T` that implements `Serialize`.
-///   If provided, it will be serialized and included in the build plan.
-///
-/// # Returns
-///
-/// A result indicating success or an error message if the operation fails.
-pub fn extend_schema_with_operator_impl<T>(
-    schema: &mut TableSchema,
-    spec: &OperatorSpec,
-    input_bindings: &[(&str, &str)],
-    output_bindings: &[(&str, &str)],
-    config: Option<T>,
-) -> Result<(), String>
-where
-    T: Serialize,
-{
-    let operator_id = spec
-        .operator_id
-        .as_ref()
-        .expect("OperatorId is required")
-        .to_owned();
-
-    let input_types: BTreeMap<String, DataTypeDescription> = input_bindings
-        .iter()
-        .map(|(pname, cname)| (pname.to_string(), schema[*cname].data_type.clone()))
-        .collect();
-
-    spec.validate_inputs(&input_types)?;
-
-    let mut plan = BuildPlan::for_operator(&operator_id)
-        .with_inputs(input_bindings)
-        .with_outputs(output_bindings);
-
-    if let Some(description) = &spec.description {
-        plan = plan.with_description(description);
-    }
-    if let Some(config) = config {
-        plan = plan.with_config(config);
-    }
-
-    schema.add_build_plan_and_outputs(plan, &spec.output_plan())?;
-
-    Ok(())
-}
 #[cfg(test)]
 mod tests {
-
     use super::*;
-    use crate::core::operators::ParameterSpec;
     use crate::ops::common_environment;
-    use crate::ops::image::loader::{ImageLoader, LOAD_IMAGE};
+    use crate::ops::image::loader::{ImageLoader, LOAD_IMAGE, ResizeSpec};
+    use crate::ops::image::test_util::assert_image_close;
+    use crate::ops::image::{ImageShape, test_util};
+    use image::imageops::FilterType;
+    use image::{ColorType, DynamicImage};
     use indoc::indoc;
+    use std::sync::Arc;
 
     #[test]
     fn test_example() -> Result<(), String> {
-        let path_to_class_spec: OperatorSpec = OperatorSpec::new()
-            .with_operator_id("example::path_to_class")
-            .with_description("Extracts class name from image path")
-            .with_input(
-                ParameterSpec::new::<String>("path").with_description("Path to segment for class."),
-            )
-            .with_output(
-                ParameterSpec::new::<String>("name").with_description("category class name"),
-            )
-            .with_output(ParameterSpec::new::<u32>("code").with_description("category class code"));
+        let env = common_environment();
 
         let mut schema = TableSchema::from_columns(&[
             ColumnSchema::new::<String>("path").with_description("path to the image")
         ]);
 
-        extend_schema_with_operator(
+        env.plan_operation(
             &mut schema,
-            &path_to_class_spec,
-            &[("path", "path")],
-            &[("name", "class_name"), ("code", "class_code")],
-        )?;
-
-        let env = common_environment();
-
-        extend_schema_with_operator_and_config(
-            &mut schema,
-            env.lookup_binding(LOAD_IMAGE).unwrap().spec(),
-            &[("path", "path")],
-            &[("image", "raw_image")],
-            ImageLoader::default(),
+            CallBuilder::new(LOAD_IMAGE)
+                .with_input("path", "path")
+                .with_output("image", "image")
+                .with_config(
+                    ImageLoader::default()
+                        .with_resize(
+                            ResizeSpec::new(ImageShape {
+                                width: 16,
+                                height: 16,
+                            })
+                            .with_filter(FilterType::Nearest),
+                        )
+                        .with_recolor(ColorType::L16),
+                ),
         )?;
 
         assert_eq!(
@@ -194,21 +81,7 @@ mod tests {
                       }
                     },
                     {
-                      "name": "class_name",
-                      "description": "category class name",
-                      "data_type": {
-                        "type_name": "alloc::string::String"
-                      }
-                    },
-                    {
-                      "name": "class_code",
-                      "description": "category class code",
-                      "data_type": {
-                        "type_name": "u32"
-                      }
-                    },
-                    {
-                      "name": "raw_image",
+                      "name": "image",
                       "description": "Image loaded from disk.",
                       "data_type": {
                         "type_name": "image::dynimage::DynamicImage"
@@ -217,30 +90,67 @@ mod tests {
                   ],
                   "build_plans": [
                     {
-                      "operator_id": "example::path_to_class",
-                      "description": "Extracts class name from image path",
-                      "inputs": {
-                        "path": "path"
-                      },
-                      "outputs": {
-                        "code": "class_code",
-                        "name": "class_name"
-                      }
-                    },
-                    {
                       "operator_id": "bimm_firehose::ops::image::loader::LOAD_IMAGE",
                       "description": "Loads an image from disk.",
-                      "config": {},
+                      "config": {
+                        "recolor": "L16",
+                        "resize": {
+                          "filter": "Nearest",
+                          "shape": {
+                            "height": 16,
+                            "width": 16
+                          }
+                        }
+                      },
                       "inputs": {
                         "path": "path"
                       },
                       "outputs": {
-                        "image": "raw_image"
+                        "image": "image"
                       }
                     }
                   ]
                 }"#,
             }
+        );
+
+        let schema = Arc::new(schema);
+
+        let mut batch = RowBatch::with_size(schema.clone(), 1);
+
+        let source_image: DynamicImage = test_util::generate_gradient_pattern(ImageShape {
+            width: 32,
+            height: 32,
+        })
+        .into();
+
+        let temp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
+        {
+            let image_path = temp_dir
+                .path()
+                .join("test.png")
+                .to_string_lossy()
+                .to_string();
+
+            source_image
+                .save(&image_path)
+                .expect("Failed to save test image");
+
+            batch[0].set_column(&schema, "path", Some(Arc::new(image_path)));
+        }
+
+        experimental_run_batch_env(&mut batch, &env)?;
+
+        let loaded_image = batch[0]
+            .get_column::<DynamicImage>(&schema, "image")
+            .expect("Failed to get loaded image");
+        assert_image_close(
+            loaded_image,
+            &source_image
+                .resize(16, 16, FilterType::Nearest)
+                .to_luma8()
+                .into(),
+            None,
         );
 
         Ok(())
