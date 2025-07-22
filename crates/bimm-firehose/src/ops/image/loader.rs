@@ -1,13 +1,15 @@
-use crate::core::{BuildOperator, BuildOperatorFactory, BuildPlan, DataTypeDescription, OperatorSpec, ParameterSpec, OpKey};
-use crate::{define_reflexive_id, register_op};
+use crate::core::{
+    BuildOperator, BuildOperatorFactory, BuildPlan, DataTypeDescription, OpKey, OperatorSpec,
+    ParameterSpec,
+};
 use crate::ops::image::{ImageShape, color_util};
+use crate::{define_reflexive_id, register_op};
 use image::imageops::FilterType;
 use image::{ColorType, DynamicImage, GenericImageView};
 use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::collections::BTreeMap;
 use std::sync::Arc;
-
 
 register_op!(
     LOAD_IMAGE,
@@ -26,7 +28,6 @@ register_op!(
 /// Factory for creating an `ImageLoader` operator.
 #[derive(Debug)]
 pub struct ImageLoaderFactory {}
-
 
 impl ImageLoaderFactory {
     /// Returns the operator specification for loading an image.
@@ -199,7 +200,10 @@ impl BuildOperator for ImageLoader {
 mod tests {
     use super::*;
 
-    use crate::core::{ColumnSchema, RowBatch, TableSchema, experimental_run_batch, extend_schema_with_operator_and_config, autofactory};
+    use crate::core::{
+        ColumnSchema, RowBatch, TableSchema, autofactory, experimental_run_batch,
+        extend_schema_with_operator_and_config,
+    };
     use crate::ops::image::test_util;
     use crate::ops::image::test_util::assert_image_close;
     use image::DynamicImage;
