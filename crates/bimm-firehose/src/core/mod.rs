@@ -60,7 +60,7 @@ mod tests {
                         .with_resize(
                             ResizeSpec::new(ImageShape {
                                 width: 16,
-                                height: 16,
+                                height: 24,
                             })
                             .with_filter(FilterType::Nearest),
                         )
@@ -97,7 +97,7 @@ mod tests {
                         "resize": {
                           "filter": "Nearest",
                           "shape": {
-                            "height": 16,
+                            "height": 24,
                             "width": 16
                           }
                         }
@@ -147,7 +147,7 @@ mod tests {
         assert_image_close(
             loaded_image,
             &source_image
-                .resize(16, 16, FilterType::Nearest)
+                .resize(16, 24, FilterType::Nearest)
                 .to_luma8()
                 .into(),
             None,
