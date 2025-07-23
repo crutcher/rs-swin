@@ -467,7 +467,7 @@ dependencies = [
  "log",
  "num-traits",
  "portable-atomic-util",
- "rand 0.9.1",
+ "rand 0.9.2",
  "rmp-serde",
  "serde",
  "serde_json",
@@ -494,7 +494,7 @@ dependencies = [
  "hashbrown 0.15.4",
  "log",
  "num-traits",
- "rand 0.9.1",
+ "rand 0.9.2",
  "serde",
  "spin",
  "text_placeholder",
@@ -548,7 +548,7 @@ dependencies = [
  "image",
  "r2d2",
  "r2d2_sqlite",
- "rand 0.9.1",
+ "rand 0.9.2",
  "rmp-serde",
  "rusqlite",
  "sanitize-filename",
@@ -622,7 +622,7 @@ dependencies = [
  "num-traits",
  "paste",
  "portable-atomic-util",
- "rand 0.9.1",
+ "rand 0.9.2",
  "seq-macro",
  "spin",
 ]
@@ -711,7 +711,7 @@ dependencies = [
  "half",
  "hashbrown 0.15.4",
  "num-traits",
- "rand 0.9.1",
+ "rand 0.9.2",
  "rand_distr",
  "serde",
  "serde_bytes",
@@ -828,7 +828,7 @@ dependencies = [
  "memmap2",
  "num-traits",
  "num_cpus",
- "rand 0.9.1",
+ "rand 0.9.2",
  "rand_distr",
  "rayon",
  "safetensors 0.4.5",
@@ -1149,7 +1149,7 @@ dependencies = [
  "log",
  "num-traits",
  "portable-atomic",
- "rand 0.9.1",
+ "rand 0.9.2",
  "sanitize-filename",
  "serde",
  "serde_json",
@@ -1337,7 +1337,7 @@ dependencies = [
  "cubecl-std",
  "half",
  "num-traits",
- "rand 0.9.1",
+ "rand 0.9.2",
  "serde",
 ]
 
@@ -2457,7 +2457,7 @@ dependencies = [
  "cfg-if",
  "crunchy",
  "num-traits",
- "rand 0.9.1",
+ "rand 0.9.2",
  "rand_distr",
  "serde",
 ]
@@ -3924,7 +3924,7 @@ dependencies = [
  "bytes",
  "getrandom 0.3.1",
  "lru-slab",
- "rand 0.9.1",
+ "rand 0.9.2",
  "ring",
  "rustc-hash 2.1.1",
  "rustls",
@@ -4007,9 +4007,9 @@ dependencies = [
 
 [[package]]
 name = "rand"
-version = "0.9.1"
+version = "0.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9fbfd9d094a40bf3ae768db9361049ace4c0e04a4fd6b359518bd7b73a73dd97"
+checksum = "6db2770f06117d490610c7488547d543617b21bfa07796d7a12f6f1bd53850d1"
 dependencies = [
  "rand_chacha 0.9.0",
  "rand_core 0.9.1",
@@ -4076,7 +4076,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a8615d50dcf34fa31f7ab52692afec947c4dd0ab803cc87cb3b0b4570ff7463"
 dependencies = [
  "num-traits",
- "rand 0.9.1",
+ "rand 0.9.2",
 ]
 
 [[package]]
@@ -4666,9 +4666,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.140"
+version = "1.0.141"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20068b6e96dc6c9bd23e01df8827e6c7e1f2fddd43c21810382803c136b99373"
+checksum = "30b9eff21ebe718216c6ec64e1d9ac57087aad11efc64e32002bce4a0d4c03d3"
 dependencies = [
  "itoa",
  "memchr",
@@ -4937,7 +4937,7 @@ dependencies = [
  "burn",
  "enum-ordinalize",
  "globwalk",
- "rand 0.9.1",
+ "rand 0.9.2",
  "rs-cinic-10-burn",
  "rs-cinic-10-index",
  "serde",
@@ -5521,7 +5521,7 @@ dependencies = [
  "http",
  "httparse",
  "log",
- "rand 0.9.1",
+ "rand 0.9.2",
  "sha1",
  "thiserror 2.0.12",
  "utf-8",
@@ -5538,7 +5538,7 @@ dependencies = [
  "http",
  "httparse",
  "log",
- "rand 0.9.1",
+ "rand 0.9.2",
  "sha1",
  "thiserror 2.0.12",
  "utf-8",
@@ -5706,7 +5706,7 @@ checksum = "3cf4199d1e5d15ddd86a694e4d0dffa9c323ce759fea589f00fef9d81cc1931d"
 dependencies = [
  "getrandom 0.3.1",
  "js-sys",
- "rand 0.9.1",
+ "rand 0.9.2",
  "wasm-bindgen",
 ]
 
