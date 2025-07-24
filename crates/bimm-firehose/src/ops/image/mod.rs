@@ -5,7 +5,7 @@ pub mod color_util;
 /// Image loader operators.
 pub mod loader;
 /// Image/Tensor conversion utilities.
-pub mod tensor_conversion;
+pub mod tensor_loader;
 /// Image test utilities.
 pub mod test_util;
 

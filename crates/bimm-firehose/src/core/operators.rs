@@ -78,7 +78,7 @@ impl OpBindingRegistration {
 /// using `new_default_operator_environment`.
 #[macro_export]
 macro_rules! register_default_operator_binding {
-    ($name:ident, $constructor:ident) => {
+    ($name:ident, $constructor:expr) => {
         inventory::submit! {
             $crate::core::OpBindingRegistration::new(
                 $name,
@@ -110,6 +110,7 @@ pub fn new_default_operator_environment() -> MapOpEnvironment {
 
     env
 }
+
 /// Defines the arity (requirement level) of a parameter
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ParameterArity {
@@ -346,7 +347,7 @@ impl OperatorSpec {
                 ));
             }
 
-            if provided[&spec.name] != spec.data_type {
+            if provided[&spec.name].type_name != spec.data_type.type_name {
                 return Err(format!(
                     "{} parameter '{}' expected type {:?}, but got {:?}",
                     param_type, spec.name, spec.data_type, provided[&spec.name]
@@ -363,7 +364,7 @@ impl OperatorSpec {
         for (name, data_type) in provided {
             match expected_names.get(name) {
                 Some(expected_type) => {
-                    if data_type != *expected_type {
+                    if data_type.type_name != expected_type.type_name {
                         return Err(format!(
                             "{param_type} parameter '{name}' expected type {expected_type:?}, but got {data_type:?}"
                         ));
@@ -906,15 +907,30 @@ pub trait OpEnvironment {
             plan = plan.with_config(config);
         }
 
-        let output_plan = spec.output_plan();
-        let output_types: BTreeMap<String, DataTypeDescription> = output_plan
+        // Fuse static output types with the call's output extensions.
+        let output_plan = spec
+            .output_plan()
             .iter()
-            .map(|(pname, dtype, _)| (pname.clone(), dtype.clone()))
-            .collect();
+            .map(|(pname, dtype, description)| {
+                let mut dtype = dtype.clone();
+                if let Some(extension) = call.output_extensions.get(pname) {
+                    dtype.extension = extension.clone();
+                }
 
-        self.validate_build_plan(&plan, &input_types, &output_types)?;
+                (pname.clone(), dtype, description.clone())
+            })
+            .collect::<Vec<_>>();
 
-        schema.add_build_plan_and_outputs(plan.clone(), &spec.output_plan())?;
+        self.validate_build_plan(
+            &plan,
+            &input_types,
+            &output_plan
+                .iter()
+                .map(|(pname, dtype, _)| (pname.clone(), dtype.clone()))
+                .collect(),
+        )?;
+
+        schema.add_build_plan_and_outputs(plan.clone(), &output_plan)?;
 
         Ok(plan)
     }
@@ -932,6 +948,9 @@ pub struct CallBuilder {
     /// A map from formal parameter names to column names for outputs.
     pub outputs: BTreeMap<String, String>,
 
+    /// A map from formal parameter names to their extensions, serialized as JSON.
+    pub output_extensions: BTreeMap<String, serde_json::Value>,
+
     /// An optional configuration for the call, serialized as JSON.
     pub config: Option<serde_json::Value>,
 }
@@ -947,6 +966,7 @@ impl CallBuilder {
             operator_id: operator_id.to_string(),
             inputs: BTreeMap::new(),
             outputs: BTreeMap::new(),
+            output_extensions: BTreeMap::new(),
             config: None,
         }
     }
@@ -992,6 +1012,28 @@ impl CallBuilder {
             panic!("Output parameter '{pname}' already exists.");
         }
         self.outputs.insert(pname.to_string(), cname.to_string());
+        self
+    }
+
+    /// Adds an output extension to the call builder.
+    pub fn with_output_extension<T>(
+        mut self,
+        pname: &str,
+        extension: T,
+    ) -> Self
+    where
+        T: Serialize,
+    {
+        if !self.outputs.contains_key(pname) {
+            panic!("Output parameter '{pname}' must be defined before adding an extension.");
+        }
+        if self.output_extensions.contains_key(pname) {
+            panic!("Output extension for '{pname}' already exists.");
+        }
+        self.output_extensions.insert(
+            pname.to_string(),
+            serde_json::to_value(extension).expect("Failed to serialize output extension"),
+        );
         self
     }
 

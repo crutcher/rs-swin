@@ -35,17 +35,24 @@ mod tests {
     use super::*;
 
     use crate::ops::image::loader::{ImageLoader, LOAD_IMAGE, ResizeSpec};
-    use crate::ops::image::tensor_conversion::{
-        IMG_TO_TENSOR, ImgToTensorConfig, img_to_tensor_op_binding,
+    use crate::ops::image::tensor_loader::{
+        IMAGE_TO_TENSOR, ImgToTensorConfig, TargetDType, img_to_tensor_op_binding,
     };
     use crate::ops::image::test_util::assert_image_close;
     use crate::ops::image::{ImageShape, test_util};
     use burn::backend::NdArray;
-    use burn::prelude::{Int, Shape, Tensor};
+    use burn::prelude::{Shape, Tensor};
+
     use image::imageops::FilterType;
     use image::{ColorType, DynamicImage};
     use indoc::indoc;
     use std::sync::Arc;
+
+    #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+    pub struct TensorDescription {
+        pub shape: Vec<usize>,
+        pub dtype: burn::tensor::DType,
+    }
 
     #[test]
     fn test_example() -> Result<(), String> {
@@ -65,6 +72,13 @@ mod tests {
             CallBuilder::new(LOAD_IMAGE)
                 .with_input("path", "path")
                 .with_output("image", "image")
+                .with_output_extension(
+                    "image",
+                    ImageShape {
+                        width: 16,
+                        height: 24,
+                    },
+                )
                 .with_config(
                     ImageLoader::default()
                         .with_resize(
@@ -80,10 +94,17 @@ mod tests {
 
         env.plan_operation(
             &mut schema,
-            CallBuilder::new(IMG_TO_TENSOR)
+            CallBuilder::new(IMAGE_TO_TENSOR)
                 .with_input("image", "image")
                 .with_output("tensor", "tensor")
-                .with_config(ImgToTensorConfig::new()),
+                .with_output_extension(
+                    "tensor",
+                    TensorDescription {
+                        shape: vec![24, 16, 1],
+                        dtype: burn::tensor::DType::F32,
+                    },
+                )
+                .with_config(ImgToTensorConfig::new().with_dtype(TargetDType::F32)),
         )?;
 
         assert_eq!(
@@ -102,14 +123,26 @@ mod tests {
                       "name": "image",
                       "description": "Image loaded from disk.",
                       "data_type": {
-                        "type_name": "image::dynimage::DynamicImage"
+                        "type_name": "image::dynimage::DynamicImage",
+                        "extension": {
+                          "height": 24,
+                          "width": 16
+                        }
                       }
                     },
                     {
                       "name": "tensor",
                       "description": "Tensor representation of the image.",
                       "data_type": {
-                        "type_name": "burn_tensor::tensor::api::base::Tensor<burn_ndarray::backend::NdArray, 3>"
+                        "type_name": "burn_tensor::tensor::api::base::Tensor<burn_ndarray::backend::NdArray, 3>",
+                        "extension": {
+                          "dtype": "F32",
+                          "shape": [
+                            24,
+                            16,
+                            1
+                          ]
+                        }
                       }
                     }
                   ],
@@ -135,9 +168,11 @@ mod tests {
                       }
                     },
                     {
-                      "operator_id": "bimm_firehose::ops::image::tensor_conversion::IMG_TO_TENSOR",
+                      "operator_id": "bimm_firehose::ops::image::tensor_loader::IMAGE_TO_TENSOR",
                       "description": "Converts an image to a tensor.",
-                      "config": {},
+                      "config": {
+                        "dtype": "F32"
+                      },
                       "inputs": {
                         "image": "image"
                       },
@@ -187,10 +222,10 @@ mod tests {
             None,
         );
 
-        let loaded_tensor: &Tensor<B, 3, Int> =
-            batch[0].get_column_checked(&schema, "tensor")?.unwrap();
+        let loaded_tensor: &Tensor<B, 3> = batch[0].get_column_checked(&schema, "tensor")?.unwrap();
 
-        assert_eq!(loaded_tensor.shape(), Shape::new([24, 16, 4]));
+        assert_eq!(loaded_tensor.dtype(), burn::tensor::DType::F32);
+        assert_eq!(loaded_tensor.shape(), Shape::new([24, 16, 1]));
 
         Ok(())
     }

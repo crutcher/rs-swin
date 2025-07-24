@@ -9,7 +9,6 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 define_operator_id!(LOAD_IMAGE);
-
 register_default_operator_binding!(LOAD_IMAGE, load_image_op_binding);
 
 /// Creates a JSON configuration binding for the `LOAD_IMAGE` operation.
@@ -173,8 +172,7 @@ mod tests {
     use crate::core::{
         CallBuilder, ColumnSchema, OpEnvironment, RowBatch, TableSchema, experimental_run_batch_env,
     };
-    use crate::ops::image::test_util;
-    use crate::ops::image::test_util::assert_image_close;
+    use crate::ops::image::test_util::{assert_image_close, generate_gradient_pattern};
     use image::DynamicImage;
     use std::sync::Arc;
 
@@ -188,7 +186,7 @@ mod tests {
             .to_string_lossy()
             .to_string();
 
-        let source_image: DynamicImage = test_util::generate_gradient_pattern(ImageShape {
+        let source_image: DynamicImage = generate_gradient_pattern(ImageShape {
             width: 32,
             height: 32,
         })
