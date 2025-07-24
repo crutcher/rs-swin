@@ -15,6 +15,8 @@ serde_json = { workspace = true }
 
 inventory = { workspace = true }
 
+indoc = { workspace = true }
+
 regex = { workspace = true }
 regex-macro = { workspace = true }
 
@@ -24,7 +26,6 @@ image-compare = { workspace = true }
 [dev-dependencies]
 burn = { workspace = true, features = ["ndarray"] }
 
-indoc = { workspace = true }
 tempfile = { workspace = true }
 
 [features]

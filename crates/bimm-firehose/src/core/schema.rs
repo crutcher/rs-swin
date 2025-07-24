@@ -8,21 +8,49 @@ use std::ops::{Index, IndexMut};
 pub struct DataTypeDescription {
     /// The name of the data type.
     pub type_name: String,
+
+    /// Type-specific extension data, serialized as JSON.
+    #[serde(skip_serializing_if = "serde_json::Value::is_null")]
+    #[serde(default)]
+    pub extension: serde_json::Value,
 }
 
 impl DataTypeDescription {
-    /// Creates a `DataTypeDescription` from a type name.
-    pub fn from_type_name(type_name: &str) -> Self {
-        DataTypeDescription {
-            type_name: type_name.to_string(),
-        }
-    }
-
     /// Creates a `DataTypeDescription` for a specific type `T`.
     ///
     /// This function uses `std::any::type_name` to get the type name of `T`.
     pub fn new<T>() -> Self {
         Self::from_type_name(std::any::type_name::<T>())
+    }
+
+    /// Creates a `DataTypeDescription` from a type name.
+    pub fn from_type_name(type_name: &str) -> Self {
+        DataTypeDescription {
+            type_name: type_name.to_string(),
+            extension: serde_json::Value::Null,
+        }
+    }
+
+    /// Extends the data type description with a custom extension.
+    ///
+    /// ## Arguments
+    ///
+    /// - `extension`: The extension to attach to the data type description, serialized as JSON.
+    ///
+    /// ## Returns
+    ///
+    /// A new `DataTypeDescription` with the extension attached.
+    pub fn with_extension<T>(
+        self,
+        extension: T,
+    ) -> Self
+    where
+        T: Serialize,
+    {
+        DataTypeDescription {
+            extension: serde_json::to_value(extension).expect("Failed to serialize extension"),
+            ..self
+        }
     }
 }
 
