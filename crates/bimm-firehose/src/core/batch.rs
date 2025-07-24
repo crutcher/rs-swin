@@ -49,10 +49,14 @@ impl RowBatch {
     ///
     /// * `schema`: The schema of the table slice.
     /// * `rows`: The rows in the table slice.
-    pub fn new(
-        schema: Arc<TableSchema>,
+    pub fn new<S>(
+        schema: S,
         rows: Vec<Row>,
-    ) -> Self {
+    ) -> Self
+    where
+        S: Into<Arc<TableSchema>>,
+    {
+        let schema = schema.into();
         RowBatch { schema, rows }
     }
 
@@ -64,10 +68,14 @@ impl RowBatch {
     ///
     /// * `schema`: The schema of the table slice.
     /// * `size`: The number of rows to initialize in the batch.
-    pub fn with_size(
-        schema: Arc<TableSchema>,
+    pub fn with_size<S>(
+        schema: S,
         size: usize,
-    ) -> Self {
+    ) -> Self
+    where
+        S: Into<Arc<TableSchema>>,
+    {
+        let schema = schema.into();
         let width = schema.columns.len();
         let rows = vec![Row::new_with_width(width); size];
 

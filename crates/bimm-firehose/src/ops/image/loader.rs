@@ -1,14 +1,16 @@
 use crate::core::{BuildOperator, JsonConfigOpBinding, OperatorSpec, ParameterSpec};
-use crate::define_operator_id;
 use crate::ops::image::{ImageShape, color_util};
+use crate::{define_operator_id, register_default_operator_binding};
 use image::imageops::FilterType;
-use image::{ColorType, DynamicImage, GenericImageView};
+use image::{ColorType, DynamicImage};
 use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
 define_operator_id!(LOAD_IMAGE);
+
+register_default_operator_binding!(LOAD_IMAGE, load_image_op_binding);
 
 /// Creates a JSON configuration binding for the `LOAD_IMAGE` operation.
 pub fn load_image_op_binding() -> Arc<JsonConfigOpBinding<ImageLoader>> {
@@ -145,8 +147,8 @@ impl BuildOperator for ImageLoader {
         let mut image = image::open(path).map_err(|e| format!("Failed to load image: {e}"))?;
 
         if let Some(spec) = &self.resize {
-            if image.dimensions() != (spec.shape.width, spec.shape.height) {
-                image = image.resize(spec.shape.width, spec.shape.height, spec.filter);
+            if image.width() != spec.shape.width || image.height() != spec.shape.height {
+                image = image.resize_exact(spec.shape.width, spec.shape.height, spec.filter);
             }
         }
 
@@ -167,10 +169,10 @@ impl BuildOperator for ImageLoader {
 mod tests {
     use super::*;
 
+    use crate::core::new_default_operator_environment;
     use crate::core::{
         CallBuilder, ColumnSchema, OpEnvironment, RowBatch, TableSchema, experimental_run_batch_env,
     };
-    use crate::ops::common_environment;
     use crate::ops::image::test_util;
     use crate::ops::image::test_util::assert_image_close;
     use image::DynamicImage;
@@ -196,7 +198,7 @@ mod tests {
             .save(&image_path)
             .expect("Failed to save test image");
 
-        let env = common_environment();
+        let env = new_default_operator_environment();
 
         let mut schema = TableSchema::from_columns(&[ColumnSchema::new::<String>("path")]);
 
@@ -250,7 +252,7 @@ mod tests {
         assert_image_close(
             gray_image,
             &source_image
-                .resize(16, 16, FilterType::Nearest)
+                .resize_exact(16, 16, FilterType::Nearest)
                 .to_luma8()
                 .into(),
             None,

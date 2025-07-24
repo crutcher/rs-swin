@@ -77,7 +77,7 @@ impl Row {
                 None => Err(format!(
                     "Value at index {} cannot be downcast to type {}",
                     index,
-                    std::any::type_name::<T>()
+                    std::any::type_name::<T>(),
                 )),
             },
         }
