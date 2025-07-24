@@ -33,10 +33,15 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ops::common_environment;
+
     use crate::ops::image::loader::{ImageLoader, LOAD_IMAGE, ResizeSpec};
+    use crate::ops::image::tensor_conversion::{
+        IMG_TO_TENSOR, ImgToTensorConfig, img_to_tensor_op_binding,
+    };
     use crate::ops::image::test_util::assert_image_close;
     use crate::ops::image::{ImageShape, test_util};
+    use burn::backend::NdArray;
+    use burn::prelude::{Int, Shape, Tensor};
     use image::imageops::FilterType;
     use image::{ColorType, DynamicImage};
     use indoc::indoc;
@@ -44,7 +49,12 @@ mod tests {
 
     #[test]
     fn test_example() -> Result<(), String> {
-        let env = common_environment();
+        type B = NdArray;
+
+        let device = Default::default();
+
+        let mut env = new_default_operator_environment();
+        env.add_binding(img_to_tensor_op_binding::<B>(&device))?;
 
         let mut schema = TableSchema::from_columns(&[
             ColumnSchema::new::<String>("path").with_description("path to the image")
@@ -68,6 +78,14 @@ mod tests {
                 ),
         )?;
 
+        env.plan_operation(
+            &mut schema,
+            CallBuilder::new(IMG_TO_TENSOR)
+                .with_input("image", "image")
+                .with_output("tensor", "tensor")
+                .with_config(ImgToTensorConfig::new()),
+        )?;
+
         assert_eq!(
             serde_json::to_string_pretty(&schema).unwrap(),
             indoc! {r#"
@@ -85,6 +103,13 @@ mod tests {
                       "description": "Image loaded from disk.",
                       "data_type": {
                         "type_name": "image::dynimage::DynamicImage"
+                      }
+                    },
+                    {
+                      "name": "tensor",
+                      "description": "Tensor representation of the image.",
+                      "data_type": {
+                        "type_name": "burn_tensor::tensor::api::base::Tensor<burn_ndarray::backend::NdArray, 3>"
                       }
                     }
                   ],
@@ -108,13 +133,22 @@ mod tests {
                       "outputs": {
                         "image": "image"
                       }
+                    },
+                    {
+                      "operator_id": "bimm_firehose::ops::image::tensor_conversion::IMG_TO_TENSOR",
+                      "description": "Converts an image to a tensor.",
+                      "config": {},
+                      "inputs": {
+                        "image": "image"
+                      },
+                      "outputs": {
+                        "tensor": "tensor"
+                      }
                     }
                   ]
                 }"#,
             }
         );
-
-        let schema = Arc::new(schema);
 
         let mut batch = RowBatch::with_size(schema.clone(), 1);
 
@@ -141,17 +175,22 @@ mod tests {
 
         experimental_run_batch_env(&mut batch, &env)?;
 
-        let loaded_image = batch[0]
-            .get_column::<DynamicImage>(&schema, "image")
+        let loaded_image: &DynamicImage = batch[0]
+            .get_column(&schema, "image")
             .expect("Failed to get loaded image");
         assert_image_close(
             loaded_image,
             &source_image
-                .resize(16, 24, FilterType::Nearest)
+                .resize_exact(16, 24, FilterType::Nearest)
                 .to_luma8()
                 .into(),
             None,
         );
+
+        let loaded_tensor: &Tensor<B, 3, Int> =
+            batch[0].get_column_checked(&schema, "tensor")?.unwrap();
+
+        assert_eq!(loaded_tensor.shape(), Shape::new([24, 16, 4]));
 
         Ok(())
     }

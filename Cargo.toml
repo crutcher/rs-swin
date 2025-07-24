@@ -38,6 +38,7 @@ globwalk = { version = "^0.9.1" }
 proc-macro2 = { version = "^1.0.95" }
 syn = { version = "^2.0.104" }
 quote = { version = "^1.0.40" }
+inventory = { version = "^0.3.20" }
 
 # Test and/or Examples dependencies
 indoc = { version = "^2.0.6" }

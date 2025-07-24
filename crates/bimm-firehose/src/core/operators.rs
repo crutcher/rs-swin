@@ -23,6 +23,93 @@ macro_rules! define_operator_id {
     };
 }
 
+/// Struct describing a name to constructor for an operator binding.
+///
+/// Used by `register_default_operator_binding!` to register operator bindings
+/// which do not require any additional configuration or parameters.
+#[derive(Clone)]
+pub struct OpBindingRegistration {
+    /// The operator ID for the binding.
+    pub operator_id: &'static str,
+
+    /// The binding constructor.
+    pub constructor: fn() -> Arc<dyn OpBinding>,
+}
+
+impl Debug for OpBindingRegistration {
+    fn fmt(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
+        f.debug_struct("OpBindingRegistration")
+            .field("operator_id", &self.operator_id)
+            .finish()
+    }
+}
+
+inventory::collect! {
+    OpBindingRegistration
+}
+
+impl OpBindingRegistration {
+    /// Creates a new `OpBindingRegistration` with the given operator ID and constructor.
+    pub const fn new(
+        operator_id: &'static str,
+        constructor: fn() -> Arc<dyn OpBinding>,
+    ) -> Self {
+        Self {
+            operator_id,
+            constructor,
+        }
+    }
+
+    /// Creates a new `OpBindingRegistration` with the given operator ID and constructor.
+    pub fn get_binding(&self) -> Arc<dyn OpBinding> {
+        (self.constructor)()
+    }
+}
+
+/// Macro to register a default operator binding.
+///
+/// Bindings which do not require runtime configuration can be registered
+/// using this macro; and collected globally using `list_default_operator_bindings`.
+///
+/// You can also collect a default environment with all registered bindings
+/// using `new_default_operator_environment`.
+#[macro_export]
+macro_rules! register_default_operator_binding {
+    ($name:ident, $constructor:ident) => {
+        inventory::submit! {
+            $crate::core::OpBindingRegistration::new(
+                $name,
+                || ($constructor)(),
+            )
+        }
+    };
+}
+
+/// Lists all default operator binding constructors registered in the inventory.
+pub fn list_default_operator_bindings() -> Vec<&'static OpBindingRegistration> {
+    inventory::iter::<OpBindingRegistration>
+        .into_iter()
+        .collect()
+}
+
+/// Build the default environment.
+///
+/// This constructs a `MapOpEnvironment` and adds all operator bindings
+/// registered with `register_default_operator_binding!`.
+///
+/// Each call `build_default_environment` will create a new mutable environment.
+pub fn new_default_operator_environment() -> MapOpEnvironment {
+    let mut env = MapOpEnvironment::new();
+
+    for reg in list_default_operator_bindings() {
+        env.add_binding(reg.get_binding()).unwrap();
+    }
+
+    env
+}
 /// Defines the arity (requirement level) of a parameter
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ParameterArity {
@@ -634,6 +721,31 @@ pub trait OpBinding {
     ) -> Result<Box<dyn BuildOperator>, String>;
 }
 
+/// JsonConfigOpBinding is a concrete implementation of OpBinding that uses a JSON configuration to initialize an operator.
+pub struct JsonConfigOpBinding<T>
+where
+    T: DeserializeOwned + BuildOperator,
+{
+    spec: OperatorSpec,
+    phantom_data: PhantomData<T>,
+}
+
+impl<T> JsonConfigOpBinding<T>
+where
+    T: DeserializeOwned + BuildOperator,
+{
+    /// Creates a new `SpecConfigOpBinding` with the given operator specification.
+    pub fn new(spec: OperatorSpec) -> Self {
+        if spec.operator_id.is_none() {
+            panic!("OperatorSpec must have an operator_id");
+        }
+        Self {
+            spec,
+            phantom_data: PhantomData,
+        }
+    }
+}
+
 impl<T> OpBinding for JsonConfigOpBinding<T>
 where
     T: DeserializeOwned + BuildOperator,
@@ -928,12 +1040,10 @@ impl MapOpEnvironment {
     ///
     /// # Arguments
     ///
-    /// * `operators` - A slice of Arc-wrapped operator bindings to initialize the environment with.
-    pub fn from_bindings(operators: &[Arc<dyn OpBinding>]) -> Result<Self, String> {
+    /// * `bindings` - A slice of Arc-wrapped operator bindings to initialize the environment with.
+    pub fn from_bindings(bindings: &[Arc<dyn OpBinding>]) -> Result<Self, String> {
         let mut this = Self::new();
-        for op in operators {
-            this.add_binding(op.clone())?;
-        }
+        this.add_bindings(bindings)?;
         Ok(this)
     }
 
@@ -944,15 +1054,37 @@ impl MapOpEnvironment {
     /// * `op` - An Arc-wrapped operator binding to add to the environment.
     pub fn add_binding(
         &mut self,
-        op: Arc<dyn OpBinding>,
+        binding: Arc<dyn OpBinding>,
     ) -> Result<(), String> {
-        let id = op.operator_id();
+        let id = binding.operator_id();
         if self.operators.contains_key(id) {
             return Err(format!(
                 "Operator with ID '{id}' already exists in MapOpEnvironment."
             ));
         }
-        self.operators.insert(id.clone(), op);
+        self.operators.insert(id.clone(), binding);
+        Ok(())
+    }
+
+    /// Adds multiple bindings to the environment.
+    ///
+    /// # Arguments
+    ///
+    /// * `bindings` - An iterable collection of Arc-wrapped operator bindings to add to the environment.
+    ///
+    /// # Returns
+    ///
+    /// A `Result<(), String>` indicating success or an error message if any binding fails to be added.
+    pub fn add_bindings<'a, B>(
+        &mut self,
+        bindings: B,
+    ) -> Result<(), String>
+    where
+        B: IntoIterator<Item = &'a Arc<dyn OpBinding>>,
+    {
+        for binding in bindings.into_iter() {
+            self.add_binding(binding.clone())?;
+        }
         Ok(())
     }
 }
@@ -1035,31 +1167,6 @@ impl UnionEnvironment {
 impl OpEnvironment for UnionEnvironment {
     fn operators(&self) -> &BTreeMap<String, Arc<dyn OpBinding>> {
         &self.operators
-    }
-}
-
-/// JsonConfigOpBinding is a concrete implementation of OpBinding that uses a JSON configuration to initialize an operator.
-pub struct JsonConfigOpBinding<T>
-where
-    T: DeserializeOwned + BuildOperator,
-{
-    spec: OperatorSpec,
-    phantom_data: PhantomData<T>,
-}
-
-impl<T> JsonConfigOpBinding<T>
-where
-    T: DeserializeOwned + BuildOperator,
-{
-    /// Creates a new `SpecConfigOpBinding` with the given operator specification.
-    pub fn new(spec: OperatorSpec) -> Self {
-        if spec.operator_id.is_none() {
-            panic!("OperatorSpec must have an operator_id");
-        }
-        Self {
-            spec,
-            phantom_data: PhantomData,
-        }
     }
 }
 
