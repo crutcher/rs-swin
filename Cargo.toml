@@ -18,11 +18,11 @@ license = "MIT"
 double_must_use = "allow"
 
 [workspace.dependencies]
-burn = { version = "^0.18.0" }
-
 bimm = { version = "0.2.0", path = "crates/bimm" }
 bimm-contracts = { version = "0.2.0", path = "crates/bimm-contracts" }
 bimm-contracts-macros = { version = "0.2.0", path = "crates/bimm-contracts-macros" }
+
+burn = { version = "^0.18.0" }
 
 regex = { version = "^1.11.1" }
 regex-macro = { version = "^0.3.0" }

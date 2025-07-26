@@ -23,64 +23,64 @@ macro_rules! define_operator_id {
     };
 }
 
-/// Struct describing a name to constructor for an operator binding.
+/// Struct describing a name to constructor for an operator builder.
 ///
-/// Used by `register_default_operator_binding!` to register operator bindings
+/// Used by `register_default_operator_builder!` to register operator builders
 /// which do not require any additional configuration or parameters.
 #[derive(Clone)]
-pub struct OpBindingRegistration {
-    /// The operator ID for the binding.
+pub struct ColumnBuildOperationBuilderRegistration {
+    /// The operator ID.
     pub operator_id: &'static str,
 
-    /// The binding constructor.
-    pub constructor: fn() -> Arc<dyn OpBinding>,
+    /// The builder.
+    pub supplier: fn() -> Arc<dyn ColumnBuildOperatorBuilder>,
 }
 
-impl Debug for OpBindingRegistration {
+impl Debug for ColumnBuildOperationBuilderRegistration {
     fn fmt(
         &self,
         f: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
-        f.debug_struct("OpBindingRegistration")
+        f.debug_struct("ColumnBuildOperationBuilderRegistration")
             .field("operator_id", &self.operator_id)
             .finish()
     }
 }
 
 inventory::collect! {
-    OpBindingRegistration
+    ColumnBuildOperationBuilderRegistration
 }
 
-impl OpBindingRegistration {
-    /// Creates a new `OpBindingRegistration` with the given operator ID and constructor.
+impl ColumnBuildOperationBuilderRegistration {
+    /// Creates a new registration.
     pub const fn new(
         operator_id: &'static str,
-        constructor: fn() -> Arc<dyn OpBinding>,
+        supplier: fn() -> Arc<dyn ColumnBuildOperatorBuilder>,
     ) -> Self {
         Self {
             operator_id,
-            constructor,
+            supplier,
         }
     }
 
-    /// Creates a new `OpBindingRegistration` with the given operator ID and constructor.
-    pub fn get_binding(&self) -> Arc<dyn OpBinding> {
-        (self.constructor)()
+    /// Returns the builder.
+    pub fn get_builder(&self) -> Arc<dyn ColumnBuildOperatorBuilder> {
+        (self.supplier)()
     }
 }
 
-/// Macro to register a default operator binding.
+/// Macro to register a default operator builder.
 ///
-/// Bindings which do not require runtime configuration can be registered
-/// using this macro; and collected globally using `list_default_operator_bindings`.
+/// Builders which do not require runtime configuration can be registered
+/// using this macro; and collected globally using `list_default_operator_builders`.
 ///
-/// You can also collect a default environment with all registered bindings
+/// You can also collect a default environment with all registered builders
 /// using `new_default_operator_environment`.
 #[macro_export]
-macro_rules! register_default_operator_binding {
+macro_rules! register_default_operator_builder {
     ($name:ident, $constructor:expr) => {
         inventory::submit! {
-            $crate::core::OpBindingRegistration::new(
+            $crate::core::ColumnBuildOperationBuilderRegistration::new(
                 $name,
                 || ($constructor)(),
             )
@@ -88,24 +88,24 @@ macro_rules! register_default_operator_binding {
     };
 }
 
-/// Lists all default operator binding constructors registered in the inventory.
-pub fn list_default_operator_bindings() -> Vec<&'static OpBindingRegistration> {
-    inventory::iter::<OpBindingRegistration>
+/// Lists all default operator builders constructors registered in the inventory.
+pub fn list_default_operator_builders() -> Vec<&'static ColumnBuildOperationBuilderRegistration> {
+    inventory::iter::<ColumnBuildOperationBuilderRegistration>
         .into_iter()
         .collect()
 }
 
 /// Build the default environment.
 ///
-/// This constructs a `MapOpEnvironment` and adds all operator bindings
-/// registered with `register_default_operator_binding!`.
+/// This constructs a `MapOpEnvironment` and adds all operator builders
+/// registered with `bimm_firehose::register_default_operator_builder!`.
 ///
 /// Each call `build_default_environment` will create a new mutable environment.
 pub fn new_default_operator_environment() -> MapOpEnvironment {
     let mut env = MapOpEnvironment::new();
 
-    for reg in list_default_operator_bindings() {
-        env.add_binding(reg.get_binding()).unwrap();
+    for reg in list_default_operator_builders() {
+        env.add_binding(reg.get_builder()).unwrap();
     }
 
     env
@@ -388,11 +388,8 @@ impl OperatorSpec {
         Ok(())
     }
 }
-type BuildInputRefMap<'a> = BTreeMap<&'a str, Option<&'a dyn Any>>;
-type BuildOutputArcMap<'a> = BTreeMap<String, Option<AnyArc>>;
-
 /// Implementation of a `BuildPlan` operator.
-pub trait BuildOperator: 'static {
+pub trait ColumnBuildOperator: 'static {
     /// Get the effective batch size for the operator.
     ///
     /// The default implementation returns 1, indicating that the operator processes one row at a time.
@@ -400,46 +397,140 @@ pub trait BuildOperator: 'static {
         1
     }
 
-    /// Apply the operator to a batch of inputs.
-    ///
-    /// The default implementation iterates over each input row and applies the operator individually;
-    /// with no batch acceleration.
-    ///
-    /// Implementations can override this method to provide batch processing capabilities,
-    /// and should update the `effective_batch_size` method accordingly to reflect the batch size used.
-    ///
-    /// # Arguments
-    ///
-    /// * `inputs` - A slice of maps, where each map contains input names and their corresponding values.
-    ///
-    /// # Returns
-    ///
-    /// A result containing a vector of maps, where each map contains output names and their corresponding values.
+    /// Apply the operator to a batch of rows in the provided context.
+    #[must_use]
     fn apply_batch(
         &self,
-        inputs: &[BuildInputRefMap],
-    ) -> Result<Vec<BuildOutputArcMap>, String> {
-        let mut results = Vec::new();
-        for row in inputs {
-            let result = self.apply(row)?;
-            results.push(result);
+        context: &mut ColumnBuildBatchContext,
+    ) -> Result<(), String> {
+        // TODO: batch by `effective_batch_size`?
+        for idx in 0..context.len() {
+            let mut row_context = ColumnBuildRowContext::new(context, idx);
+            self.apply_row(&mut row_context)?;
         }
-        Ok(results)
+        Ok(())
     }
 
-    /// Apply the operator to the provided inputs.
+    /// Apply the operator to a single row in the provided context.
+    ///
+    /// Implementations which override `apply_batch` should leave this as unimplemented.
+    #[must_use]
+    fn apply_row(
+        &self,
+        context: &mut ColumnBuildRowContext,
+    ) -> Result<(), String> {
+        let _context = context;
+        unimplemented!()
+    }
+}
+
+/// Context for applying a column operator.
+pub struct ColumnBuildBatchContext {
+    len: usize,
+    inputs: BTreeMap<String, Vec<Option<AnyArc>>>,
+    outputs: BTreeMap<String, Vec<Option<AnyArc>>>,
+}
+
+impl ColumnBuildBatchContext {
+    /// Creates a new `ColumnBuildBatchContext` with the specified inputs.
+    pub fn new(
+        inputs: BTreeMap<String, Vec<Option<AnyArc>>>,
+    ) -> Self {
+        let len = inputs.values().map(|v| v.len()).max().unwrap_or(0);
+        Self { len, inputs, outputs: Default::default() }
+    }
+
+    /// Returns the number of rows in the batch context.
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    /// Returns the input map.
+    pub fn input_map(&self) -> &BTreeMap<String, Vec<Option<AnyArc>>> {
+        &self.inputs
+    }
+
+    /// Returns the output map.
+    pub fn output_map(&self) -> &BTreeMap<String, Vec<Option<AnyArc>>> {
+        &self.outputs
+    }
+
+    /// Returns a mutable reference to the output map.
+    pub fn mut_output_map(&mut self) -> &mut BTreeMap<String, Vec<Option<AnyArc>>> {
+        &mut self.outputs
+    }
+
+    /// Get the input for a specific row and parameter name.
+    pub fn get_row_input(&self, row: usize, name: &str) -> Option<&AnyArc> {
+        self.inputs
+            .get(name)
+            .and_then(|input| input.get(row))
+            .and_then(|value| value.as_ref())
+    }
+
+    /// Get the input for a specific row and parameter name, downcasting to a specific type.
+    pub fn get_row_input_downcast<T: Any + 'static>(
+        &self,
+        row: usize,
+        name: &str,
+    ) -> Option<&T> {
+        self.get_row_input(row, name)
+            .and_then(|value| value.downcast_ref::<T>())
+    }
+
+    /// Set an output value for a specific row and parameter name.
+    pub fn set_row_output(&mut self, row: usize, name: &str, value: Option<AnyArc>) {
+        self.outputs
+            .entry(name.to_string())
+            .or_default()
+            .resize(self.len, None);
+        if let Some(output) = self.outputs.get_mut(name) {
+            if row < output.len() {
+                output[row] = value;
+            } else {
+                panic!("Row index out of bounds for output '{}'", name);
+            }
+        }
+    }
+}
+
+/// Row build context; dependent on `ColumnBuildBatchContext`.
+pub struct ColumnBuildRowContext<'a> {
+    batch_context: &'a mut ColumnBuildBatchContext,
+    index: usize,
+}
+
+impl<'a> ColumnBuildRowContext<'a> {
+    /// Creates a new `ColumnBuildRowContext` for the specified index in the batch context.
     ///
     /// # Arguments
     ///
-    /// * `inputs` - A map of input names to their values, where the values are wrapped in `Option<&dyn Any>`.
-    ///
-    /// # Returns
-    ///
-    /// A result containing a map of output names to their values, where the values are also wrapped in `Option<&dyn Any>`.
-    fn apply(
+    /// * `batch_context` - A mutable reference to the `ColumnBuildBatchContext`.
+    /// * `index` - The index of the row in the batch context.
+    pub fn new(batch_context: &'a mut ColumnBuildBatchContext, index: usize) -> Self {
+        Self {
+            batch_context,
+            index,
+        }
+    }
+
+    /// Gets a reference to the input value for the specified parameter name.
+    pub fn get_input(&self, name: &str) -> Option<&AnyArc> {
+        self.batch_context.get_row_input(self.index, name)
+    }
+
+    /// Get the input value for the specified parameter name, downcasting to a specific type.
+    pub fn get_input_downcast<T: Any + 'static>(
         &self,
-        inputs: &BuildInputRefMap,
-    ) -> Result<BuildOutputArcMap, String>;
+        name: &str,
+    ) -> Option<&T> {
+        self.batch_context.get_row_input_downcast::<T>(self.index, name)
+    }
+
+    /// Sets an output value for the specified parameter name.
+    pub fn set_output(&mut self, name: &str, value: Option<AnyArc>) {
+        self.batch_context.set_row_output(self.index, name, value)
+    }
 }
 
 /// A runner for a column operator that applies a `BuildOperator` to rows in a table schema.
@@ -457,7 +548,7 @@ pub struct ColumnBuilder {
     output_slot_map: BTreeMap<String, usize>,
 
     /// The operator that this builder wraps.
-    operator: Box<dyn BuildOperator>,
+    operator: Box<dyn ColumnBuildOperator>,
 }
 
 impl Debug for ColumnBuilder {
@@ -525,7 +616,12 @@ impl ColumnBuilder {
             })
             .collect::<BTreeMap<_, _>>();
 
-        let operator = env.init_operator(&build_plan, &input_types, &output_types)?;
+        let context = ColumnBuildOperationInitContext::new(
+            build_plan.clone(),
+            input_types.clone(),
+            output_types.clone(),
+        );
+        let operator = env.build(&context)?;
 
         let input_slot_map = build_plan
             .inputs
@@ -566,22 +662,26 @@ impl ColumnBuilder {
         &self,
         rows: &mut [Row],
     ) -> Result<(), String> {
-        let batch_inputs: Vec<BuildInputRefMap> = rows
-            .iter()
-            .map(|row| {
-                self.input_slot_map
-                    .iter()
-                    .map(|(pname, &index)| (pname.as_str(), row.get_untyped_slot(index)))
-                    .collect::<BuildInputRefMap>()
-            })
-            .collect::<Vec<_>>();
+        let mut context = ColumnBuildBatchContext::new(
+            self.input_slot_map
+                .iter()
+                .map(|(pname, &index)| {
+                    (
+                        pname.clone(),
+                        rows.iter()
+                            .map(|row| row.get_slot_arc_any(index))
+                            .collect::<Vec<_>>(),
+                    )
+                })
+                .collect::<BTreeMap<_, _>>(),
+        );
 
-        let batch_outputs = self.operator.apply_batch(&batch_inputs)?;
+        self.operator.apply_batch(&mut context)?;
 
-        for (idx, outputs) in batch_outputs.iter().enumerate() {
-            let row = &mut rows[idx];
-            for (pname, value) in outputs.iter() {
-                row.set_slot(self.output_slot_map[pname], value.clone());
+        for (pname, values) in context.output_map().iter() {
+            for idx in 0..rows.len() {
+                let row = &mut rows[idx];
+                row.set_slot(self.output_slot_map[pname], values[idx].clone());
             }
         }
 
@@ -607,7 +707,7 @@ pub trait BuildOperatorFactory: Debug {
         build_plan: &BuildPlan,
         input_types: &BTreeMap<String, DataTypeDescription>,
         output_types: &BTreeMap<String, DataTypeDescription>,
-    ) -> Result<Box<dyn BuildOperator>, String>;
+    ) -> Result<Box<dyn ColumnBuildOperator>, String>;
 }
 
 /// A factory for building operators within a specific namespace.
@@ -656,7 +756,7 @@ impl BuildOperatorFactory for MapOperatorFactory {
         build_plan: &BuildPlan,
         input_types: &BTreeMap<String, DataTypeDescription>,
         output_types: &BTreeMap<String, DataTypeDescription>,
-    ) -> Result<Box<dyn BuildOperator>, String> {
+    ) -> Result<Box<dyn ColumnBuildOperator>, String> {
         if let Some(factory) = self.operations.get(&build_plan.operator_id) {
             factory.init_operator(build_plan, input_types, output_types)
         } else {
@@ -669,7 +769,7 @@ impl BuildOperatorFactory for MapOperatorFactory {
 }
 
 /// Binding for an operator that can be initialized with a build plan.
-pub trait OpBinding {
+pub trait ColumnBuildOperatorBuilder {
     /// Returns the operator ID.
     fn operator_id(&self) -> &String {
         self.spec()
@@ -681,51 +781,88 @@ pub trait OpBinding {
     /// Returns the operator specification.
     fn spec(&self) -> &OperatorSpec;
 
-    /// Validates a build plan against the input and output types.
+    /// Validates a build plan against the input and output types using an `OpInitContext`.
     ///
     /// # Arguments
     ///
-    /// * `build_plan` - The build plan for the operator.
-    /// * `input_types` - A map of input parameter names to their data types.
-    /// * `output_types` - A map of output parameter names to their data types.
+    /// * `context` - The context containing the build plan and input/output types.
     ///
     /// # Returns
     ///
-    /// A `Result<Box<dyn BuildOperator>, String>` where:
-    /// * `Ok` contains a boxed operator that implements the `BuildOperator` trait,
-    /// * `Err` contains an error message if the initialization fails.
-    fn validate_build_plan(
+    /// A `Result<(), String>` where:
+    /// * `Ok` indicates successful validation,
+    /// * `Err` contains an error message if validation fails.
+    fn validate(
         &self,
-        build_plan: &BuildPlan,
-        input_types: &BTreeMap<String, DataTypeDescription>,
-        output_types: &BTreeMap<String, DataTypeDescription>,
-    ) -> Result<(), String>;
+        context: &ColumnBuildOperationInitContext,
+    ) -> Result<(), String> {
+        self.build(context).map(|_| ())
+    }
 
-    /// Initializes the operator with the given build plan and input/output types.
+    /// Inits a build plan against the input and output types using an `OpInitContext`.
     ///
     /// # Arguments
     ///
-    /// * `build_plan` - The build plan for the operator.
-    /// * `input_types` - A map of input parameter names to their data types.
-    /// * `output_types` - A map of output parameter names to their data types.
+    /// * `context` - The context containing the build plan and input/output types.
     ///
     /// # Returns
     ///
     /// A `Result<Box<dyn BuildOperator>, String>` where:
     /// * `Ok` contains a boxed operator that implements the `BuildOperator` trait,
     /// * `Err` contains an error message if the initialization fails.
-    fn init_operator(
+    fn build(
         &self,
-        build_plan: &BuildPlan,
-        input_types: &BTreeMap<String, DataTypeDescription>,
-        output_types: &BTreeMap<String, DataTypeDescription>,
-    ) -> Result<Box<dyn BuildOperator>, String>;
+        context: &ColumnBuildOperationInitContext,
+    ) -> Result<Box<dyn ColumnBuildOperator>, String>;
+}
+
+/// Context for validating and initializing a column build operation.
+#[derive(Debug, Clone)]
+pub struct ColumnBuildOperationInitContext {
+    /// The operator specification for the operator being initialized.
+    build_plan: BuildPlan,
+
+    /// A map of input parameter names to their data types.
+    input_types: BTreeMap<String, DataTypeDescription>,
+
+    /// A map of output parameter names to their data types.
+    output_types: BTreeMap<String, DataTypeDescription>,
+}
+
+impl ColumnBuildOperationInitContext {
+    /// Creates a new `ColumnBuildOperationInitContext` with the specified build plan and input/output types.
+    pub fn new(
+        build_plan: BuildPlan,
+        input_types: BTreeMap<String, DataTypeDescription>,
+        output_types: BTreeMap<String, DataTypeDescription>,
+    ) -> Self {
+        Self {
+            build_plan,
+            input_types,
+            output_types,
+        }
+    }
+
+    /// Returns a reference to the build plan.
+    pub fn build_plan(&self) -> &BuildPlan {
+        &self.build_plan
+    }
+
+    /// Returns a reference to the input types.
+    pub fn input_types(&self) -> &BTreeMap<String, DataTypeDescription> {
+        &self.input_types
+    }
+
+    /// Returns a reference to the output types.
+    pub fn output_types(&self) -> &BTreeMap<String, DataTypeDescription> {
+        &self.output_types
+    }
 }
 
 /// JsonConfigOpBinding is a concrete implementation of OpBinding that uses a JSON configuration to initialize an operator.
 pub struct JsonConfigOpBinding<T>
 where
-    T: DeserializeOwned + BuildOperator,
+    T: DeserializeOwned + ColumnBuildOperator,
 {
     spec: OperatorSpec,
     phantom_data: PhantomData<T>,
@@ -733,7 +870,7 @@ where
 
 impl<T> JsonConfigOpBinding<T>
 where
-    T: DeserializeOwned + BuildOperator,
+    T: DeserializeOwned + ColumnBuildOperator,
 {
     /// Creates a new `SpecConfigOpBinding` with the given operator specification.
     pub fn new(spec: OperatorSpec) -> Self {
@@ -747,37 +884,30 @@ where
     }
 }
 
-impl<T> OpBinding for JsonConfigOpBinding<T>
+impl<T> ColumnBuildOperatorBuilder for JsonConfigOpBinding<T>
 where
-    T: DeserializeOwned + BuildOperator,
+    T: DeserializeOwned + ColumnBuildOperator,
 {
     fn spec(&self) -> &OperatorSpec {
         &self.spec
     }
 
-    fn validate_build_plan(
-        &self,
-        build_plan: &BuildPlan,
-        input_types: &BTreeMap<String, DataTypeDescription>,
-        output_types: &BTreeMap<String, DataTypeDescription>,
-    ) -> Result<(), String> {
-        self.init_operator(build_plan, input_types, output_types)
-            .map(|_| ())
+    fn validate(&self, context: &ColumnBuildOperationInitContext) -> Result<(), String> {
+        self.build(context).map(|_| ())
     }
 
-    fn init_operator(
+    fn build(
         &self,
-        build_plan: &BuildPlan,
-        input_types: &BTreeMap<String, DataTypeDescription>,
-        output_types: &BTreeMap<String, DataTypeDescription>,
-    ) -> Result<Box<dyn BuildOperator>, String> {
-        self.spec.validate(input_types, output_types)?;
+        context: &ColumnBuildOperationInitContext,
+    ) -> Result<Box<dyn ColumnBuildOperator>, String> {
+        self.spec.validate(context.input_types(), context.output_types())?;
 
-        let loader: Box<T> = Box::new(serde_json::from_value(build_plan.config.clone()).map_err(
+        let config = &context.build_plan().config;
+        let loader: Box<T> = Box::new(serde_json::from_value(config.clone()).map_err(
             |_| {
                 format!(
                     "Invalid config: {}",
-                    serde_json::to_string_pretty(&build_plan.config).unwrap()
+                    serde_json::to_string_pretty(config).unwrap()
                 )
             },
         )?);
@@ -789,7 +919,7 @@ where
 /// OpEnvironment is a trait that provides access to a collection of operator bindings.
 pub trait OpEnvironment {
     /// Returns a reference to the map of operator bindings.
-    fn operators(&self) -> &BTreeMap<String, Arc<dyn OpBinding>>;
+    fn operators(&self) -> &BTreeMap<String, Arc<dyn ColumnBuildOperatorBuilder>>;
 
     /// Validates a build plan against the input and output types.
     ///
@@ -804,10 +934,10 @@ pub trait OpEnvironment {
     /// A `Result<Box<dyn BuildOperator>, String>` where:
     /// * `Ok` contains a boxed operator that implements the `BuildOperator` trait,
     /// * `Err` contains an error message if the initialization fails.
-    fn lookup_binding(
+    fn lookup_operation_builder(
         &self,
         operator_id: &str,
-    ) -> Result<Arc<dyn OpBinding>, String> {
+    ) -> Result<Arc<dyn ColumnBuildOperatorBuilder>, String> {
         Ok(self
             .operators()
             .get(operator_id)
@@ -815,39 +945,23 @@ pub trait OpEnvironment {
             .clone())
     }
 
-    /// Validate a build plan against the input and output types.
-    fn validate_build_plan(
+    /// Validates the operator against the build plan and input/output types.
+    fn validate(
         &self,
-        build_plan: &BuildPlan,
-        input_types: &BTreeMap<String, DataTypeDescription>,
-        output_types: &BTreeMap<String, DataTypeDescription>,
+        context: &ColumnBuildOperationInitContext,
     ) -> Result<(), String> {
-        self.lookup_binding(&build_plan.operator_id)?
-            .validate_build_plan(build_plan, input_types, output_types)
+        self.lookup_operation_builder(&context.build_plan().operator_id)?
+            .validate(context)
     }
 
-    /// Initializes the operator with the given build plan and input/output types.
-    ///
-    /// # Arguments
-    ///
-    /// * `build_plan` - The build plan for the operator.
-    /// * `input_types` - A map of input parameter names to their data types.
-    /// * `output_types` - A map of output parameter names to their data types.
-    ///
-    /// # Returns
-    ///
-    /// A `Result<Box<dyn BuildOperator>, String>` where:
-    /// * `Ok` contains a boxed operator that implements the `BuildOperator` trait,
-    /// * `Err` contains an error message if the initialization fails.
-    fn init_operator(
+    /// Builds an operator based on the provided context.
+    fn build(
         &self,
-        build_plan: &BuildPlan,
-        input_types: &BTreeMap<String, DataTypeDescription>,
-        output_types: &BTreeMap<String, DataTypeDescription>,
-    ) -> Result<Box<dyn BuildOperator>, String> {
-        let binding = self.lookup_binding(&build_plan.operator_id)?;
-        binding.validate_build_plan(build_plan, input_types, output_types)?;
-        binding.init_operator(build_plan, input_types, output_types)
+        context: &ColumnBuildOperationInitContext,
+    ) -> Result<Box<dyn ColumnBuildOperator>, String> {
+        let builder = self.lookup_operation_builder(&context.build_plan().operator_id)?;
+        builder.validate(context)?;
+        builder.build(context)
     }
 
     /// Extends a schema with a new operation.
@@ -879,10 +993,8 @@ pub trait OpEnvironment {
             .map(|(pname, cname)| (pname.to_string(), schema[cname.as_str()].data_type.clone()))
             .collect();
 
-        let binding = self.lookup_binding(operator_id)?;
+        let binding = self.lookup_operation_builder(operator_id)?;
         let spec = binding.spec();
-
-        spec.validate_inputs(&input_types)?;
 
         let input_bindings: Vec<(&str, &str)> = call
             .inputs
@@ -921,14 +1033,16 @@ pub trait OpEnvironment {
             })
             .collect::<Vec<_>>();
 
-        self.validate_build_plan(
-            &plan,
-            &input_types,
-            &output_plan
+        let context = ColumnBuildOperationInitContext::new(
+            plan.clone(),
+            input_types.clone(),
+            output_plan
                 .iter()
                 .map(|(pname, dtype, _)| (pname.clone(), dtype.clone()))
                 .collect(),
-        )?;
+        );
+
+        self.validate(&context)?;
 
         schema.add_build_plan_and_outputs(plan.clone(), &output_plan)?;
 
@@ -1061,7 +1175,7 @@ impl CallBuilder {
 }
 /// MapOpEnvironment is a simple implementation of OpEnvironment that uses a BTreeMap to store operators.
 pub struct MapOpEnvironment {
-    operators: BTreeMap<String, Arc<dyn OpBinding>>,
+    operators: BTreeMap<String, Arc<dyn ColumnBuildOperatorBuilder>>,
 }
 
 impl Default for MapOpEnvironment {
@@ -1083,7 +1197,7 @@ impl MapOpEnvironment {
     /// # Arguments
     ///
     /// * `bindings` - A slice of Arc-wrapped operator bindings to initialize the environment with.
-    pub fn from_bindings(bindings: &[Arc<dyn OpBinding>]) -> Result<Self, String> {
+    pub fn from_bindings(bindings: &[Arc<dyn ColumnBuildOperatorBuilder>]) -> Result<Self, String> {
         let mut this = Self::new();
         this.add_bindings(bindings)?;
         Ok(this)
@@ -1096,7 +1210,7 @@ impl MapOpEnvironment {
     /// * `op` - An Arc-wrapped operator binding to add to the environment.
     pub fn add_binding(
         &mut self,
-        binding: Arc<dyn OpBinding>,
+        binding: Arc<dyn ColumnBuildOperatorBuilder>,
     ) -> Result<(), String> {
         let id = binding.operator_id();
         if self.operators.contains_key(id) {
@@ -1122,7 +1236,7 @@ impl MapOpEnvironment {
         bindings: B,
     ) -> Result<(), String>
     where
-        B: IntoIterator<Item = &'a Arc<dyn OpBinding>>,
+        B: IntoIterator<Item = &'a Arc<dyn ColumnBuildOperatorBuilder>>,
     {
         for binding in bindings.into_iter() {
             self.add_binding(binding.clone())?;
@@ -1132,7 +1246,7 @@ impl MapOpEnvironment {
 }
 
 impl OpEnvironment for MapOpEnvironment {
-    fn operators(&self) -> &BTreeMap<String, Arc<dyn OpBinding>> {
+    fn operators(&self) -> &BTreeMap<String, Arc<dyn ColumnBuildOperatorBuilder>> {
         &self.operators
     }
 }
@@ -1140,7 +1254,7 @@ impl OpEnvironment for MapOpEnvironment {
 /// UnionEnvironment combines multiple OpEnvironment instances into a single environment.
 pub struct UnionEnvironment {
     environments: Vec<Arc<dyn OpEnvironment>>,
-    operators: BTreeMap<String, Arc<dyn OpBinding>>,
+    operators: BTreeMap<String, Arc<dyn ColumnBuildOperatorBuilder>>,
 }
 
 impl Default for UnionEnvironment {
@@ -1207,7 +1321,7 @@ impl UnionEnvironment {
 }
 
 impl OpEnvironment for UnionEnvironment {
-    fn operators(&self) -> &BTreeMap<String, Arc<dyn OpBinding>> {
+    fn operators(&self) -> &BTreeMap<String, Arc<dyn ColumnBuildOperatorBuilder>> {
         &self.operators
     }
 }
@@ -1226,7 +1340,6 @@ mod tests {
     use crate::define_operator_id;
     use indoc::indoc;
     use serde::{Deserialize, Serialize};
-    use std::any::Any;
     use std::collections::BTreeMap;
     use std::fmt::Debug;
     use std::sync::Arc;
@@ -1252,24 +1365,23 @@ mod tests {
         ))
     }
 
-    impl BuildOperator for AddOperator {
-        fn apply(
+    impl ColumnBuildOperator for AddOperator {
+        fn apply_row(
             &self,
-            inputs: &BTreeMap<&str, Option<&dyn Any>>,
-        ) -> Result<BTreeMap<String, Option<AnyArc>>, String> {
-            let sum: i32 = inputs
-                .values()
-                .map(|v| v.unwrap().downcast_ref::<i32>().unwrap())
-                .sum();
+            context: &mut ColumnBuildRowContext,
+        ) -> Result<(), String> {
+            let x = context
+                .get_input_downcast::<i32>("x")
+                .ok_or_else(|| "'x' expected type i32")?;
+            let y = context
+                .get_input_downcast::<i32>("y")
+                .ok_or_else(|| "'y' expected type i32")?;
 
-            // Add the bias
-            let result: i32 = sum + self.bias;
+            let result: i32 = x + y + self.bias;
 
-            // Return the result as a single output
-            let mut outputs = BTreeMap::new();
-            outputs.insert("result".to_string(), Some(Arc::new(result) as AnyArc));
+            context.set_output("result", Some(Arc::new(result) as AnyArc));
 
-            Ok(outputs)
+            Ok(())
         }
     }
 

@@ -1,15 +1,13 @@
-use crate::core::{BuildOperator, JsonConfigOpBinding, OperatorSpec, ParameterSpec};
+use crate::core::{ColumnBuildOperator, ColumnBuildRowContext, JsonConfigOpBinding, OperatorSpec, ParameterSpec};
 use crate::ops::image::{ImageShape, color_util};
-use crate::{define_operator_id, register_default_operator_binding};
+use crate::{define_operator_id, register_default_operator_builder};
 use image::imageops::FilterType;
 use image::{ColorType, DynamicImage};
 use serde::{Deserialize, Serialize};
-use std::any::Any;
-use std::collections::BTreeMap;
 use std::sync::Arc;
 
 define_operator_id!(LOAD_IMAGE);
-register_default_operator_binding!(LOAD_IMAGE, load_image_op_binding);
+register_default_operator_builder!(LOAD_IMAGE, load_image_op_binding);
 
 /// Creates a JSON configuration binding for the `LOAD_IMAGE` operation.
 pub fn load_image_op_binding() -> Arc<JsonConfigOpBinding<ImageLoader>> {
@@ -132,15 +130,12 @@ impl ImageLoader {
     }
 }
 
-impl BuildOperator for ImageLoader {
-    fn apply(
+impl ColumnBuildOperator for ImageLoader {
+    fn apply_row(
         &self,
-        inputs: &BTreeMap<&str, Option<&dyn Any>>,
-    ) -> Result<BTreeMap<String, Option<Arc<dyn Any>>>, String> {
-        let path = inputs
-            .get("path")
-            .and_then(|v| v.as_ref())
-            .and_then(|v| v.downcast_ref::<String>())
+        context: &mut ColumnBuildRowContext,
+    ) -> Result<(), String> {
+        let path = context.get_input_downcast::<String>("path")
             .ok_or("ImageLoader expects input 'path' to be a String")?;
 
         let mut image = image::open(path).map_err(|e| format!("Failed to load image: {e}"))?;
@@ -156,11 +151,9 @@ impl BuildOperator for ImageLoader {
             image = color_util::convert_to_colortype(image, color);
         }
 
-        {
-            let mut result: BTreeMap<String, Option<Arc<dyn Any>>> = BTreeMap::new();
-            result.insert("image".to_string(), Some(Arc::new(image)));
-            Ok(result)
-        }
+        context.set_output("image", Some(Arc::new(image)));
+
+        Ok(())
     }
 }
 
