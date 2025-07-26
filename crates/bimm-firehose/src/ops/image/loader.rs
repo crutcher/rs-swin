@@ -1,6 +1,6 @@
-use crate::core::{BuildOperator, JsonConfigOpBinding, OperatorSpec, ParameterSpec};
+use crate::core::{ColumnBuildOperator, JsonConfigOpBinding, OperatorSpec, ParameterSpec};
 use crate::ops::image::{ImageShape, color_util};
-use crate::{define_operator_id, register_default_operator_binding};
+use crate::{define_operator_id, register_default_operator_builder};
 use image::imageops::FilterType;
 use image::{ColorType, DynamicImage};
 use serde::{Deserialize, Serialize};
@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 define_operator_id!(LOAD_IMAGE);
-register_default_operator_binding!(LOAD_IMAGE, load_image_op_binding);
+register_default_operator_builder!(LOAD_IMAGE, load_image_op_binding);
 
 /// Creates a JSON configuration binding for the `LOAD_IMAGE` operation.
 pub fn load_image_op_binding() -> Arc<JsonConfigOpBinding<ImageLoader>> {
@@ -132,7 +132,7 @@ impl ImageLoader {
     }
 }
 
-impl BuildOperator for ImageLoader {
+impl ColumnBuildOperator for ImageLoader {
     fn apply(
         &self,
         inputs: &BTreeMap<&str, Option<&dyn Any>>,

@@ -1,6 +1,4 @@
-use crate::core::{
-    BuildOperator, BuildPlan, DataTypeDescription, OpBinding, OperatorSpec, ParameterSpec,
-};
+use crate::core::{ColumnBuildOperator, ColumnBuildOperatorBuilder, OperatorSpec, ParameterSpec, ColumnBuildOperationInitContext};
 use crate::define_operator_id;
 use burn::data::dataset::vision::PixelDepth;
 use burn::prelude::{Backend, Tensor};
@@ -150,7 +148,7 @@ impl ImgToTensorConfig {
 }
 
 /// Configures the ImgToTensor operator for a specific backend.
-pub fn img_to_tensor_op_binding<B: Backend>(device: &B::Device) -> Arc<dyn OpBinding> {
+pub fn img_to_tensor_op_binding<B: Backend>(device: &B::Device) -> Arc<dyn ColumnBuildOperatorBuilder> {
     let spec: OperatorSpec = OperatorSpec::new()
         .with_operator_id(IMAGE_TO_TENSOR)
         .with_description("Converts an image to a tensor.")
@@ -179,7 +177,7 @@ impl<B: Backend> ImgToTensor<B> {
     pub fn bind_device(
         config: ImgToTensorConfig,
         device: &B::Device,
-    ) -> Result<Box<dyn BuildOperator>, String> {
+    ) -> Result<Box<dyn ColumnBuildOperator>, String> {
         let op: ImgToTensor<B> = ImgToTensor {
             config,
             device: device.clone(),
@@ -221,7 +219,7 @@ fn image_to_f32_tensor<B: Backend>(
     )
 }
 
-impl<B: Backend> BuildOperator for ImgToTensor<B> {
+impl<B: Backend> ColumnBuildOperator for ImgToTensor<B> {
     fn apply(
         &self,
         inputs: &BTreeMap<&str, Option<&dyn Any>>,
@@ -244,13 +242,13 @@ impl<B: Backend> BuildOperator for ImgToTensor<B> {
     }
 }
 
-type BindDeviceFunc<C, D> = fn(config: C, device: &D) -> Result<Box<dyn BuildOperator>, String>;
+type BindDeviceFunc<C, D> = fn(config: C, device: &D) -> Result<Box<dyn ColumnBuildOperator>, String>;
 
 /// A binding for the `BurnDeviceOpBinding` that allows it to be used with a specific backend and operator.
 pub struct BurnDeviceOpBinding<B, T, C>
 where
     B: Backend,
-    T: BuildOperator,
+    T: ColumnBuildOperator,
     C: DeserializeOwned,
 {
     spec: OperatorSpec,
@@ -263,7 +261,7 @@ impl<B, T, C> BurnDeviceOpBinding<B, T, C>
 where
     B: Backend,
     C: DeserializeOwned,
-    T: BuildOperator,
+    T: ColumnBuildOperator,
 {
     /// Creates a new `BurnDeviceOpBinding`.
     pub fn new(
@@ -280,43 +278,34 @@ where
     }
 }
 
-impl<B, T, C> OpBinding for BurnDeviceOpBinding<B, T, C>
+impl<B, T, C> ColumnBuildOperatorBuilder for BurnDeviceOpBinding<B, T, C>
 where
     B: Backend,
     C: DeserializeOwned,
-    T: BuildOperator,
+    T: ColumnBuildOperator,
 {
     fn spec(&self) -> &OperatorSpec {
         &self.spec
     }
 
-    fn validate_build_plan(
-        &self,
-        build_plan: &BuildPlan,
-        input_types: &BTreeMap<String, DataTypeDescription>,
-        output_types: &BTreeMap<String, DataTypeDescription>,
-    ) -> Result<(), String> {
-        self.init_operator(build_plan, input_types, output_types)
-            .map(|_| ())
+    fn validate(&self, context: &ColumnBuildOperationInitContext) -> Result<(), String> {
+        self.build(context).map(|_| ())
     }
 
-    fn init_operator(
-        &self,
-        build_plan: &BuildPlan,
-        input_types: &BTreeMap<String, DataTypeDescription>,
-        output_types: &BTreeMap<String, DataTypeDescription>,
-    ) -> Result<Box<dyn BuildOperator>, String> {
-        self.spec.validate(input_types, output_types)?;
+    fn build(&self, context: &ColumnBuildOperationInitContext) -> Result<Box<dyn ColumnBuildOperator>, String> {
+        self.spec.validate(context.input_types(), context.output_types())?;
 
-        let config = serde_json::from_value(build_plan.config.clone()).map_err(|_| {
-            format!(
-                "Invalid config: {}",
-                serde_json::to_string_pretty(&build_plan.config).unwrap()
-            )
-        })?;
+        let config = &context.build_plan().config;
+        let config = serde_json::from_value(config.clone()).map_err(
+            |_| {
+                format!(
+                    "Invalid config: {}",
+                    serde_json::to_string_pretty(config).unwrap()
+                )
+            },
+        )?;
 
         let loader = (self.bind_device)(config, &self.device)?;
-
         Ok(loader)
     }
 }
