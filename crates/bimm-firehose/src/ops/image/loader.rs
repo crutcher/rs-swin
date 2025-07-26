@@ -1,11 +1,9 @@
-use crate::core::{ColumnBuildOperator, JsonConfigOpBinding, OperatorSpec, ParameterSpec};
+use crate::core::{ColumnBuildOperator, ColumnBuildRowContext, JsonConfigOpBinding, OperatorSpec, ParameterSpec};
 use crate::ops::image::{ImageShape, color_util};
 use crate::{define_operator_id, register_default_operator_builder};
 use image::imageops::FilterType;
 use image::{ColorType, DynamicImage};
 use serde::{Deserialize, Serialize};
-use std::any::Any;
-use std::collections::BTreeMap;
 use std::sync::Arc;
 
 define_operator_id!(LOAD_IMAGE);
@@ -133,14 +131,11 @@ impl ImageLoader {
 }
 
 impl ColumnBuildOperator for ImageLoader {
-    fn apply(
+    fn apply_row(
         &self,
-        inputs: &BTreeMap<&str, Option<&dyn Any>>,
-    ) -> Result<BTreeMap<String, Option<Arc<dyn Any>>>, String> {
-        let path = inputs
-            .get("path")
-            .and_then(|v| v.as_ref())
-            .and_then(|v| v.downcast_ref::<String>())
+        context: &mut ColumnBuildRowContext,
+    ) -> Result<(), String> {
+        let path = context.get_input_downcast::<String>("path")
             .ok_or("ImageLoader expects input 'path' to be a String")?;
 
         let mut image = image::open(path).map_err(|e| format!("Failed to load image: {e}"))?;
@@ -156,11 +151,9 @@ impl ColumnBuildOperator for ImageLoader {
             image = color_util::convert_to_colortype(image, color);
         }
 
-        {
-            let mut result: BTreeMap<String, Option<Arc<dyn Any>>> = BTreeMap::new();
-            result.insert("image".to_string(), Some(Arc::new(image)));
-            Ok(result)
-        }
+        context.set_output("image", Some(Arc::new(image)));
+
+        Ok(())
     }
 }
 

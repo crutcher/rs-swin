@@ -1,8 +1,9 @@
+use std::any::Any;
 use crate::core::TableSchema;
 use std::sync::Arc;
 
 /// Represents a boxed value that can hold any type.
-pub type AnyArc = Arc<dyn std::any::Any>;
+pub type AnyArc = Arc<dyn Any>;
 
 /// Represents a row in a Bimm table, containing values for each column.
 #[derive(Debug, Clone)]
@@ -70,7 +71,7 @@ impl Row {
         &self,
         index: usize,
     ) -> Result<Option<&T>, String> {
-        match self.get_untyped_slot(index) {
+        match self.get_slot_any_ref(index) {
             None => Ok(None),
             Some(value) => match value.downcast_ref::<T>() {
                 Some(value) => Ok(Some(value)),
@@ -91,14 +92,25 @@ impl Row {
     ///
     /// ## Returns
     ///
-    /// An `Option<&dyn std::any::Any>` representing the value at the specified index.
-    pub fn get_untyped_slot(
+    /// An `Option<&dyn Any>` representing the value at the specified index.
+    pub fn get_slot_any_ref(
         &self,
         index: usize,
-    ) -> Option<&dyn std::any::Any> {
+    ) -> Option<&dyn Any> {
         match self.slots.get(index)? {
             None => None,
             Some(value) => Some(value.as_ref()),
+        }
+    }
+
+    /// Gets the `Option<Arc<dyn Any>>` wrapper for the untyped value at the specified index.
+    pub fn get_slot_arc_any(
+        &self,
+        index: usize,
+    ) -> Option<Arc<dyn Any>> {
+        match self.slots.get(index)? {
+            None => None,
+            Some(value) => Some(value.clone()),
         }
     }
 

@@ -1,4 +1,4 @@
-use crate::core::{ColumnBuildOperator, ColumnBuildOperatorBuilder, OperatorSpec, ParameterSpec, ColumnBuildOperationInitContext};
+use crate::core::{ColumnBuildOperator, ColumnBuildOperatorBuilder, OperatorSpec, ParameterSpec, ColumnBuildOperationInitContext, ColumnBuildRowContext};
 use crate::define_operator_id;
 use burn::data::dataset::vision::PixelDepth;
 use burn::prelude::{Backend, Tensor};
@@ -7,7 +7,6 @@ use image::{ColorType, DynamicImage};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::any::Any;
-use std::collections::BTreeMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
@@ -220,25 +219,23 @@ fn image_to_f32_tensor<B: Backend>(
 }
 
 impl<B: Backend> ColumnBuildOperator for ImgToTensor<B> {
-    fn apply(
+    fn apply_row(
         &self,
-        inputs: &BTreeMap<&str, Option<&dyn Any>>,
-    ) -> Result<BTreeMap<String, Option<Arc<dyn Any>>>, String> {
-        let image = inputs
-            .get("image")
-            .and_then(|v| v.as_ref())
-            .and_then(|v| v.downcast_ref::<DynamicImage>())
-            .ok_or_else(|| "Expected input 'image' to be of type DynamicImage".to_string())?;
+        context: &mut ColumnBuildRowContext,
+    ) -> Result<(), String> {
+        let image = context
+            .get_input_downcast::<DynamicImage>("image")
+            .ok_or("ImgToTensor expects input 'image' to be a DynamicImage")?;
 
-        let mut result = BTreeMap::new();
         match self.config.dtype {
             TargetDType::F32 => {
                 let tensor: Tensor<B, 3> = image_to_f32_tensor(image, &self.device);
-                result.insert("tensor".to_string(), Some(Arc::new(tensor) as Arc<dyn Any>));
+
+                context.set_output("tensor", Some(Arc::new(tensor) as Arc<dyn Any>));
             }
         }
 
-        Ok(result)
+        Ok(())
     }
 }
 

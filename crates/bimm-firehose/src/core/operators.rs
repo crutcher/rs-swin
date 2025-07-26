@@ -388,9 +388,6 @@ impl OperatorSpec {
         Ok(())
     }
 }
-type BuildInputRefMap<'a> = BTreeMap<&'a str, Option<&'a dyn Any>>;
-type BuildOutputArcMap<'a> = BTreeMap<String, Option<AnyArc>>;
-
 /// Implementation of a `BuildPlan` operator.
 pub trait ColumnBuildOperator: 'static {
     /// Get the effective batch size for the operator.
@@ -400,46 +397,140 @@ pub trait ColumnBuildOperator: 'static {
         1
     }
 
-    /// Apply the operator to a batch of inputs.
-    ///
-    /// The default implementation iterates over each input row and applies the operator individually;
-    /// with no batch acceleration.
-    ///
-    /// Implementations can override this method to provide batch processing capabilities,
-    /// and should update the `effective_batch_size` method accordingly to reflect the batch size used.
-    ///
-    /// # Arguments
-    ///
-    /// * `inputs` - A slice of maps, where each map contains input names and their corresponding values.
-    ///
-    /// # Returns
-    ///
-    /// A result containing a vector of maps, where each map contains output names and their corresponding values.
+    /// Apply the operator to a batch of rows in the provided context.
+    #[must_use]
     fn apply_batch(
         &self,
-        inputs: &[BuildInputRefMap],
-    ) -> Result<Vec<BuildOutputArcMap>, String> {
-        let mut results = Vec::new();
-        for row in inputs {
-            let result = self.apply(row)?;
-            results.push(result);
+        context: &mut ColumnBuildBatchContext,
+    ) -> Result<(), String> {
+        // TODO: batch by `effective_batch_size`?
+        for idx in 0..context.len() {
+            let mut row_context = ColumnBuildRowContext::new(context, idx);
+            self.apply_row(&mut row_context)?;
         }
-        Ok(results)
+        Ok(())
     }
 
-    /// Apply the operator to the provided inputs.
+    /// Apply the operator to a single row in the provided context.
+    ///
+    /// Implementations which override `apply_batch` should leave this as unimplemented.
+    #[must_use]
+    fn apply_row(
+        &self,
+        context: &mut ColumnBuildRowContext,
+    ) -> Result<(), String> {
+        let _context = context;
+        unimplemented!()
+    }
+}
+
+/// Context for applying a column operator.
+pub struct ColumnBuildBatchContext {
+    len: usize,
+    inputs: BTreeMap<String, Vec<Option<AnyArc>>>,
+    outputs: BTreeMap<String, Vec<Option<AnyArc>>>,
+}
+
+impl ColumnBuildBatchContext {
+    /// Creates a new `ColumnBuildBatchContext` with the specified inputs.
+    pub fn new(
+        inputs: BTreeMap<String, Vec<Option<AnyArc>>>,
+    ) -> Self {
+        let len = inputs.values().map(|v| v.len()).max().unwrap_or(0);
+        Self { len, inputs, outputs: Default::default() }
+    }
+
+    /// Returns the number of rows in the batch context.
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    /// Returns the input map.
+    pub fn input_map(&self) -> &BTreeMap<String, Vec<Option<AnyArc>>> {
+        &self.inputs
+    }
+
+    /// Returns the output map.
+    pub fn output_map(&self) -> &BTreeMap<String, Vec<Option<AnyArc>>> {
+        &self.outputs
+    }
+
+    /// Returns a mutable reference to the output map.
+    pub fn mut_output_map(&mut self) -> &mut BTreeMap<String, Vec<Option<AnyArc>>> {
+        &mut self.outputs
+    }
+
+    /// Get the input for a specific row and parameter name.
+    pub fn get_row_input(&self, row: usize, name: &str) -> Option<&AnyArc> {
+        self.inputs
+            .get(name)
+            .and_then(|input| input.get(row))
+            .and_then(|value| value.as_ref())
+    }
+
+    /// Get the input for a specific row and parameter name, downcasting to a specific type.
+    pub fn get_row_input_downcast<T: Any + 'static>(
+        &self,
+        row: usize,
+        name: &str,
+    ) -> Option<&T> {
+        self.get_row_input(row, name)
+            .and_then(|value| value.downcast_ref::<T>())
+    }
+
+    /// Set an output value for a specific row and parameter name.
+    pub fn set_row_output(&mut self, row: usize, name: &str, value: Option<AnyArc>) {
+        self.outputs
+            .entry(name.to_string())
+            .or_default()
+            .resize(self.len, None);
+        if let Some(output) = self.outputs.get_mut(name) {
+            if row < output.len() {
+                output[row] = value;
+            } else {
+                panic!("Row index out of bounds for output '{}'", name);
+            }
+        }
+    }
+}
+
+/// Row build context; dependent on `ColumnBuildBatchContext`.
+pub struct ColumnBuildRowContext<'a> {
+    batch_context: &'a mut ColumnBuildBatchContext,
+    index: usize,
+}
+
+impl<'a> ColumnBuildRowContext<'a> {
+    /// Creates a new `ColumnBuildRowContext` for the specified index in the batch context.
     ///
     /// # Arguments
     ///
-    /// * `inputs` - A map of input names to their values, where the values are wrapped in `Option<&dyn Any>`.
-    ///
-    /// # Returns
-    ///
-    /// A result containing a map of output names to their values, where the values are also wrapped in `Option<&dyn Any>`.
-    fn apply(
+    /// * `batch_context` - A mutable reference to the `ColumnBuildBatchContext`.
+    /// * `index` - The index of the row in the batch context.
+    pub fn new(batch_context: &'a mut ColumnBuildBatchContext, index: usize) -> Self {
+        Self {
+            batch_context,
+            index,
+        }
+    }
+
+    /// Gets a reference to the input value for the specified parameter name.
+    pub fn get_input(&self, name: &str) -> Option<&AnyArc> {
+        self.batch_context.get_row_input(self.index, name)
+    }
+
+    /// Get the input value for the specified parameter name, downcasting to a specific type.
+    pub fn get_input_downcast<T: Any + 'static>(
         &self,
-        inputs: &BuildInputRefMap,
-    ) -> Result<BuildOutputArcMap, String>;
+        name: &str,
+    ) -> Option<&T> {
+        self.batch_context.get_row_input_downcast::<T>(self.index, name)
+    }
+
+    /// Sets an output value for the specified parameter name.
+    pub fn set_output(&mut self, name: &str, value: Option<AnyArc>) {
+        self.batch_context.set_row_output(self.index, name, value)
+    }
 }
 
 /// A runner for a column operator that applies a `BuildOperator` to rows in a table schema.
@@ -571,22 +662,26 @@ impl ColumnBuilder {
         &self,
         rows: &mut [Row],
     ) -> Result<(), String> {
-        let batch_inputs: Vec<BuildInputRefMap> = rows
-            .iter()
-            .map(|row| {
-                self.input_slot_map
-                    .iter()
-                    .map(|(pname, &index)| (pname.as_str(), row.get_untyped_slot(index)))
-                    .collect::<BuildInputRefMap>()
-            })
-            .collect::<Vec<_>>();
+        let mut context = ColumnBuildBatchContext::new(
+            self.input_slot_map
+                .iter()
+                .map(|(pname, &index)| {
+                    (
+                        pname.clone(),
+                        rows.iter()
+                            .map(|row| row.get_slot_arc_any(index))
+                            .collect::<Vec<_>>(),
+                    )
+                })
+                .collect::<BTreeMap<_, _>>(),
+        );
 
-        let batch_outputs = self.operator.apply_batch(&batch_inputs)?;
+        self.operator.apply_batch(&mut context)?;
 
-        for (idx, outputs) in batch_outputs.iter().enumerate() {
-            let row = &mut rows[idx];
-            for (pname, value) in outputs.iter() {
-                row.set_slot(self.output_slot_map[pname], value.clone());
+        for (pname, values) in context.output_map().iter() {
+            for idx in 0..rows.len() {
+                let row = &mut rows[idx];
+                row.set_slot(self.output_slot_map[pname], values[idx].clone());
             }
         }
 
@@ -1245,7 +1340,6 @@ mod tests {
     use crate::define_operator_id;
     use indoc::indoc;
     use serde::{Deserialize, Serialize};
-    use std::any::Any;
     use std::collections::BTreeMap;
     use std::fmt::Debug;
     use std::sync::Arc;
@@ -1272,23 +1366,22 @@ mod tests {
     }
 
     impl ColumnBuildOperator for AddOperator {
-        fn apply(
+        fn apply_row(
             &self,
-            inputs: &BTreeMap<&str, Option<&dyn Any>>,
-        ) -> Result<BTreeMap<String, Option<AnyArc>>, String> {
-            let sum: i32 = inputs
-                .values()
-                .map(|v| v.unwrap().downcast_ref::<i32>().unwrap())
-                .sum();
+            context: &mut ColumnBuildRowContext,
+        ) -> Result<(), String> {
+            let x = context
+                .get_input_downcast::<i32>("x")
+                .ok_or_else(|| "'x' expected type i32")?;
+            let y = context
+                .get_input_downcast::<i32>("y")
+                .ok_or_else(|| "'y' expected type i32")?;
 
-            // Add the bias
-            let result: i32 = sum + self.bias;
+            let result: i32 = x + y + self.bias;
 
-            // Return the result as a single output
-            let mut outputs = BTreeMap::new();
-            outputs.insert("result".to_string(), Some(Arc::new(result) as AnyArc));
+            context.set_output("result", Some(Arc::new(result) as AnyArc));
 
-            Ok(outputs)
+            Ok(())
         }
     }
 
