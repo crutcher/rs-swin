@@ -1,8 +1,8 @@
-use crate::core::{
-    ColumnBuildOperationInitContext, ColumnBuildOperator, ColumnBuildOperatorBuilder,
-    ColumnBuildRowContext, OperatorSpec, ParameterSpec,
-};
-use crate::define_operator_id;
+use crate::core::operations::factory::FirehoseOperatorFactory;
+use crate::core::operations::operator::{FirehoseOperator, OperatorInitializationContext};
+use crate::core::operations::runner::OperatorApplyRowContext;
+use crate::core::operations::signature::{FirehoseOperatorSignature, ParameterSpec};
+use crate::define_firehose_operator_id;
 use burn::data::dataset::vision::PixelDepth;
 use burn::prelude::{Backend, Tensor};
 use burn::tensor::{TensorData, f16};
@@ -10,10 +10,11 @@ use image::{ColorType, DynamicImage};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::any::Any;
+use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-define_operator_id!(IMAGE_TO_TENSOR);
+define_firehose_operator_id!(IMAGE_TO_TENSOR);
 
 /// Converts an image to a vector of pixel depths.
 pub fn image_to_pixvec(image: &DynamicImage) -> Vec<PixelDepth> {
@@ -152,8 +153,8 @@ impl ImgToTensorConfig {
 /// Configures the ImgToTensor operator for a specific backend.
 pub fn img_to_tensor_op_binding<B: Backend>(
     device: &B::Device
-) -> Arc<dyn ColumnBuildOperatorBuilder> {
-    let spec: OperatorSpec = OperatorSpec::new()
+) -> Arc<dyn FirehoseOperatorFactory> {
+    let spec: FirehoseOperatorSignature = FirehoseOperatorSignature::new()
         .with_operator_id(IMAGE_TO_TENSOR)
         .with_description("Converts an image to a tensor.")
         .with_input(
@@ -171,6 +172,7 @@ pub fn img_to_tensor_op_binding<B: Backend>(
 }
 
 /// Operator that converts an image to a tensor.
+#[derive(Debug)]
 pub struct ImgToTensor<B: Backend> {
     config: ImgToTensorConfig,
     device: B::Device,
@@ -181,7 +183,7 @@ impl<B: Backend> ImgToTensor<B> {
     pub fn bind_device(
         config: ImgToTensorConfig,
         device: &B::Device,
-    ) -> Result<Box<dyn ColumnBuildOperator>, String> {
+    ) -> Result<Box<dyn FirehoseOperator>, String> {
         let op: ImgToTensor<B> = ImgToTensor {
             config,
             device: device.clone(),
@@ -223,10 +225,10 @@ fn image_to_f32_tensor<B: Backend>(
     )
 }
 
-impl<B: Backend> ColumnBuildOperator for ImgToTensor<B> {
+impl<B: Backend> FirehoseOperator for ImgToTensor<B> {
     fn apply_row(
         &self,
-        context: &mut ColumnBuildRowContext,
+        context: &mut OperatorApplyRowContext,
     ) -> Result<(), String> {
         let image = context
             .get_input_downcast::<DynamicImage>("image")
@@ -244,31 +246,47 @@ impl<B: Backend> ColumnBuildOperator for ImgToTensor<B> {
     }
 }
 
-type BindDeviceFunc<C, D> =
-    fn(config: C, device: &D) -> Result<Box<dyn ColumnBuildOperator>, String>;
+type BindDeviceFunc<C, D> = fn(config: C, device: &D) -> Result<Box<dyn FirehoseOperator>, String>;
 
 /// A binding for the `BurnDeviceOpBinding` that allows it to be used with a specific backend and operator.
 pub struct BurnDeviceOpBinding<B, T, C>
 where
     B: Backend,
-    T: ColumnBuildOperator,
+    T: FirehoseOperator,
     C: DeserializeOwned,
 {
-    spec: OperatorSpec,
+    spec: FirehoseOperatorSignature,
     device: B::Device,
     bind_device: BindDeviceFunc<C, B::Device>,
     phantom: PhantomData<T>,
+}
+
+impl<B, T, C> Debug for BurnDeviceOpBinding<B, T, C>
+where
+    B: Backend,
+    T: FirehoseOperator,
+    C: DeserializeOwned,
+{
+    fn fmt(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
+        f.debug_struct("BurnDeviceOpBinding")
+            .field("spec", &self.spec)
+            .field("device", &self.device)
+            .finish()
+    }
 }
 
 impl<B, T, C> BurnDeviceOpBinding<B, T, C>
 where
     B: Backend,
     C: DeserializeOwned,
-    T: ColumnBuildOperator,
+    T: FirehoseOperator,
 {
     /// Creates a new `BurnDeviceOpBinding`.
     pub fn new(
-        spec: OperatorSpec,
+        spec: FirehoseOperatorSignature,
         device: &B::Device,
         bind_device: BindDeviceFunc<C, B::Device>,
     ) -> Self {
@@ -281,27 +299,27 @@ where
     }
 }
 
-impl<B, T, C> ColumnBuildOperatorBuilder for BurnDeviceOpBinding<B, T, C>
+impl<B, T, C> FirehoseOperatorFactory for BurnDeviceOpBinding<B, T, C>
 where
     B: Backend,
     C: DeserializeOwned,
-    T: ColumnBuildOperator,
+    T: FirehoseOperator,
 {
-    fn spec(&self) -> &OperatorSpec {
+    fn spec(&self) -> &FirehoseOperatorSignature {
         &self.spec
     }
 
     fn supplemental_validation(
         &self,
-        context: &ColumnBuildOperationInitContext,
+        context: &OperatorInitializationContext,
     ) -> Result<(), String> {
         self.build(context).map(|_| ())
     }
 
     fn build(
         &self,
-        context: &ColumnBuildOperationInitContext,
-    ) -> Result<Box<dyn ColumnBuildOperator>, String> {
+        context: &OperatorInitializationContext,
+    ) -> Result<Box<dyn FirehoseOperator>, String> {
         self.spec
             .validate(context.input_types(), context.output_types())?;
 

@@ -1,21 +1,18 @@
-use crate::core::{
-    ColumnBuildOperator, ColumnBuildRowContext, JsonConfigOpBinding, OperatorSpec, ParameterSpec,
-};
+use crate::core::operations::factory::SimpleConfigOperatorFactory;
+use crate::core::operations::operator::FirehoseOperator;
+use crate::core::operations::runner::OperatorApplyRowContext;
+use crate::core::operations::signature::{FirehoseOperatorSignature, ParameterSpec};
+use crate::define_firehose_operator;
 use crate::ops::image::{ImageShape, color_util};
-use crate::{define_operator_id, register_default_operator_builder};
 use image::imageops::FilterType;
 use image::{ColorType, DynamicImage};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-define_operator_id!(LOAD_IMAGE);
-register_default_operator_builder!(LOAD_IMAGE, load_image_op_binding);
-
-/// Creates a JSON configuration binding for the `LOAD_IMAGE` operation.
-pub fn load_image_op_binding() -> Arc<JsonConfigOpBinding<ImageLoader>> {
-    Arc::new(JsonConfigOpBinding::new(
-        OperatorSpec::new()
-            .with_operator_id(LOAD_IMAGE)
+define_firehose_operator!(
+    LOAD_IMAGE,
+    SimpleConfigOperatorFactory::<ImageLoader>::new(
+        FirehoseOperatorSignature::from_operator_id(LOAD_IMAGE)
             .with_description("Loads an image from disk.")
             .with_input(
                 ParameterSpec::new::<String>("path").with_description("Path to the image file."),
@@ -24,8 +21,8 @@ pub fn load_image_op_binding() -> Arc<JsonConfigOpBinding<ImageLoader>> {
                 ParameterSpec::new::<DynamicImage>("image")
                     .with_description("Image loaded from disk."),
             ),
-    ))
-}
+    )
+);
 
 /// Represents the resize specification for an image.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -132,10 +129,10 @@ impl ImageLoader {
     }
 }
 
-impl ColumnBuildOperator for ImageLoader {
+impl FirehoseOperator for ImageLoader {
     fn apply_row(
         &self,
-        context: &mut ColumnBuildRowContext,
+        context: &mut OperatorApplyRowContext,
     ) -> Result<(), String> {
         let path = context
             .get_input_downcast::<String>("path")
@@ -164,10 +161,11 @@ impl ColumnBuildOperator for ImageLoader {
 mod tests {
     use super::*;
 
-    use crate::core::new_default_operator_environment;
-    use crate::core::{
-        CallBuilder, ColumnSchema, OpEnvironment, RowBatch, TableSchema, experimental_run_batch_env,
-    };
+    use crate::core::experimental_run_batch_env;
+    use crate::core::operations::environment::{OpEnvironment, new_default_operator_environment};
+    use crate::core::operations::planner::OperationPlanner;
+    use crate::core::rows::RowBatch;
+    use crate::core::schema::{ColumnSchema, TableSchema};
     use crate::ops::image::test_util::{assert_image_close, generate_gradient_pattern};
     use image::DynamicImage;
     use std::sync::Arc;
@@ -198,7 +196,7 @@ mod tests {
 
         env.plan_operation(
             &mut schema,
-            CallBuilder::new(LOAD_IMAGE)
+            OperationPlanner::new(LOAD_IMAGE)
                 .with_input("path", "path")
                 .with_output("image", "image")
                 .with_config(ImageLoader::default()),
@@ -206,7 +204,7 @@ mod tests {
 
         env.plan_operation(
             &mut schema,
-            CallBuilder::new(LOAD_IMAGE)
+            OperationPlanner::new(LOAD_IMAGE)
                 .with_input("path", "path")
                 .with_output("image", "resized_gray")
                 .with_config(

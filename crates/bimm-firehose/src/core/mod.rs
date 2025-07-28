@@ -1,14 +1,15 @@
-mod batch;
-mod identifiers;
-mod operators;
-mod rows;
-mod schema;
+use operations::environment::OpEnvironment;
+use operations::runner::OperationRunner;
+use rows::RowBatch;
 
-pub use batch::*;
-pub use identifiers::*;
-pub use operators::*;
-pub use rows::*;
-pub use schema::*;
+/// Defines legal identifiers for firehose tables.
+pub mod identifiers;
+/// Defines the operator environment for firehose tables.
+pub mod operations;
+/// Defines rows and row batches for firehose tables.
+pub mod rows;
+/// Defines the symbolic schema for firehose tables.
+pub mod schema;
 
 /// Runs a batch of rows through the operator environment, applying the build plans defined in the schema.
 pub fn experimental_run_batch_env<E>(
@@ -24,7 +25,7 @@ where
     // TODO: ensure that the base is present in the batch rows.
 
     for plan in &plans {
-        let builder = ColumnBuilder::new_for_plan(schema, plan, env)?;
+        let builder = OperationRunner::new_for_plan(schema, plan, env)?;
         builder.apply_batch(batch.rows.as_mut_slice()).unwrap();
     }
     Ok(())
@@ -43,6 +44,10 @@ mod tests {
     use burn::backend::NdArray;
     use burn::prelude::{Shape, Tensor};
 
+    use crate::core::operations::environment::new_default_operator_environment;
+    use crate::core::operations::planner::OperationPlanner;
+    use crate::core::rows::RowBatch;
+    use crate::core::schema::{ColumnSchema, TableSchema};
     use image::imageops::FilterType;
     use image::{ColorType, DynamicImage};
     use indoc::indoc;
@@ -69,7 +74,7 @@ mod tests {
 
         env.plan_operation(
             &mut schema,
-            CallBuilder::new(LOAD_IMAGE)
+            OperationPlanner::new(LOAD_IMAGE)
                 .with_input("path", "path")
                 .with_output("image", "image")
                 .with_output_extension(
@@ -94,7 +99,7 @@ mod tests {
 
         env.plan_operation(
             &mut schema,
-            CallBuilder::new(IMAGE_TO_TENSOR)
+            OperationPlanner::new(IMAGE_TO_TENSOR)
                 .with_input("image", "image")
                 .with_output("tensor", "tensor")
                 .with_output_extension(

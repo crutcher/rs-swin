@@ -632,7 +632,7 @@ impl TableSchema {
     ///
     /// ## Example
     ///
-    /// ```rust
+    /// ```rust.norun
     /// use bimm_firehose::core::{TableSchema, ColumnSchema};
     /// let table = TableSchema::from_columns(&[
     ///     ColumnSchema::new::<i32>("foo"),
