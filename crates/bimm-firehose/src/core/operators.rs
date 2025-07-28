@@ -388,6 +388,7 @@ impl OperatorSpec {
         Ok(())
     }
 }
+
 /// Implementation of a `BuildPlan` operator.
 pub trait ColumnBuildOperator: 'static {
     /// Get the effective batch size for the operator.
@@ -433,11 +434,13 @@ pub struct ColumnBuildBatchContext {
 
 impl ColumnBuildBatchContext {
     /// Creates a new `ColumnBuildBatchContext` with the specified inputs.
-    pub fn new(
-        inputs: BTreeMap<String, Vec<Option<AnyArc>>>,
-    ) -> Self {
+    pub fn new(inputs: BTreeMap<String, Vec<Option<AnyArc>>>) -> Self {
         let len = inputs.values().map(|v| v.len()).max().unwrap_or(0);
-        Self { len, inputs, outputs: Default::default() }
+        Self {
+            len,
+            inputs,
+            outputs: Default::default(),
+        }
     }
 
     /// Returns the number of rows in the batch context.
@@ -461,7 +464,11 @@ impl ColumnBuildBatchContext {
     }
 
     /// Get the input for a specific row and parameter name.
-    pub fn get_row_input(&self, row: usize, name: &str) -> Option<&AnyArc> {
+    pub fn get_row_input(
+        &self,
+        row: usize,
+        name: &str,
+    ) -> Option<&AnyArc> {
         self.inputs
             .get(name)
             .and_then(|input| input.get(row))
@@ -479,7 +486,12 @@ impl ColumnBuildBatchContext {
     }
 
     /// Set an output value for a specific row and parameter name.
-    pub fn set_row_output(&mut self, row: usize, name: &str, value: Option<AnyArc>) {
+    pub fn set_row_output(
+        &mut self,
+        row: usize,
+        name: &str,
+        value: Option<AnyArc>,
+    ) {
         self.outputs
             .entry(name.to_string())
             .or_default()
@@ -488,7 +500,7 @@ impl ColumnBuildBatchContext {
             if row < output.len() {
                 output[row] = value;
             } else {
-                panic!("Row index out of bounds for output '{}'", name);
+                panic!("Row index out of bounds for output '{name}'");
             }
         }
     }
@@ -507,7 +519,10 @@ impl<'a> ColumnBuildRowContext<'a> {
     ///
     /// * `batch_context` - A mutable reference to the `ColumnBuildBatchContext`.
     /// * `index` - The index of the row in the batch context.
-    pub fn new(batch_context: &'a mut ColumnBuildBatchContext, index: usize) -> Self {
+    pub fn new(
+        batch_context: &'a mut ColumnBuildBatchContext,
+        index: usize,
+    ) -> Self {
         Self {
             batch_context,
             index,
@@ -515,7 +530,10 @@ impl<'a> ColumnBuildRowContext<'a> {
     }
 
     /// Gets a reference to the input value for the specified parameter name.
-    pub fn get_input(&self, name: &str) -> Option<&AnyArc> {
+    pub fn get_input(
+        &self,
+        name: &str,
+    ) -> Option<&AnyArc> {
         self.batch_context.get_row_input(self.index, name)
     }
 
@@ -524,11 +542,16 @@ impl<'a> ColumnBuildRowContext<'a> {
         &self,
         name: &str,
     ) -> Option<&T> {
-        self.batch_context.get_row_input_downcast::<T>(self.index, name)
+        self.batch_context
+            .get_row_input_downcast::<T>(self.index, name)
     }
 
     /// Sets an output value for the specified parameter name.
-    pub fn set_output(&mut self, name: &str, value: Option<AnyArc>) {
+    pub fn set_output(
+        &mut self,
+        name: &str,
+        value: Option<AnyArc>,
+    ) {
         self.batch_context.set_row_output(self.index, name, value)
     }
 }
@@ -617,6 +640,7 @@ impl ColumnBuilder {
             .collect::<BTreeMap<_, _>>();
 
         let context = ColumnBuildOperationInitContext::new(
+            table_schema.clone(),
             build_plan.clone(),
             input_types.clone(),
             output_types.clone(),
@@ -792,7 +816,7 @@ pub trait ColumnBuildOperatorBuilder {
     /// A `Result<(), String>` where:
     /// * `Ok` indicates successful validation,
     /// * `Err` contains an error message if validation fails.
-    fn validate(
+    fn supplemental_validation(
         &self,
         context: &ColumnBuildOperationInitContext,
     ) -> Result<(), String> {
@@ -819,6 +843,8 @@ pub trait ColumnBuildOperatorBuilder {
 /// Context for validating and initializing a column build operation.
 #[derive(Debug, Clone)]
 pub struct ColumnBuildOperationInitContext {
+    table_schema: TableSchema,
+
     /// The operator specification for the operator being initialized.
     build_plan: BuildPlan,
 
@@ -832,15 +858,22 @@ pub struct ColumnBuildOperationInitContext {
 impl ColumnBuildOperationInitContext {
     /// Creates a new `ColumnBuildOperationInitContext` with the specified build plan and input/output types.
     pub fn new(
+        table_schema: TableSchema,
         build_plan: BuildPlan,
         input_types: BTreeMap<String, DataTypeDescription>,
         output_types: BTreeMap<String, DataTypeDescription>,
     ) -> Self {
         Self {
+            table_schema,
             build_plan,
             input_types,
             output_types,
         }
+    }
+
+    /// Returns a reference to the table schema.
+    pub fn table_schema(&self) -> &TableSchema {
+        &self.table_schema
     }
 
     /// Returns a reference to the build plan.
@@ -892,7 +925,10 @@ where
         &self.spec
     }
 
-    fn validate(&self, context: &ColumnBuildOperationInitContext) -> Result<(), String> {
+    fn supplemental_validation(
+        &self,
+        context: &ColumnBuildOperationInitContext,
+    ) -> Result<(), String> {
         self.build(context).map(|_| ())
     }
 
@@ -900,17 +936,16 @@ where
         &self,
         context: &ColumnBuildOperationInitContext,
     ) -> Result<Box<dyn ColumnBuildOperator>, String> {
-        self.spec.validate(context.input_types(), context.output_types())?;
+        self.spec
+            .validate(context.input_types(), context.output_types())?;
 
         let config = &context.build_plan().config;
-        let loader: Box<T> = Box::new(serde_json::from_value(config.clone()).map_err(
-            |_| {
-                format!(
-                    "Invalid config: {}",
-                    serde_json::to_string_pretty(config).unwrap()
-                )
-            },
-        )?);
+        let loader: Box<T> = Box::new(serde_json::from_value(config.clone()).map_err(|_| {
+            format!(
+                "Invalid config: {}",
+                serde_json::to_string_pretty(config).unwrap()
+            )
+        })?);
 
         Ok(loader)
     }
@@ -950,8 +985,11 @@ pub trait OpEnvironment {
         &self,
         context: &ColumnBuildOperationInitContext,
     ) -> Result<(), String> {
-        self.lookup_operation_builder(&context.build_plan().operator_id)?
-            .validate(context)
+        let builder = self.lookup_operation_builder(&context.build_plan().operator_id)?;
+        builder
+            .spec()
+            .validate(context.input_types(), context.output_types())?;
+        builder.supplemental_validation(context)
     }
 
     /// Builds an operator based on the provided context.
@@ -960,7 +998,7 @@ pub trait OpEnvironment {
         context: &ColumnBuildOperationInitContext,
     ) -> Result<Box<dyn ColumnBuildOperator>, String> {
         let builder = self.lookup_operation_builder(&context.build_plan().operator_id)?;
-        builder.validate(context)?;
+        builder.supplemental_validation(context)?;
         builder.build(context)
     }
 
@@ -972,7 +1010,7 @@ pub trait OpEnvironment {
     ///
     /// # Arguments
     ///
-    /// * `schema` - A mutable reference to the `TableSchema` to be extended.
+    /// * `table_schema` - A mutable reference to the `TableSchema` to be extended.
     /// * `call` - A `CallBuilder` that describes the operation to be added.
     ///
     /// # Returns
@@ -982,7 +1020,7 @@ pub trait OpEnvironment {
     /// * `Err` contains an error message if the operation fails.
     fn plan_operation(
         &self,
-        schema: &mut TableSchema,
+        table_schema: &mut TableSchema,
         call: CallBuilder,
     ) -> Result<BuildPlan, String> {
         let operator_id = &call.operator_id;
@@ -990,7 +1028,12 @@ pub trait OpEnvironment {
         let input_types: BTreeMap<String, DataTypeDescription> = call
             .inputs
             .iter()
-            .map(|(pname, cname)| (pname.to_string(), schema[cname.as_str()].data_type.clone()))
+            .map(|(pname, cname)| {
+                (
+                    pname.to_string(),
+                    table_schema[cname.as_str()].data_type.clone(),
+                )
+            })
             .collect();
 
         let binding = self.lookup_operation_builder(operator_id)?;
@@ -1034,6 +1077,7 @@ pub trait OpEnvironment {
             .collect::<Vec<_>>();
 
         let context = ColumnBuildOperationInitContext::new(
+            table_schema.clone(),
             plan.clone(),
             input_types.clone(),
             output_plan
@@ -1044,7 +1088,7 @@ pub trait OpEnvironment {
 
         self.validate(&context)?;
 
-        schema.add_build_plan_and_outputs(plan.clone(), &output_plan)?;
+        table_schema.add_build_plan_and_outputs(plan.clone(), &output_plan)?;
 
         Ok(plan)
     }
@@ -1372,10 +1416,10 @@ mod tests {
         ) -> Result<(), String> {
             let x = context
                 .get_input_downcast::<i32>("x")
-                .ok_or_else(|| "'x' expected type i32")?;
+                .ok_or("'x' expected type i32")?;
             let y = context
                 .get_input_downcast::<i32>("y")
-                .ok_or_else(|| "'y' expected type i32")?;
+                .ok_or("'y' expected type i32")?;
 
             let result: i32 = x + y + self.bias;
 

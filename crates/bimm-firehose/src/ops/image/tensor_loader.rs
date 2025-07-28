@@ -1,4 +1,7 @@
-use crate::core::{ColumnBuildOperator, ColumnBuildOperatorBuilder, OperatorSpec, ParameterSpec, ColumnBuildOperationInitContext, ColumnBuildRowContext};
+use crate::core::{
+    ColumnBuildOperationInitContext, ColumnBuildOperator, ColumnBuildOperatorBuilder,
+    ColumnBuildRowContext, OperatorSpec, ParameterSpec,
+};
 use crate::define_operator_id;
 use burn::data::dataset::vision::PixelDepth;
 use burn::prelude::{Backend, Tensor};
@@ -147,7 +150,9 @@ impl ImgToTensorConfig {
 }
 
 /// Configures the ImgToTensor operator for a specific backend.
-pub fn img_to_tensor_op_binding<B: Backend>(device: &B::Device) -> Arc<dyn ColumnBuildOperatorBuilder> {
+pub fn img_to_tensor_op_binding<B: Backend>(
+    device: &B::Device
+) -> Arc<dyn ColumnBuildOperatorBuilder> {
     let spec: OperatorSpec = OperatorSpec::new()
         .with_operator_id(IMAGE_TO_TENSOR)
         .with_description("Converts an image to a tensor.")
@@ -239,7 +244,8 @@ impl<B: Backend> ColumnBuildOperator for ImgToTensor<B> {
     }
 }
 
-type BindDeviceFunc<C, D> = fn(config: C, device: &D) -> Result<Box<dyn ColumnBuildOperator>, String>;
+type BindDeviceFunc<C, D> =
+    fn(config: C, device: &D) -> Result<Box<dyn ColumnBuildOperator>, String>;
 
 /// A binding for the `BurnDeviceOpBinding` that allows it to be used with a specific backend and operator.
 pub struct BurnDeviceOpBinding<B, T, C>
@@ -285,22 +291,27 @@ where
         &self.spec
     }
 
-    fn validate(&self, context: &ColumnBuildOperationInitContext) -> Result<(), String> {
+    fn supplemental_validation(
+        &self,
+        context: &ColumnBuildOperationInitContext,
+    ) -> Result<(), String> {
         self.build(context).map(|_| ())
     }
 
-    fn build(&self, context: &ColumnBuildOperationInitContext) -> Result<Box<dyn ColumnBuildOperator>, String> {
-        self.spec.validate(context.input_types(), context.output_types())?;
+    fn build(
+        &self,
+        context: &ColumnBuildOperationInitContext,
+    ) -> Result<Box<dyn ColumnBuildOperator>, String> {
+        self.spec
+            .validate(context.input_types(), context.output_types())?;
 
         let config = &context.build_plan().config;
-        let config = serde_json::from_value(config.clone()).map_err(
-            |_| {
-                format!(
-                    "Invalid config: {}",
-                    serde_json::to_string_pretty(config).unwrap()
-                )
-            },
-        )?;
+        let config = serde_json::from_value(config.clone()).map_err(|_| {
+            format!(
+                "Invalid config: {}",
+                serde_json::to_string_pretty(config).unwrap()
+            )
+        })?;
 
         let loader = (self.bind_device)(config, &self.device)?;
         Ok(loader)

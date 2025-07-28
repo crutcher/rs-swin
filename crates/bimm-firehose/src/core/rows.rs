@@ -1,5 +1,5 @@
-use std::any::Any;
 use crate::core::TableSchema;
+use std::any::Any;
 use std::sync::Arc;
 
 /// Represents a boxed value that can hold any type.

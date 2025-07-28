@@ -1,4 +1,6 @@
-use crate::core::{ColumnBuildOperator, ColumnBuildRowContext, JsonConfigOpBinding, OperatorSpec, ParameterSpec};
+use crate::core::{
+    ColumnBuildOperator, ColumnBuildRowContext, JsonConfigOpBinding, OperatorSpec, ParameterSpec,
+};
 use crate::ops::image::{ImageShape, color_util};
 use crate::{define_operator_id, register_default_operator_builder};
 use image::imageops::FilterType;
@@ -135,7 +137,8 @@ impl ColumnBuildOperator for ImageLoader {
         &self,
         context: &mut ColumnBuildRowContext,
     ) -> Result<(), String> {
-        let path = context.get_input_downcast::<String>("path")
+        let path = context
+            .get_input_downcast::<String>("path")
             .ok_or("ImageLoader expects input 'path' to be a String")?;
 
         let mut image = image::open(path).map_err(|e| format!("Failed to load image: {e}"))?;
