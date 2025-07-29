@@ -1,5 +1,5 @@
-use crate::core::operations::factory::FirehoseOperatorFactory;
-use crate::core::operations::operator::{FirehoseOperator, OperatorInitializationContext};
+use crate::core::operations::factory::{FirehoseOperatorFactory, OperatorInitializationContext};
+use crate::core::operations::operator::FirehoseOperator;
 use crate::core::operations::runner::OperatorApplyRowContext;
 use crate::core::operations::signature::{FirehoseOperatorSignature, ParameterSpec};
 use crate::define_firehose_operator_id;

@@ -1,5 +1,6 @@
 use crate::core::operations::environment::OpEnvironment;
-use crate::core::operations::operator::{FirehoseOperator, OperatorInitializationContext};
+use crate::core::operations::factory::OperatorInitializationContext;
+use crate::core::operations::operator::FirehoseOperator;
 use crate::core::rows::{AnyArc, Row};
 use crate::core::schema::{BuildPlan, TableSchema};
 use std::any::Any;

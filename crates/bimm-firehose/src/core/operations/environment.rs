@@ -1,5 +1,5 @@
-use crate::core::operations::factory::FirehoseOperatorFactory;
-use crate::core::operations::operator::{FirehoseOperator, OperatorInitializationContext};
+use crate::core::operations::factory::{FirehoseOperatorFactory, OperatorInitializationContext};
+use crate::core::operations::operator::FirehoseOperator;
 use crate::core::operations::planner::OperationPlanner;
 use crate::core::operations::registration;
 use crate::core::schema::{BuildPlan, DataTypeDescription, TableSchema};

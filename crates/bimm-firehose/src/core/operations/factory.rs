@@ -1,10 +1,113 @@
-use crate::core::operations::operator::{FirehoseOperator, OperatorInitializationContext};
+use crate::core::operations::operator::FirehoseOperator;
 use crate::core::operations::signature::FirehoseOperatorSignature;
+use crate::core::schema::{BuildPlan, DataTypeDescription, TableSchema};
 use serde::de::DeserializeOwned;
+use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
+/// A factory for creating `FirehoseOperator` instances from a specification.
+pub trait FirehoseOperatorFactory: Debug + Send + Sync {
+    /// Returns the operator ID.
+    fn operator_id(&self) -> &String {
+        self.spec()
+            .operator_id
+            .as_ref()
+            .expect("Spec must have an operator id")
+    }
+
+    /// Returns the operator specification.
+    fn spec(&self) -> &FirehoseOperatorSignature;
+
+    /// Validates a build plan against the input and output types using an `OpInitContext`.
+    ///
+    /// # Arguments
+    ///
+    /// * `context` - The context containing the build plan and input/output types.
+    ///
+    /// # Returns
+    ///
+    /// A `Result<(), String>` where:
+    /// * `Ok` indicates successful validation,
+    /// * `Err` contains an error message if validation fails.
+    fn supplemental_validation(
+        &self,
+        context: &OperatorInitializationContext,
+    ) -> Result<(), String> {
+        self.build(context).map(|_| ())
+    }
+
+    /// Inits a build plan against the input and output types using an `OpInitContext`.
+    ///
+    /// # Arguments
+    ///
+    /// * `context` - The context containing the build plan and input/output types.
+    ///
+    /// # Returns
+    ///
+    /// A `Result<Box<dyn BuildOperator>, String>` where:
+    /// * `Ok` contains a boxed operator that implements the `BuildOperator` trait,
+    /// * `Err` contains an error message if the initialization fails.
+    fn build(
+        &self,
+        context: &OperatorInitializationContext,
+    ) -> Result<Box<dyn FirehoseOperator>, String>;
+}
+
 /// An operator factory which deserializes the operator from a JSON value.
+/// Context for validating and initializing a column build operation.
+#[derive(Debug, Clone)]
+pub struct OperatorInitializationContext {
+    table_schema: TableSchema,
+
+    /// The operator specification for the operator being initialized.
+    build_plan: BuildPlan,
+
+    /// A map of input parameter names to their data types.
+    input_types: BTreeMap<String, DataTypeDescription>,
+
+    /// A map of output parameter names to their data types.
+    output_types: BTreeMap<String, DataTypeDescription>,
+}
+
+impl OperatorInitializationContext {
+    /// Creates a new `ColumnBuildOperationInitContext` with the specified build plan and input/output types.
+    pub fn new(
+        table_schema: TableSchema,
+        build_plan: BuildPlan,
+        input_types: BTreeMap<String, DataTypeDescription>,
+        output_types: BTreeMap<String, DataTypeDescription>,
+    ) -> Self {
+        Self {
+            table_schema,
+            build_plan,
+            input_types,
+            output_types,
+        }
+    }
+
+    /// Returns a reference to the table schema.
+    pub fn table_schema(&self) -> &TableSchema {
+        &self.table_schema
+    }
+
+    /// Returns a reference to the build plan.
+    pub fn build_plan(&self) -> &BuildPlan {
+        &self.build_plan
+    }
+
+    /// Returns a reference to the input types.
+    pub fn input_types(&self) -> &BTreeMap<String, DataTypeDescription> {
+        &self.input_types
+    }
+
+    /// Returns a reference to the output types.
+    pub fn output_types(&self) -> &BTreeMap<String, DataTypeDescription> {
+        &self.output_types
+    }
+}
+
+/// A simple operator factory for types implementing `DeserializeOwned` and `FirehoseOperator`.
 #[derive(Debug)]
 pub struct SimpleConfigOperatorFactory<T>
 where
@@ -62,54 +165,6 @@ where
 
         Ok(loader)
     }
-}
-
-/// Binding for an operator that can be initialized with a build plan.
-pub trait FirehoseOperatorFactory: Debug + Send + Sync {
-    /// Returns the operator ID.
-    fn operator_id(&self) -> &String {
-        self.spec()
-            .operator_id
-            .as_ref()
-            .expect("Spec must have an operator id")
-    }
-
-    /// Returns the operator specification.
-    fn spec(&self) -> &FirehoseOperatorSignature;
-
-    /// Validates a build plan against the input and output types using an `OpInitContext`.
-    ///
-    /// # Arguments
-    ///
-    /// * `context` - The context containing the build plan and input/output types.
-    ///
-    /// # Returns
-    ///
-    /// A `Result<(), String>` where:
-    /// * `Ok` indicates successful validation,
-    /// * `Err` contains an error message if validation fails.
-    fn supplemental_validation(
-        &self,
-        context: &OperatorInitializationContext,
-    ) -> Result<(), String> {
-        self.build(context).map(|_| ())
-    }
-
-    /// Inits a build plan against the input and output types using an `OpInitContext`.
-    ///
-    /// # Arguments
-    ///
-    /// * `context` - The context containing the build plan and input/output types.
-    ///
-    /// # Returns
-    ///
-    /// A `Result<Box<dyn BuildOperator>, String>` where:
-    /// * `Ok` contains a boxed operator that implements the `BuildOperator` trait,
-    /// * `Err` contains an error message if the initialization fails.
-    fn build(
-        &self,
-        context: &OperatorInitializationContext,
-    ) -> Result<Box<dyn FirehoseOperator>, String>;
 }
 
 #[cfg(test)]
