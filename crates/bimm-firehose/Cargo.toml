@@ -21,6 +21,8 @@ regex = { workspace = true }
 regex-macro = { workspace = true }
 
 image = { workspace = true, features = ["jpeg", "png", "gif", "serde"] }
+
+# TODO: feature guard this dep behind a `test` feature.
 image-compare = { workspace = true }
 
 [dev-dependencies]
@@ -30,4 +32,5 @@ tempfile = { workspace = true }
 
 [features]
 nightly = []
+
 
