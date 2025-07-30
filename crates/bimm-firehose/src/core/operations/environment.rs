@@ -1,6 +1,6 @@
 use crate::core::operations::factory::{FirehoseOperatorFactory, FirehoseOperatorInitContext};
 use crate::core::operations::operator::FirehoseOperator;
-use crate::core::operations::planner::OperationPlanner;
+use crate::core::operations::planner::OperationPlan;
 use crate::core::operations::registration;
 use crate::core::operations::signature::FirehoseOperatorSignature;
 use crate::core::schema::{BuildPlan, DataTypeDescription, FirehoseTableSchema};
@@ -114,7 +114,7 @@ pub trait OpEnvironment {
     fn apply_plan_to_schema(
         &self,
         schema: &mut FirehoseTableSchema,
-        planner: OperationPlanner,
+        planner: OperationPlan,
     ) -> Result<BuildPlan, String> {
         let operator_id = &planner.operator_id;
 
