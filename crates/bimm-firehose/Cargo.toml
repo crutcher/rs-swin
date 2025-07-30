@@ -13,6 +13,8 @@ burn = { workspace = true, features = ["dataset", "vision"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
+anyhow = { workspace = true }
+
 inventory = { workspace = true }
 
 indoc = { workspace = true }

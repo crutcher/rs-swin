@@ -283,6 +283,7 @@ dependencies = [
 name = "bimm-firehose"
 version = "0.2.0"
 dependencies = [
+ "anyhow",
  "burn",
  "image",
  "image-compare",

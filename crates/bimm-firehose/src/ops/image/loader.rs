@@ -4,6 +4,7 @@ use crate::core::operations::planner::OperationPlan;
 use crate::core::operations::signature::{FirehoseOperatorSignature, ParameterSpec};
 use crate::define_firehose_operator;
 use crate::ops::image::{ImageShape, color_util};
+use anyhow::Context;
 use image::imageops::FilterType;
 use image::{ColorType, DynamicImage};
 use serde::{Deserialize, Serialize};
@@ -150,10 +151,11 @@ impl FirehoseOperator for ImageLoader {
     fn apply_to_row(
         &self,
         txn: &mut FirehoseRowTransaction,
-    ) -> Result<(), String> {
+    ) -> anyhow::Result<()> {
         let path = txn.get_required_scalar_input::<String>("path")?;
 
-        let mut image = image::open(path).map_err(|e| format!("Failed to load image: {e}"))?;
+        let mut image =
+            image::open(path).with_context(|| format!("Failed to load image from path: {path}"))?;
 
         if let Some(spec) = &self.resize {
             if image.width() != spec.shape.width || image.height() != spec.shape.height {
@@ -186,8 +188,9 @@ mod tests {
     use std::sync::Arc;
 
     #[test]
-    fn test_image_loader() -> Result<(), String> {
-        let temp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
+    fn test_image_loader() -> anyhow::Result<()> {
+        let temp_dir =
+            tempfile::tempdir().with_context(|| "Failed to create temporary directory")?;
 
         let image_path = temp_dir
             .path()

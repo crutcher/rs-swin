@@ -115,7 +115,7 @@ mod tests {
         fn apply_to_row(
             &self,
             txn: &mut FirehoseRowTransaction,
-        ) -> Result<(), String> {
+        ) -> anyhow::Result<()> {
             let x = txn.get_required_scalar_input::<i32>("x")?;
             let y = txn.get_required_scalar_input::<i32>("y")?;
 

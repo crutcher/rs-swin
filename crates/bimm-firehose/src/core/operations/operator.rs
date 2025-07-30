@@ -1,6 +1,7 @@
 use crate::core::operations::signature::{FirehoseOperatorSignature, ParameterArity};
 use crate::core::rows::{AnyArc, Row, RowBatch};
 use crate::core::schema::{BuildPlan, FirehoseTableSchema};
+use anyhow::bail;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -27,7 +28,7 @@ pub trait FirehoseOperator: 'static + Send + Sync + Debug {
     fn apply_to_batch(
         &self,
         txn: &mut FirehoseBatchTransaction,
-    ) -> Result<(), String> {
+    ) -> anyhow::Result<()> {
         for index in 0..txn.len() {
             let mut row_txn = txn.row_transaction(index);
             self.apply_to_row(&mut row_txn)?;
@@ -43,7 +44,7 @@ pub trait FirehoseOperator: 'static + Send + Sync + Debug {
     fn apply_to_row(
         &self,
         txn: &mut FirehoseRowTransaction,
-    ) -> Result<(), String> {
+    ) -> anyhow::Result<()> {
         let _ignored = txn;
         unimplemented!()
     }
@@ -107,13 +108,12 @@ impl FirehoseBatchTransaction {
         &mut self,
         row: &Row,
         index: usize,
-    ) -> Result<(), String> {
+    ) -> anyhow::Result<()> {
         if index >= self.row_batch.len() {
-            return Err(format!(
-                "Index {} out of bounds for row batch of length {}",
-                index,
+            bail!(
+                "Index {index} out of bounds for row batch of length {}",
                 self.row_batch.len()
-            ));
+            );
         }
         self.row_batch[index].assign_from(row);
         Ok(())
@@ -123,7 +123,7 @@ impl FirehoseBatchTransaction {
     pub fn commit_row_transaction(
         &mut self,
         row_txn: &FirehoseRowTransaction,
-    ) -> Result<(), String> {
+    ) -> anyhow::Result<()> {
         self.commit_row(&row_txn.row, row_txn.index)
     }
 }
@@ -164,7 +164,7 @@ impl FirehoseRowTransaction {
     pub fn get_required_scalar_input<T: 'static>(
         &self,
         parameter_name: &str,
-    ) -> Result<&T, String> {
+    ) -> anyhow::Result<&T> {
         let column_name = self.build_plan.translate_input_name(parameter_name)?;
 
         let parameter_sig = self
@@ -172,9 +172,7 @@ impl FirehoseRowTransaction {
             .get_input_parameter(parameter_name)
             .unwrap_or_else(|| panic!("Required input '{parameter_name}' not found in signature"));
         if parameter_sig.arity != ParameterArity::Required {
-            return Err(format!(
-                "Input '{parameter_name}' is not required in operator signature",
-            ));
+            bail!("Input '{parameter_name}' is not required in operator signature",);
         }
 
         match self
@@ -182,10 +180,11 @@ impl FirehoseRowTransaction {
             .get_column_checked::<T>(&self.schema, column_name)?
         {
             Some(value) => Ok(value),
-            None => Err(format!(
+            None => bail!(
                 "Required input '{}' not found in row at index {}",
-                parameter_name, self.index
-            )),
+                parameter_name,
+                self.index
+            ),
         }
     }
 
@@ -204,12 +203,13 @@ impl FirehoseRowTransaction {
         &mut self,
         parameter_name: &str,
         value: AnyArc,
-    ) -> Result<(), String> {
+    ) -> anyhow::Result<()> {
         let column_name = self.build_plan.translate_output_name(parameter_name)?;
 
-        self.signature
-            .get_output_parameter(parameter_name)
-            .unwrap_or_else(|| panic!("Output '{parameter_name}' not found in signature"));
+        match self.signature.get_output_parameter(parameter_name) {
+            Some(_) => (),
+            None => bail!("Output parameter '{parameter_name}' not found in signature"),
+        }
 
         self.row.set_column(&self.schema, column_name, Some(value));
 

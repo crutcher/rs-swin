@@ -4,6 +4,7 @@ use crate::core::operations::planner::OperationPlan;
 use crate::core::operations::registration;
 use crate::core::operations::signature::FirehoseOperatorSignature;
 use crate::core::schema::{BuildPlan, DataTypeDescription, FirehoseTableSchema};
+use anyhow::{Context, bail};
 use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 
@@ -44,11 +45,11 @@ pub trait OpEnvironment {
     fn lookup_operator_factory(
         &self,
         operator_id: &str,
-    ) -> Result<Arc<dyn FirehoseOperatorFactory>, String> {
+    ) -> anyhow::Result<Arc<dyn FirehoseOperatorFactory>> {
         Ok(self
             .operators()
             .get(operator_id)
-            .ok_or_else(|| format!("Operator '{operator_id}' not found in environment."))?
+            .with_context(|| format!("Operator '{operator_id}' not found in environment."))?
             .clone())
     }
 
@@ -69,7 +70,7 @@ pub trait OpEnvironment {
     fn validate_context(
         &self,
         plan_context: BuildPlanContext,
-    ) -> Result<(), String> {
+    ) -> anyhow::Result<()> {
         self.init_operator(plan_context).map(|_| ())
     }
 
@@ -87,7 +88,7 @@ pub trait OpEnvironment {
     fn init_operator(
         &self,
         plan_context: BuildPlanContext,
-    ) -> Result<Box<dyn FirehoseOperator>, String> {
+    ) -> anyhow::Result<Box<dyn FirehoseOperator>> {
         let factory = self.lookup_operator_factory(plan_context.operator_id())?;
 
         let context = plan_context.bind_signature(factory.signature())?;
@@ -115,7 +116,7 @@ pub trait OpEnvironment {
         &self,
         schema: &mut FirehoseTableSchema,
         planner: OperationPlan,
-    ) -> Result<BuildPlan, String> {
+    ) -> anyhow::Result<BuildPlan> {
         let operator_id = &planner.operator_id;
 
         let factory = self.lookup_operator_factory(operator_id)?;
@@ -161,7 +162,7 @@ impl MapOpEnvironment {
     /// # Arguments
     ///
     /// * `bindings` - A slice of Arc-wrapped operator bindings to initialize the environment with.
-    pub fn from_bindings(bindings: &[Arc<dyn FirehoseOperatorFactory>]) -> Result<Self, String> {
+    pub fn from_bindings(bindings: &[Arc<dyn FirehoseOperatorFactory>]) -> anyhow::Result<Self> {
         let mut this = Self::new();
         this.add_bindings(bindings)?;
         Ok(this)
@@ -175,12 +176,10 @@ impl MapOpEnvironment {
     pub fn add_binding(
         &mut self,
         binding: Arc<dyn FirehoseOperatorFactory>,
-    ) -> Result<(), String> {
+    ) -> anyhow::Result<()> {
         let id = binding.operator_id();
         if self.operators.contains_key(id) {
-            return Err(format!(
-                "Operator with ID '{id}' already exists in MapOpEnvironment."
-            ));
+            bail!("Operator with ID '{id}' already exists in MapOpEnvironment.");
         }
         self.operators.insert(id.clone(), binding);
         Ok(())
@@ -198,7 +197,7 @@ impl MapOpEnvironment {
     pub fn add_bindings<'a, B>(
         &mut self,
         bindings: B,
-    ) -> Result<(), String>
+    ) -> anyhow::Result<()>
     where
         B: IntoIterator<Item = &'a Arc<dyn FirehoseOperatorFactory>>,
     {
@@ -331,7 +330,7 @@ impl BuildPlanContext {
     pub fn bind_signature(
         self,
         signature: &FirehoseOperatorSignature,
-    ) -> Result<OperationInitializationContext, String> {
+    ) -> anyhow::Result<OperationInitializationContext> {
         OperationInitializationContext::init(self, signature.clone())
     }
 
@@ -398,7 +397,7 @@ impl OperationInitializationContext {
     pub fn init(
         plan_context: BuildPlanContext,
         signature: FirehoseOperatorSignature,
-    ) -> Result<Self, String> {
+    ) -> anyhow::Result<Self> {
         signature.validate(&plan_context.input_types(), &plan_context.output_types())?;
 
         Ok(Self {

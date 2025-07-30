@@ -1,4 +1,5 @@
 use crate::core::schema::FirehoseTableSchema;
+use anyhow::bail;
 use std::any::Any;
 use std::ops::{Index, IndexMut};
 use std::sync::Arc;
@@ -88,16 +89,16 @@ impl Row {
     pub fn get_slot_checked<T: 'static>(
         &self,
         index: usize,
-    ) -> Result<Option<&T>, String> {
+    ) -> anyhow::Result<Option<&T>> {
         match self.get_slot_any_ref(index) {
             None => Ok(None),
             Some(value) => match value.downcast_ref::<T>() {
                 Some(value) => Ok(Some(value)),
-                None => Err(format!(
+                None => bail!(
                     "Value at index {} cannot be downcast to type {}",
                     index,
                     std::any::type_name::<T>(),
-                )),
+                ),
             },
         }
     }
@@ -136,13 +137,13 @@ impl Row {
     fn fastcheck_schema(
         &self,
         schema: &FirehoseTableSchema,
-    ) -> Result<(), String> {
+    ) -> anyhow::Result<()> {
         if self.slots.len() != schema.columns.len() {
-            return Err(format!(
+            bail!(
                 "Row has {} slots, but table has {} columns",
                 self.slots.len(),
                 schema.columns.len()
-            ));
+            );
         }
         Ok(())
     }
@@ -186,10 +187,9 @@ impl Row {
         &self,
         schema: &FirehoseTableSchema,
         column_name: &str,
-    ) -> Result<Option<&T>, String> {
+    ) -> anyhow::Result<Option<&T>> {
         self.fastcheck_schema(schema).unwrap();
-
-        let index = schema.check_column_index(column_name).unwrap();
+        let index = schema.check_column_index(column_name)?;
         self.get_slot_checked::<T>(index)
     }
 
@@ -423,8 +423,8 @@ impl RowBatch {
     pub fn join_column<T: 'static, V>(
         &self,
         column_name: &str,
-        join_fn: impl Fn(&Vec<Option<&T>>) -> Result<V, String>,
-    ) -> Result<V, String> {
+        join_fn: impl Fn(&Vec<Option<&T>>) -> anyhow::Result<V>,
+    ) -> anyhow::Result<V> {
         let values = self.collect_column_values::<T>(column_name);
         join_fn(&values)
     }
@@ -504,7 +504,7 @@ mod tests {
         assert!(row.get_column_checked::<f64>(&schema, "foo").is_err());
 
         // Accessing an empty column
-        assert_eq!(row.get_column_checked::<i32>(&schema, "bar"), Ok(None));
+        assert_eq!(row.get_column_checked::<i32>(&schema, "bar").unwrap(), None);
     }
 
     #[test]
@@ -618,11 +618,13 @@ mod tests {
             vec![Some(&42), Some(&100)]
         );
         assert_eq!(
-            batch.join_column("foo", |vs| {
-                let x: i32 = vs.iter().filter_map(|&v| v).sum();
-                Ok(x)
-            }),
-            Ok(142_i32),
+            batch
+                .join_column("foo", |vs| {
+                    let x: i32 = vs.iter().filter_map(|&v| v).sum();
+                    Ok(x)
+                })
+                .unwrap(),
+            142_i32,
         );
     }
 
@@ -665,16 +667,18 @@ mod tests {
         batch[1].set_columns(&schema, &["bar"], [Arc::new("World".to_string())]);
 
         assert_eq!(
-            batch.join_column("bar", |vs: &Vec<Option<&String>>| {
-                let joined = vs
-                    .iter()
-                    .filter_map(|&v| v)
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                Ok(joined)
-            }),
-            Ok("Hello, World".to_string())
+            batch
+                .join_column("bar", |vs: &Vec<Option<&String>>| {
+                    let joined = vs
+                        .iter()
+                        .filter_map(|&v| v)
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    Ok(joined)
+                })
+                .unwrap(),
+            "Hello, World",
         );
     }
 }
