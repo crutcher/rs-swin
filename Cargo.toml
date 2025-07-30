@@ -22,10 +22,12 @@ doc_markdown = "warn"
 bimm = { version = "0.2.0", path = "crates/bimm" }
 bimm-contracts = { version = "0.2.0", path = "crates/bimm-contracts" }
 bimm-contracts-macros = { version = "0.2.0", path = "crates/bimm-contracts-macros" }
+bimm-firehose = { version = "0.2.0", path = "crates/bimm-firehose" }
 
 burn = { version = "^0.18.0" }
 
 anyhow = { version = "^1.0.98" }
+itertools = { version = "^0.14.0" }
 
 regex = { version = "^1.11.1" }
 regex-macro = { version = "^0.3.0" }
