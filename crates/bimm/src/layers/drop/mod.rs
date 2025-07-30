@@ -1,2 +1,2 @@
-/// DropPath module.
+/// `DropPath` module.
 pub mod path;

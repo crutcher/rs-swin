@@ -1,18 +1,18 @@
-/// Burn implementation of the DropPath (Stochastic Depth) regularization layer.
+/// Burn implementation of the `DropPath` (Stochastic Depth) regularization layer.
 ///
 /// Papers:
-/// DropBlock: A regularization method for convolutional networks (https://arxiv.org/abs/1810.12890)
+/// `DropBlock`: A regularization method for convolutional networks (<https://arxiv.org/abs/1810.12890>)
 ///
-/// Deep Networks with Stochastic Depth (https://arxiv.org/abs/1603.09382)
+/// Deep Networks with Stochastic Depth (<https://arxiv.org/abs/1603.09382>)
 ///
 /// Inspired by the python implementation from the timm library:
-/// https://github.com/huggingface/pytorch-image-models/blob/main/timm/layers/drop.py
+/// <https://github.com/huggingface/pytorch-image-models/blob/main/timm/layers/drop.py>
 use burn::config::Config;
 use burn::module::Module;
 use burn::prelude::{Backend, Tensor};
 use burn::tensor::Distribution;
 
-/// Common rate table for DropPath regularization.
+/// Common rate table for `DropPath` regularization.
 pub mod rate_table;
 
 /// Checks if the given probability is within the valid range [0, 1].
@@ -24,7 +24,7 @@ fn check_probability(prob: f64) -> f64 {
     prob
 }
 
-/// DropPath (stochastic depth) regularization.
+/// `DropPath` (stochastic depth) regularization.
 ///
 /// ## Arguments
 ///
@@ -54,7 +54,7 @@ pub fn drop_path<B: Backend, const D: usize>(
     )
 }
 
-/// Internal implementation of DropPath.
+/// Internal implementation of `DropPath`.
 ///
 /// Deferred to a separate function to allow for testing sampling.
 ///
@@ -100,7 +100,7 @@ fn _drop_path_sample<B: Backend, const D: usize>(
     x * random_tensor
 }
 
-/// Common introspection interface for DropPath modules.
+/// Common introspection interface for `DropPath` modules.
 pub trait DropPathMeta {
     /// Returns the drop probability.
     fn drop_prob(&self) -> f64;
@@ -114,7 +114,7 @@ pub trait DropPathMeta {
     fn scale_by_keep(&self) -> bool;
 }
 
-/// Configuration for the DropPath module.
+/// Configuration for the `DropPath` module.
 #[derive(Config, Debug)]
 pub struct DropPathConfig {
     /// Probability of dropping a path.
@@ -137,7 +137,7 @@ impl DropPathMeta for DropPathConfig {
 }
 
 impl DropPathConfig {
-    /// Initializes a new DropPath module.
+    /// Initializes a new `DropPath` module.
     #[inline(always)]
     #[must_use]
     pub fn init(&self) -> DropPath {
@@ -148,9 +148,9 @@ impl DropPathConfig {
     }
 }
 
-/// The DropPath module.
+/// The `DropPath` module.
 ///
-/// Burn Module that implements the DropPath (Stochastic Depth) regularization.
+/// Burn Module that implements the `DropPath` (Stochastic Depth) regularization.
 #[derive(Module, Clone, Debug)]
 pub struct DropPath {
     /// Probability of dropping a path.

@@ -17,7 +17,7 @@ use burn::tensor::linalg::{Norm, vector_normalize};
 /// EPS is a small constant used to avoid numerical instability in calculations.
 pub const EPS: f64 = 1e-12;
 
-/// Common introspection interface for WindowAttention.
+/// Common introspection interface for `WindowAttention`.
 pub trait WindowAttentionMeta {
     /// Get the input/channel dimension size.
     fn d_input(&self) -> usize;
@@ -48,7 +48,7 @@ pub trait WindowAttentionMeta {
     fn enable_qkv_bias(&self) -> bool;
 }
 
-/// Configuration for the WindowAttention module.
+/// Configuration for the `WindowAttention` module.
 #[derive(Config, Debug)]
 pub struct WindowAttentionConfig {
     /// Input dimension size.
@@ -105,7 +105,7 @@ impl WindowAttentionMeta for WindowAttentionConfig {
     }
 }
 
-/// The WindowAttention module.
+/// The `WindowAttention` module.
 #[derive(Module, Debug)]
 pub struct WindowAttention<B: Backend> {
     /// Input dimension size.
@@ -166,16 +166,16 @@ impl<B: Backend> WindowAttentionMeta for WindowAttention<B> {
 }
 
 impl<B: Backend> WindowAttention<B> {
-    /// Forward pass of the WindowAttention module.
+    /// Forward pass of the `WindowAttention` module.
     ///
     /// ## Arguments
     ///
-    /// - `x`: Input tensor of shape (B*num_windows, window_size * window_size, C).
-    /// - `mask`: Optional mask tensor of shape (num_windows, Wh*Ww, Wh*Ww).
+    /// - `x`: Input tensor of shape (B*`num_windows`, `window_size` * `window_size`, C).
+    /// - `mask`: Optional mask tensor of shape (`num_windows`, Wh*Ww, Wh*Ww).
     ///
     /// ## Returns
     ///
-    /// - Output tensor of shape (B*num_windows, N=ws*ws, C).
+    /// - Output tensor of shape (B*`num_windows`, N=ws*ws, C).
     #[must_use]
     pub fn forward(
         &self,
@@ -217,13 +217,13 @@ impl<B: Backend> WindowAttention<B> {
     ///
     /// - `b_nw`: Batch size times number of windows.
     /// - `n`: Number of elements in the input tensor.
-    /// - `q`: Query tensor of shape (b_nw, num_heads, ws*ws, c_per_head).
-    /// - `k`: Key tensor of shape (b_nw, num_heads, ws*ws, c_per_head).
-    /// - `mask`: Optional mask tensor of shape (num_windows, ws*ws, ws*ws).
+    /// - `q`: Query tensor of shape (`b_nw`, `num_heads`, ws*ws, `c_per_head`).
+    /// - `k`: Key tensor of shape (`b_nw`, `num_heads`, ws*ws, `c_per_head`).
+    /// - `mask`: Optional mask tensor of shape (`num_windows`, ws*ws, ws*ws).
     ///
     /// ## Returns
     ///
-    /// - Output attention tensor of shape (b_nw, num_heads, ws*ws, ws*ws).
+    /// - Output attention tensor of shape (`b_nw`, `num_heads`, ws*ws, ws*ws).
     #[must_use]
     fn attention(
         &self,
@@ -276,7 +276,7 @@ impl<B: Backend> WindowAttention<B> {
     ///
     /// ## Returns
     ///
-    /// - Output tensor of shape (num_heads, 1, 1).
+    /// - Output tensor of shape (`num_heads`, 1, 1).
     #[must_use]
     fn logit_scale(&self) -> Tensor<B, 3> {
         // TODO(crutcher): I suspect this is a bug in the original code.
@@ -289,7 +289,7 @@ impl<B: Backend> WindowAttention<B> {
     ///
     /// ## Returns
     ///
-    /// - Output tensor of shape (num_heads, Wh*Ww, Wh*Ww).
+    /// - Output tensor of shape (`num_heads`, Wh*Ww, Wh*Ww).
     #[inline(always)]
     #[must_use]
     fn relative_pos_bias(&self) -> Tensor<B, 3> {
@@ -300,11 +300,11 @@ impl<B: Backend> WindowAttention<B> {
     ///
     /// ## Arguments
     ///
-    /// - `attn`: Attention logits tensor of shape (b_nw, num_heads, Wh*Ww, Wh*Ww).
+    /// - `attn`: Attention logits tensor of shape (`b_nw`, `num_heads`, Wh*Ww, Wh*Ww).
     ///
     /// ## Returns
     ///
-    /// - Output tensor of shape (b_nw, num_heads, Wh*Ww, Wh*Ww).
+    /// - Output tensor of shape (`b_nw`, `num_heads`, Wh*Ww, Wh*Ww).
     #[inline(always)]
     #[must_use]
     fn encode_attention(
@@ -316,7 +316,7 @@ impl<B: Backend> WindowAttention<B> {
 }
 
 impl WindowAttentionConfig {
-    /// Create a new WindowAttentionConfig.
+    /// Create a new `WindowAttentionConfig`.
     ///
     /// ## Arguments
     ///
@@ -324,7 +324,7 @@ impl WindowAttentionConfig {
     ///
     /// ## Returns
     ///
-    /// A new instance of WindowAttentionConfig.
+    /// A new instance of `WindowAttentionConfig`.
     pub fn init<B: Backend>(
         &self,
         device: &B::Device,

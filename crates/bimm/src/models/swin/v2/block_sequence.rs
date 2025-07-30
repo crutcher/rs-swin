@@ -7,9 +7,9 @@ use burn::config::Config;
 use burn::module::Module;
 use burn::prelude::{Backend, Tensor};
 
-/// Common introspection train for BasicLayer.
+/// Common introspection train for `BasicLayer`.
 pub trait StochasticDepthTransformerBlockSequenceMeta {
-    /// Returns the number of input channels for the layer.`
+    /// Returns the number of input channels for the layer.
     fn d_input(&self) -> usize;
 
     /// Returns the image resolution of the input to the layer.
@@ -54,7 +54,7 @@ pub trait StochasticDepthTransformerBlockSequenceMeta {
     // TODO: norm_layer config, use_checkpoint, pretrained_window_size.
 }
 
-/// Config for BasicLayer.
+/// Config for `BasicLayer`.
 #[derive(Config, Debug)]
 pub struct StochasticDepthTransformerBlockSequenceConfig {
     /// Number of input channels.

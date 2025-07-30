@@ -88,33 +88,44 @@ impl<B: Backend> ValidStep<CinicBatch<B>, ClassificationOutput<B>> for Model<B> 
     }
 }
 
+/// Config for training the model.
 #[derive(Config)]
 pub struct TrainingConfig {
+    /// The inner model config.
     pub model: ModelConfig,
+
+    /// The optimizer config.
     pub optimizer: AdamWConfig,
 
+    /// Number of epochs to train the model.
     #[config(default = 10)]
     pub num_epochs: usize,
 
+    /// Batch size for training and validation.
     #[config(default = 64)]
     pub batch_size: usize,
 
+    /// Number of workers for data loading.
     #[config(default = 2)]
     pub num_workers: usize,
 
+    /// Random seed for reproducibility.
     #[config(default = 42)]
     pub seed: u64,
 
+    /// Learning rate for the optimizer.
     #[config(default = 1.0e-5)]
     pub learning_rate: f64,
 }
 
+/// Create the artifact directory for saving training artifacts.
 fn create_artifact_dir(artifact_dir: &str) {
     // Remove existing artifacts before to get an accurate learner summary
     std::fs::remove_dir_all(artifact_dir).ok();
     std::fs::create_dir_all(artifact_dir).ok();
 }
 
+/// Train the model with the given configuration and devices.
 pub fn train<B: AutodiffBackend>(
     artifact_dir: &str,
     config: TrainingConfig,

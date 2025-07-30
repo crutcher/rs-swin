@@ -119,7 +119,7 @@ pub fn pixel_depth_to_f32(p: PixelDepth) -> f32 {
     }
 }
 
-/// Config for the ImgToTensor operator.
+/// Config for the `ImgToTensor` operator.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ImgToTensorConfig {
     /// The target data type for the tensor.
@@ -149,7 +149,7 @@ impl ImgToTensorConfig {
         ImgToTensorConfig { dtype }
     }
 
-    /// Converts this configuration to an `OperationPlanner` for the ImgToTensor operator.
+    /// Converts this configuration to an `OperationPlanner` for the `ImgToTensor` operator.
     ///
     /// # Arguments
     ///
@@ -167,7 +167,7 @@ impl ImgToTensorConfig {
     }
 }
 
-/// Configures the ImgToTensor operator for a specific backend.
+/// Configures the `ImgToTensor` operator for a specific backend.
 pub fn img_to_tensor_op_binding<B: Backend>(
     device: &B::Device
 ) -> Arc<dyn FirehoseOperatorFactory> {
@@ -191,7 +191,10 @@ pub fn img_to_tensor_op_binding<B: Backend>(
 /// Operator that converts an image to a tensor.
 #[derive(Debug)]
 pub struct ImgToTensor<B: Backend> {
+    /// The configuration for the operator.
     config: ImgToTensorConfig,
+
+    /// The device on which the tensor will be created.
     device: B::Device,
 }
 
@@ -261,6 +264,7 @@ impl<B: Backend> FirehoseOperator for ImgToTensor<B> {
     }
 }
 
+/// Function type for binding a device with an operator configuration.
 type BindDeviceFunc<C, D> = fn(config: C, device: &D) -> anyhow::Result<Box<dyn FirehoseOperator>>;
 
 /// A binding for the `BurnDeviceOpBinding` that allows it to be used with a specific backend and operator.
@@ -270,9 +274,16 @@ where
     T: FirehoseOperator,
     C: DeserializeOwned,
 {
+    /// The operator signature.
     signature: FirehoseOperatorSignature,
+
+    /// The device on which the operator will run.
     device: B::Device,
+
+    /// The function to bind the device with the operator configuration.
     bind_device: BindDeviceFunc<C, B::Device>,
+
+    /// Phantom data to ensure the type parameters are used.
     phantom: PhantomData<T>,
 }
 
@@ -300,6 +311,12 @@ where
     T: FirehoseOperator,
 {
     /// Creates a new `BurnDeviceOpBinding`.
+    ///
+    /// # Arguments
+    ///
+    /// * `signature` - The operator signature.
+    /// * `device` - The device on which the operator will run.
+    /// * `bind_device` - The function to bind the device with the operator configuration.
     pub fn new(
         signature: FirehoseOperatorSignature,
         device: &B::Device,

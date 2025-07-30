@@ -6,7 +6,7 @@ use burn::nn::{LayerNorm, LayerNormConfig, Linear, LinearConfig};
 use burn::prelude::{Backend, Tensor};
 use burn::tensor::BasicOps;
 
-/// Metadata for PatchMerging.
+/// Metadata for `PatchMerging`.
 pub trait PatchMergingMeta {
     /// Input feature dimension size.
     fn d_input(&self) -> usize;
@@ -45,7 +45,7 @@ pub trait PatchMergingMeta {
     }
 }
 
-/// Configuration for PatchMerging.
+/// Configuration for `PatchMerging`.
 #[derive(Config, Debug)]
 pub struct PatchMergingConfig {
     /// Input resolution (height, width).
@@ -66,7 +66,7 @@ impl PatchMergingMeta for PatchMergingConfig {
 }
 
 impl PatchMergingConfig {
-    /// Create a new PatchMerging configuration.
+    /// Create a new `PatchMerging` configuration.
     ///
     /// ## Arguments
     ///
@@ -101,7 +101,7 @@ impl PatchMergingConfig {
     }
 }
 
-/// SWIN-Transformer v2 PatchMerging module.
+/// SWIN-Transformer v2 `PatchMerging` module.
 ///
 /// This module accepts ``(B, (H * W), C)`` inputs, and then:
 /// - Collates interleaved patches of size ``(H/2, W/2)`` into ``(B, H/2 * W/2, 4 * C)``.
@@ -109,7 +109,7 @@ impl PatchMergingConfig {
 /// - Applies layer normalization.
 /// - Yields output of shape ``(B, H/2 * W/2, 2 * C)``.
 ///
-/// See: https://github.com/microsoft/Swin-Transformer/blob/main/models/swin_transformer_v2.py
+/// See: <https://github.com/microsoft/Swin-Transformer/blob/main/models/swin_transformer_v2.py>
 #[derive(Module, Debug)]
 pub struct PatchMerging<B: Backend> {
     /// Input resolution (height, width).
@@ -133,7 +133,7 @@ impl<B: Backend> PatchMergingMeta for PatchMerging<B> {
 }
 
 impl<B: Backend> PatchMerging<B> {
-    /// Forward pass of the PatchMerging module.
+    /// Forward pass of the `PatchMerging` module.
     ///
     /// # Arguments
     ///

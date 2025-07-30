@@ -137,7 +137,7 @@ impl<B: Backend> OffsetGridRelativePositionBias<B> {
     ///
     /// ## Returns
     ///
-    /// A 3D tensor of shape (num_heads, height * width, height * width)
+    /// A 3D tensor of shape (`num_heads`, height * width, height * width)
     /// containing the relative position bias for each head and position
     /// pair.
     #[must_use]

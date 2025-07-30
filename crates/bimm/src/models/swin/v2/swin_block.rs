@@ -199,7 +199,7 @@ where
     }
 }
 
-/// Common introspection interface for TransformerBlock.
+/// Common introspection interface for `TransformerBlock`.
 pub trait ShiftedWindowTransformerBlockMeta {
     /// Get the input dimension size.
     fn d_input(&self) -> usize;
@@ -267,7 +267,7 @@ pub trait ShiftedWindowTransformerBlockMeta {
     fn drop_path_rate(&self) -> f64;
 }
 
-/// Configuration for TransformerBlock.
+/// Configuration for `TransformerBlock`.
 #[derive(Config, Debug)]
 pub struct ShiftedWindowTransformerBlockConfig {
     /// Input dimension size.

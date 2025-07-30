@@ -35,6 +35,7 @@ pub struct FixedScheduleSource<M>
 where
     M: DataLoadMetaDataItem,
 {
+    /// The fixed schedule to be provided by this source.
     schedule: DataLoadSchedule<M>,
 }
 
@@ -130,7 +131,10 @@ where
         + Sync
         + 'static,
 {
+    /// The inner source that provides the initial schedule.
     inner: Box<dyn DataScheduleSource<A>>,
+
+    /// The mapping function that transforms the schedule.
     map_func: F,
 }
 

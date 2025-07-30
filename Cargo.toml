@@ -16,6 +16,7 @@ license = "MIT"
 
 [workspace.lints.clippy]
 double_must_use = "allow"
+doc_markdown = "warn"
 
 [workspace.dependencies]
 bimm = { version = "0.2.0", path = "crates/bimm" }

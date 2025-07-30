@@ -8,12 +8,12 @@ use burn::prelude::{Backend, Bool, Int, Tensor};
 /// - `b_nw`: Batch size times number of windows.
 /// - `n`: Number of elements in the input tensor, Wh*Ww.
 /// - `num_heads`: Number of attention heads.
-/// - `attn`: Attention logits tensor of shape (b_nw, num_heads, Wh*Ww, Wh*Ww).
-/// - `mask`: Mask tensor of shape (num_windows, Wh*Ww, Wh*Ww).
+/// - `attn`: Attention logits tensor of shape (`b_nw`, `num_heads`, Wh*Ww, Wh*Ww).
+/// - `mask`: Mask tensor of shape (`num_windows`, Wh*Ww, Wh*Ww).
 ///
 /// ## Returns
 ///
-/// - Output tensor of shape (b_nw, num_heads, Wh*Ww, Wh*Ww).
+/// - Output tensor of shape (`b_nw`, `num_heads`, Wh*Ww, Wh*Ww).
 #[inline(always)]
 #[must_use]
 pub fn apply_attention_mask<B: Backend>(
