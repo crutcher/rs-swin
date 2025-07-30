@@ -37,9 +37,9 @@ where
 mod tests {
     use super::*;
 
-    use crate::ops::image::loader::{ImageLoader, LOAD_IMAGE, ResizeSpec};
+    use crate::ops::image::loader::{ImageLoader, ResizeSpec};
     use crate::ops::image::tensor_loader::{
-        IMAGE_TO_TENSOR, ImgToTensorConfig, TargetDType, img_to_tensor_op_binding,
+        ImgToTensorConfig, TargetDType, img_to_tensor_op_binding,
     };
     use crate::ops::image::test_util::assert_image_close;
     use crate::ops::image::{ImageShape, test_util};
@@ -47,7 +47,7 @@ mod tests {
     use burn::prelude::{Shape, Tensor};
 
     use crate::core::operations::environment::new_default_operator_environment;
-    use crate::core::operations::planner::OperationPlanner;
+
     use crate::core::rows::RowBatch;
     use crate::core::schema::{ColumnSchema, FirehoseTableSchema};
     use image::imageops::FilterType;
@@ -74,26 +74,21 @@ mod tests {
             ColumnSchema::new::<String>("path").with_description("path to the image")
         ]);
 
-        OperationPlanner::for_operation_id(LOAD_IMAGE)
-            .with_input("path", "path")
-            .with_output("image", "image")
-            .with_config(
-                ImageLoader::default()
-                    .with_resize(
-                        ResizeSpec::new(ImageShape {
-                            width: 16,
-                            height: 24,
-                        })
-                        .with_filter(FilterType::Nearest),
-                    )
-                    .with_recolor(ColorType::L16),
+        ImageLoader::default()
+            .with_resize(
+                ResizeSpec::new(ImageShape {
+                    width: 16,
+                    height: 24,
+                })
+                .with_filter(FilterType::Nearest),
             )
+            .with_recolor(ColorType::L16)
+            .to_plan("path", "image")
             .apply_to_schema(&mut schema, &env)?;
 
-        OperationPlanner::for_operation_id(IMAGE_TO_TENSOR)
-            .with_input("image", "image")
-            .with_output("tensor", "tensor")
-            .with_config(ImgToTensorConfig::new().with_dtype(TargetDType::F32))
+        ImgToTensorConfig::new()
+            .with_dtype(TargetDType::F32)
+            .to_plan("image", "tensor")
             .apply_to_schema(&mut schema, &env)?;
 
         assert_eq!(

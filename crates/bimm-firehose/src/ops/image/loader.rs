@@ -1,5 +1,6 @@
 use crate::core::operations::factory::SimpleConfigOperatorFactory;
 use crate::core::operations::operator::{FirehoseOperator, FirehoseRowTransaction};
+use crate::core::operations::planner::OperationPlan;
 use crate::core::operations::signature::{FirehoseOperatorSignature, ParameterSpec};
 use crate::define_firehose_operator;
 use crate::ops::image::{ImageShape, color_util};
@@ -126,6 +127,23 @@ impl ImageLoader {
             recolor: Some(recolor),
         }
     }
+
+    /// Converts this `ImageLoader` configuration into an `OperationPlanner`
+    ///
+    /// ## Arguments
+    ///
+    /// * `path_column`: The name of the input column containing the image file paths.
+    /// * `image_column`: The name of the output column where the loaded images will be stored.
+    pub fn to_plan(
+        &self,
+        path_column: &str,
+        image_column: &str,
+    ) -> OperationPlan {
+        OperationPlan::for_operation_id(LOAD_IMAGE)
+            .with_input("path", path_column)
+            .with_output("image", image_column)
+            .with_config(self.clone())
+    }
 }
 
 impl FirehoseOperator for ImageLoader {
@@ -160,7 +178,7 @@ mod tests {
 
     use crate::core::experimental_run_batch_env;
     use crate::core::operations::environment::new_default_operator_environment;
-    use crate::core::operations::planner::OperationPlanner;
+
     use crate::core::rows::RowBatch;
     use crate::core::schema::{ColumnSchema, FirehoseTableSchema};
     use crate::ops::image::test_util::{assert_image_close, generate_gradient_pattern};
@@ -191,26 +209,20 @@ mod tests {
 
         let mut schema = FirehoseTableSchema::from_columns(&[ColumnSchema::new::<String>("path")]);
 
-        OperationPlanner::for_operation_id(LOAD_IMAGE)
-            .with_input("path", "path")
-            .with_output("image", "raw_image")
-            .with_config(ImageLoader::default())
+        ImageLoader::default()
+            .to_plan("path", "raw_image")
             .apply_to_schema(&mut schema, &env)?;
 
-        OperationPlanner::for_operation_id(LOAD_IMAGE)
-            .with_input("path", "path")
-            .with_output("image", "resized_gray")
-            .with_config(
-                ImageLoader::default()
-                    .with_resize(
-                        ResizeSpec::new(ImageShape {
-                            width: 16,
-                            height: 16,
-                        })
-                        .with_filter(FilterType::Nearest),
-                    )
-                    .with_recolor(ColorType::L16),
+        ImageLoader::default()
+            .with_resize(
+                ResizeSpec::new(ImageShape {
+                    width: 16,
+                    height: 16,
+                })
+                .with_filter(FilterType::Nearest),
             )
+            .with_recolor(ColorType::L16)
+            .to_plan("path", "resized_gray")
             .apply_to_schema(&mut schema, &env)?;
 
         let schema = Arc::new(schema);

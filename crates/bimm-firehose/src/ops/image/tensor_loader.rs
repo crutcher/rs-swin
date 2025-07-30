@@ -1,5 +1,6 @@
 use crate::core::operations::factory::{FirehoseOperatorFactory, FirehoseOperatorInitContext};
 use crate::core::operations::operator::{FirehoseOperator, FirehoseRowTransaction};
+use crate::core::operations::planner::OperationPlan;
 use crate::core::operations::signature::{FirehoseOperatorSignature, ParameterSpec};
 use crate::define_firehose_operator_id;
 use burn::data::dataset::vision::PixelDepth;
@@ -145,6 +146,23 @@ impl ImgToTensorConfig {
         dtype: TargetDType,
     ) -> Self {
         ImgToTensorConfig { dtype }
+    }
+
+    /// Converts this configuration to an `OperationPlanner` for the ImgToTensor operator.
+    ///
+    /// # Arguments
+    ///
+    /// * `image_column` - The name of the input column containing the image.
+    /// * `tensor_column` - The name of the output column for the tensor.
+    pub fn to_plan(
+        self,
+        image_column: &str,
+        tensor_column: &str,
+    ) -> OperationPlan {
+        OperationPlan::for_operation_id(IMAGE_TO_TENSOR)
+            .with_input("image", image_column)
+            .with_output("tensor", tensor_column)
+            .with_config(self)
     }
 }
 

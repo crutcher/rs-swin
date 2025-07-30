@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 /// A builder for constructing a call to an operator in a `BuildPlan`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct OperationPlanner {
+pub struct OperationPlan {
     /// The ID of the operator to be called.
     pub operator_id: String,
 
@@ -20,7 +20,7 @@ pub struct OperationPlanner {
     pub config: Option<serde_json::Value>,
 }
 
-impl OperationPlanner {
+impl OperationPlan {
     /// Creates a new `CallBuilder` for the specified operator ID.
     ///
     /// # Arguments
