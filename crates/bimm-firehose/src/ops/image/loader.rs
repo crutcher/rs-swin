@@ -159,7 +159,7 @@ mod tests {
     use super::*;
 
     use crate::core::experimental_run_batch_env;
-    use crate::core::operations::environment::{OpEnvironment, new_default_operator_environment};
+    use crate::core::operations::environment::new_default_operator_environment;
     use crate::core::operations::planner::OperationPlanner;
     use crate::core::rows::RowBatch;
     use crate::core::schema::{ColumnSchema, FirehoseTableSchema};
@@ -191,31 +191,27 @@ mod tests {
 
         let mut schema = FirehoseTableSchema::from_columns(&[ColumnSchema::new::<String>("path")]);
 
-        env.apply_plan_to_schema(
-            &mut schema,
-            OperationPlanner::for_operation_id(LOAD_IMAGE)
-                .with_input("path", "path")
-                .with_output("image", "image")
-                .with_config(ImageLoader::default()),
-        )?;
+        OperationPlanner::for_operation_id(LOAD_IMAGE)
+            .with_input("path", "path")
+            .with_output("image", "raw_image")
+            .with_config(ImageLoader::default())
+            .apply_to_schema(&mut schema, &env)?;
 
-        env.apply_plan_to_schema(
-            &mut schema,
-            OperationPlanner::for_operation_id(LOAD_IMAGE)
-                .with_input("path", "path")
-                .with_output("image", "resized_gray")
-                .with_config(
-                    ImageLoader::default()
-                        .with_resize(
-                            ResizeSpec::new(ImageShape {
-                                width: 16,
-                                height: 16,
-                            })
-                            .with_filter(FilterType::Nearest),
-                        )
-                        .with_recolor(ColorType::L16),
-                ),
-        )?;
+        OperationPlanner::for_operation_id(LOAD_IMAGE)
+            .with_input("path", "path")
+            .with_output("image", "resized_gray")
+            .with_config(
+                ImageLoader::default()
+                    .with_resize(
+                        ResizeSpec::new(ImageShape {
+                            width: 16,
+                            height: 16,
+                        })
+                        .with_filter(FilterType::Nearest),
+                    )
+                    .with_recolor(ColorType::L16),
+            )
+            .apply_to_schema(&mut schema, &env)?;
 
         let schema = Arc::new(schema);
 
@@ -225,7 +221,7 @@ mod tests {
         experimental_run_batch_env(&mut batch, &env)?;
 
         let loaded_image = batch[0]
-            .get_column::<DynamicImage>(&schema, "image")
+            .get_column::<DynamicImage>(&schema, "raw_image")
             .expect("Failed to get loaded image");
         assert_eq!(loaded_image.width(), 32);
         assert_eq!(loaded_image.height(), 32);
