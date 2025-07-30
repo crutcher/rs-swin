@@ -1,4 +1,4 @@
-use crate::core::operations::signature::FirehoseOperatorSignature;
+use crate::core::operations::signature::{FirehoseOperatorSignature, ParameterArity};
 use crate::core::rows::{AnyArc, Row, RowBatch};
 use crate::core::schema::{BuildPlan, FirehoseTableSchema};
 use serde::{Deserialize, Serialize};
@@ -24,13 +24,13 @@ pub trait FirehoseOperator: 'static + Send + Sync + Debug {
 
     /// Apply the operator to a batch of rows in the provided context.
     #[must_use]
-    fn apply_batch(
+    fn apply_to_batch(
         &self,
-        txn: &mut OperatorBatchTransaction,
+        txn: &mut FirehoseBatchTransaction,
     ) -> Result<(), String> {
         for index in 0..txn.len() {
             let mut row_txn = txn.row_transaction(index);
-            self.apply_row(&mut row_txn)?;
+            self.apply_to_row(&mut row_txn)?;
             txn.commit_row_transaction(&row_txn)?;
         }
         Ok(())
@@ -40,9 +40,9 @@ pub trait FirehoseOperator: 'static + Send + Sync + Debug {
     ///
     /// Implementations which override `apply_batch` should leave this as unimplemented.
     #[must_use]
-    fn apply_row(
+    fn apply_to_row(
         &self,
-        txn: &mut OperatorRowTransaction,
+        txn: &mut FirehoseRowTransaction,
     ) -> Result<(), String> {
         let _ignored = txn;
         unimplemented!()
@@ -51,7 +51,7 @@ pub trait FirehoseOperator: 'static + Send + Sync + Debug {
 
 /// A transaction for a batch of rows processed by an operator.
 #[derive(Debug)]
-pub struct OperatorBatchTransaction {
+pub struct FirehoseBatchTransaction {
     /// The transaction's copy of the row batch.
     ///
     /// This is local, and will be commited or discarded atomically.
@@ -64,14 +64,14 @@ pub struct OperatorBatchTransaction {
     pub signature: Arc<FirehoseOperatorSignature>,
 }
 
-impl OperatorBatchTransaction {
+impl FirehoseBatchTransaction {
     /// Creates a new `OperatorBatchTransaction` for the given row batch.
     pub fn new(
         row_batch: RowBatch,
         build_plan: Arc<BuildPlan>,
         signature: Arc<FirehoseOperatorSignature>,
-    ) -> OperatorBatchTransaction {
-        OperatorBatchTransaction {
+    ) -> FirehoseBatchTransaction {
+        FirehoseBatchTransaction {
             row_batch,
             build_plan,
             signature,
@@ -92,11 +92,12 @@ impl OperatorBatchTransaction {
     pub fn row_transaction(
         &self,
         index: usize,
-    ) -> OperatorRowTransaction {
-        OperatorRowTransaction {
+    ) -> FirehoseRowTransaction {
+        FirehoseRowTransaction {
             schema: self.row_batch.schema.clone(),
             build_plan: self.build_plan.clone(),
             row: self.row_batch[index].clone(),
+            signature: self.signature.clone(),
             index,
         }
     }
@@ -121,19 +122,22 @@ impl OperatorBatchTransaction {
     /// Commits a row transaction back to the row batch.
     pub fn commit_row_transaction(
         &mut self,
-        row_txn: &OperatorRowTransaction,
+        row_txn: &FirehoseRowTransaction,
     ) -> Result<(), String> {
         self.commit_row(&row_txn.row, row_txn.index)
     }
 }
 
 /// Represents a row-level transaction for an operator.
-pub struct OperatorRowTransaction {
+pub struct FirehoseRowTransaction {
     /// The schema of the table being processed.
     pub schema: Arc<FirehoseTableSchema>,
 
     /// The build plan that describes the operator and its inputs/outputs.
     pub build_plan: Arc<BuildPlan>,
+
+    /// Signature of the operator being executed.
+    pub signature: Arc<FirehoseOperatorSignature>,
 
     /// The transaction's copy of the row.
     pub row: Row,
@@ -142,12 +146,12 @@ pub struct OperatorRowTransaction {
     pub index: usize,
 }
 
-impl OperatorRowTransaction {
-    /// Gets a downcasted required scalar value from the row at the specified index.
+impl FirehoseRowTransaction {
+    /// Gets a down-casted required scalar value from the row at the specified index.
     ///
     /// # Generic Parameters
     ///
-    /// * `T` - The type to which the value should be downcasted..
+    /// * `T` - The type to which the value should be down-casted.
     ///
     /// # Arguments
     ///
@@ -163,10 +167,20 @@ impl OperatorRowTransaction {
     ) -> Result<&T, String> {
         let column_name = self.build_plan.translate_input_name(parameter_name)?;
 
-        let v = self
+        let parameter_sig = self
+            .signature
+            .get_input_parameter(parameter_name)
+            .unwrap_or_else(|| panic!("Required input '{parameter_name}' not found in signature"));
+        if parameter_sig.arity != ParameterArity::Required {
+            return Err(format!(
+                "Input '{parameter_name}' is not required in operator signature",
+            ));
+        }
+
+        match self
             .row
-            .get_column_checked::<T>(&self.schema, column_name)?;
-        match v {
+            .get_column_checked::<T>(&self.schema, column_name)?
+        {
             Some(value) => Ok(value),
             None => Err(format!(
                 "Required input '{}' not found in row at index {}",
@@ -192,6 +206,11 @@ impl OperatorRowTransaction {
         value: AnyArc,
     ) -> Result<(), String> {
         let column_name = self.build_plan.translate_output_name(parameter_name)?;
+
+        self.signature
+            .get_output_parameter(parameter_name)
+            .unwrap_or_else(|| panic!("Output '{parameter_name}' not found in signature"));
+
         self.row.set_column(&self.schema, column_name, Some(value));
 
         Ok(())

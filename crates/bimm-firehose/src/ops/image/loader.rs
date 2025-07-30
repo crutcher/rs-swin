@@ -1,5 +1,5 @@
 use crate::core::operations::factory::SimpleConfigOperatorFactory;
-use crate::core::operations::operator::{FirehoseOperator, OperatorRowTransaction};
+use crate::core::operations::operator::{FirehoseOperator, FirehoseRowTransaction};
 use crate::core::operations::signature::{FirehoseOperatorSignature, ParameterSpec};
 use crate::define_firehose_operator;
 use crate::ops::image::{ImageShape, color_util};
@@ -129,9 +129,9 @@ impl ImageLoader {
 }
 
 impl FirehoseOperator for ImageLoader {
-    fn apply_row(
+    fn apply_to_row(
         &self,
-        txn: &mut OperatorRowTransaction,
+        txn: &mut FirehoseRowTransaction,
     ) -> Result<(), String> {
         let path = txn.get_required_scalar_input::<String>("path")?;
 

@@ -1,7 +1,7 @@
 use crate::core::operations::environment::BuildPlanContext;
 use crate::core::operations::environment::OpEnvironment;
 use crate::core::operations::operator::{
-    FirehoseOperator, OperatorBatchTransaction, OperatorSchedulingMetadata,
+    FirehoseBatchTransaction, FirehoseOperator, OperatorSchedulingMetadata,
 };
 use crate::core::operations::signature::FirehoseOperatorSignature;
 use crate::core::rows::RowBatch;
@@ -103,13 +103,16 @@ impl OperationRunner {
         &self,
         batch: &mut RowBatch,
     ) -> Result<(), String> {
-        let mut txn = OperatorBatchTransaction::new(
+        // TODO: sub-batch based upon scheduling metadata.effective_batch_size.
+        // Requires batch.slice(); batch.assign_slice_from();
+
+        let mut txn = FirehoseBatchTransaction::new(
             batch.clone(),
             self.build_plan.clone(),
             self.signature.clone(),
         );
 
-        self.operator.apply_batch(&mut txn)?;
+        self.operator.apply_to_batch(&mut txn)?;
 
         batch.assign_from(&txn.row_batch);
 

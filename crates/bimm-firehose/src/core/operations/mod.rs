@@ -74,7 +74,7 @@ mod tests {
     use crate::core::operations::environment::MapOpEnvironment;
     use crate::core::operations::factory::SimpleConfigOperatorFactory;
     use crate::core::operations::operator::{
-        FirehoseOperator, OperatorRowTransaction, OperatorSchedulingMetadata,
+        FirehoseOperator, FirehoseRowTransaction, OperatorSchedulingMetadata,
     };
     use crate::core::operations::runner::OperationRunner;
     use crate::core::operations::signature::{
@@ -112,9 +112,9 @@ mod tests {
     }
 
     impl FirehoseOperator for AddOperator {
-        fn apply_row(
+        fn apply_to_row(
             &self,
-            txn: &mut OperatorRowTransaction,
+            txn: &mut FirehoseRowTransaction,
         ) -> Result<(), String> {
             let x = txn.get_required_scalar_input::<i32>("x")?;
             let y = txn.get_required_scalar_input::<i32>("y")?;

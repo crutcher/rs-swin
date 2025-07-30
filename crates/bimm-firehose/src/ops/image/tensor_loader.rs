@@ -1,5 +1,5 @@
 use crate::core::operations::factory::{FirehoseOperatorFactory, FirehoseOperatorInitContext};
-use crate::core::operations::operator::{FirehoseOperator, OperatorRowTransaction};
+use crate::core::operations::operator::{FirehoseOperator, FirehoseRowTransaction};
 use crate::core::operations::signature::{FirehoseOperatorSignature, ParameterSpec};
 use crate::define_firehose_operator_id;
 use burn::data::dataset::vision::PixelDepth;
@@ -224,9 +224,9 @@ fn image_to_f32_tensor<B: Backend>(
 }
 
 impl<B: Backend> FirehoseOperator for ImgToTensor<B> {
-    fn apply_row(
+    fn apply_to_row(
         &self,
-        txn: &mut OperatorRowTransaction,
+        txn: &mut FirehoseRowTransaction,
     ) -> Result<(), String> {
         let image = txn.get_required_scalar_input::<DynamicImage>("image")?;
 
