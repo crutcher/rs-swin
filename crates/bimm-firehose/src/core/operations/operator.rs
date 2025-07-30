@@ -222,9 +222,8 @@ impl FirehoseRowTransaction {
     ) -> anyhow::Result<()> {
         let column_name = self.build_plan.translate_output_name(parameter_name)?;
 
-        match self.signature.get_output_parameter(parameter_name) {
-            Some(_) => (),
-            None => bail!("Output parameter '{parameter_name}' not found in signature"),
+        if self.signature.get_output_parameter(parameter_name).is_none() {
+            bail!("Output parameter '{parameter_name}' not found in signature");
         }
 
         self.row.set_column(&self.schema, column_name, Some(value));
