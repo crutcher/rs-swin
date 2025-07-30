@@ -28,7 +28,7 @@ where
     for plan in &plans {
         let plan = Arc::new(plan.clone());
         let runner = OperationRunner::new_for_plan(schema.clone(), plan, env)?;
-        runner.apply_to_batch(batch).unwrap();
+        runner.apply_to_batch(batch)?;
     }
     Ok(())
 }

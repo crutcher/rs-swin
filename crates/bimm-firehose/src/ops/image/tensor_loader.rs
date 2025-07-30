@@ -125,6 +125,7 @@ pub struct ImgToTensorConfig {
     /// The target data type for the tensor.
     #[serde(default)]
     pub dtype: TargetDType,
+    // TODO: add dim-order enum: (HWC vs CHW)
 }
 
 impl Default for ImgToTensorConfig {

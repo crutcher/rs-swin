@@ -5,8 +5,8 @@ use crate::core::operations::signature::{FirehoseOperatorSignature, ParameterSpe
 use crate::define_firehose_operator;
 use crate::ops::image::{ImageShape, color_util};
 use anyhow::Context;
-use image::imageops::FilterType;
-use image::{ColorType, DynamicImage};
+pub use image::imageops::FilterType;
+pub use image::{ColorType, DynamicImage};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 

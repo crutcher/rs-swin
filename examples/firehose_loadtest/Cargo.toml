@@ -1,0 +1,17 @@
+[package]
+name = "firehose_loadtest"
+edition.workspace = true
+version.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+burn = { workspace = true, features = ["train", "autodiff", "cuda", "fusion", "vision", "dataset"] }
+bimm-firehose = { workspace = true }
+rs-cinic-10-index = { version = "^0.2.0" }
+rs-cinic-10-burn = { version = "^0.2.0" }
+itertools = { workspace = true }
+
+[lints]
+workspace = true
