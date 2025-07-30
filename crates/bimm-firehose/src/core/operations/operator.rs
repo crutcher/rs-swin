@@ -222,7 +222,11 @@ impl FirehoseRowTransaction {
     ) -> anyhow::Result<()> {
         let column_name = self.build_plan.translate_output_name(parameter_name)?;
 
-        if self.signature.get_output_parameter(parameter_name).is_none() {
+        if self
+            .signature
+            .get_output_parameter(parameter_name)
+            .is_none()
+        {
             bail!("Output parameter '{parameter_name}' not found in signature");
         }
 
