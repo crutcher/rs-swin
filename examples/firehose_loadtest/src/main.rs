@@ -10,6 +10,7 @@ use itertools::Itertools;
 use rs_cinic_10_index::Cinic10Index;
 use std::sync::Arc;
 
+use bimm_firehose::core::operations::executor::{FirehoseBatchExecutor, SequentialBatchExecutor};
 use bimm_firehose::core::rows::RowBatch;
 use burn::prelude::Tensor;
 use std::time::Instant;
@@ -25,8 +26,11 @@ fn main() -> anyhow::Result<()> {
     let env = {
         let mut env = new_default_operator_environment();
         env.add_binding(img_to_tensor_op_binding::<B>(&device))?;
-        env
+
+        Arc::new(env)
     };
+
+    let executor = SequentialBatchExecutor::new(env.clone());
 
     // Define a processing schema, from `path` -> `image` -> `tensor`.
     let schema = {
@@ -42,13 +46,13 @@ fn main() -> anyhow::Result<()> {
             }))
             .with_recolor(ColorType::Rgb8)
             .to_plan("path", "image")
-            .apply_to_schema(&mut schema, &env)?;
+            .apply_to_schema(&mut schema, env.as_ref())?;
 
         // Convert the image to a tensor of shape (32, 32, 3) with float32 dtype.
         ImgToTensorConfig::new()
             .with_dtype(TargetDType::F32)
             .to_plan("image", "tensor")
-            .apply_to_schema(&mut schema, &env)?;
+            .apply_to_schema(&mut schema, env.as_ref())?;
 
         schema
     };
@@ -75,7 +79,7 @@ fn main() -> anyhow::Result<()> {
         }
 
         // Run the batch.
-        bimm_firehose::core::experimental_run_batch_env(&mut batch, &env)?;
+        executor.execute_batch(&mut batch)?;
 
         // Simulate the batch collation function.
         let _stack: Tensor<B, 4> = Tensor::stack(
