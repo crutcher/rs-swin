@@ -116,7 +116,7 @@ and the currently supported operations are:
 - **A + B**: Addition.
 - **A - B**: Subtraction.
 - **A * B**: Multiplication.
-- **A ^ <usize>**: Exponentiation, where the exponent is a positive constant.
+- **A ^ N**: Exponentiation, where the exponent is a positive constant.
 - **A + (B * C)**: Mixed and grouped operations.
 
 ## Example Usage
