@@ -46,31 +46,36 @@ mod tests {
         env.add_binding(img_to_tensor_op_binding::<B>(&device))?;
         let env = Arc::new(env);
 
-        let executor = SequentialBatchExecutor::new(env.clone());
+        let schema = {
+            let mut schema =
+                FirehoseTableSchema::from_columns(&[
+                    ColumnSchema::new::<String>("path").with_description("path to the image")
+                ]);
 
-        let mut schema = FirehoseTableSchema::from_columns(&[
-            ColumnSchema::new::<String>("path").with_description("path to the image")
-        ]);
+            ImageLoader::default()
+                .with_resize(
+                    ResizeSpec::new(ImageShape {
+                        width: 16,
+                        height: 24,
+                    })
+                    .with_filter(FilterType::Nearest),
+                )
+                .with_recolor(ColorType::L16)
+                .to_plan("path", "image")
+                .apply_to_schema(&mut schema, env.as_ref())?;
 
-        ImageLoader::default()
-            .with_resize(
-                ResizeSpec::new(ImageShape {
-                    width: 16,
-                    height: 24,
-                })
-                .with_filter(FilterType::Nearest),
-            )
-            .with_recolor(ColorType::L16)
-            .to_plan("path", "image")
-            .apply_to_schema(&mut schema, env.as_ref())?;
+            ImgToTensorConfig::new()
+                .with_dtype(TargetDType::F32)
+                .to_plan("image", "tensor")
+                .apply_to_schema(&mut schema, env.as_ref())?;
 
-        ImgToTensorConfig::new()
-            .with_dtype(TargetDType::F32)
-            .to_plan("image", "tensor")
-            .apply_to_schema(&mut schema, env.as_ref())?;
+            Arc::new(schema)
+        };
+
+        let executor = SequentialBatchExecutor::new(schema.clone(), env.clone())?;
 
         assert_eq!(
-            serde_json::to_string_pretty(&schema).unwrap(),
+            serde_json::to_string_pretty(schema.as_ref()).unwrap(),
             indoc! {r#"
                 {
                   "columns": [

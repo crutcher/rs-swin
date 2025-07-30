@@ -28,6 +28,7 @@ burn = { version = "^0.18.0" }
 
 anyhow = { version = "^1.0.98" }
 itertools = { version = "^0.14.0" }
+threadpool = { version = "^1.8.1" }
 
 regex = { version = "^1.11.1" }
 regex-macro = { version = "^0.3.0" }

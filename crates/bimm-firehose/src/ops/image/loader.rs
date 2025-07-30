@@ -210,27 +210,30 @@ mod tests {
 
         let env = Arc::new(new_default_operator_environment());
 
-        let executor = SequentialBatchExecutor::new(env.clone());
+        let schema = {
+            let mut schema =
+                FirehoseTableSchema::from_columns(&[ColumnSchema::new::<String>("path")]);
 
-        let mut schema = FirehoseTableSchema::from_columns(&[ColumnSchema::new::<String>("path")]);
+            ImageLoader::default()
+                .to_plan("path", "raw_image")
+                .apply_to_schema(&mut schema, env.as_ref())?;
 
-        ImageLoader::default()
-            .to_plan("path", "raw_image")
-            .apply_to_schema(&mut schema, env.as_ref())?;
+            ImageLoader::default()
+                .with_resize(
+                    ResizeSpec::new(ImageShape {
+                        width: 16,
+                        height: 16,
+                    })
+                    .with_filter(FilterType::Nearest),
+                )
+                .with_recolor(ColorType::L16)
+                .to_plan("path", "resized_gray")
+                .apply_to_schema(&mut schema, env.as_ref())?;
 
-        ImageLoader::default()
-            .with_resize(
-                ResizeSpec::new(ImageShape {
-                    width: 16,
-                    height: 16,
-                })
-                .with_filter(FilterType::Nearest),
-            )
-            .with_recolor(ColorType::L16)
-            .to_plan("path", "resized_gray")
-            .apply_to_schema(&mut schema, env.as_ref())?;
+            Arc::new(schema)
+        };
 
-        let schema = Arc::new(schema);
+        let executor = SequentialBatchExecutor::new(schema.clone(), env.clone())?;
 
         let mut batch = RowBatch::with_size(schema.clone(), 1);
         batch[0].set_column(&schema, "path", Some(Arc::new(image_path)));
