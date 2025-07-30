@@ -39,7 +39,7 @@ mod tests {
 
     use crate::ops::image::loader::{ImageLoader, ResizeSpec};
     use crate::ops::image::tensor_loader::{
-        ImgToTensorConfig, TargetDType, img_to_tensor_op_binding,
+        ImgToTensorConfig, TargetDType, image_to_f32_tensor, img_to_tensor_op_binding,
     };
     use crate::ops::image::test_util::assert_image_close;
     use crate::ops::image::{ImageShape, test_util};
@@ -63,6 +63,8 @@ mod tests {
 
     #[test]
     fn test_example() -> Result<(), String> {
+        let temp_dir = tempfile::tempdir().unwrap();
+
         type B = NdArray;
 
         let device = Default::default();
@@ -165,7 +167,6 @@ mod tests {
         })
         .into();
 
-        let temp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
         {
             let image_path = temp_dir
                 .path()
@@ -182,11 +183,13 @@ mod tests {
 
         experimental_run_batch_env(&mut batch, &env)?;
 
-        let loaded_image: &DynamicImage = batch[0]
-            .get_column(&schema, "image")
-            .expect("Failed to get loaded image");
+        let row = &batch[0];
+
+        let row_image = row
+            .get_column_checked::<DynamicImage>(&schema, "image")?
+            .unwrap();
         assert_image_close(
-            loaded_image,
+            row_image,
             &source_image
                 .resize_exact(16, 24, FilterType::Nearest)
                 .to_luma8()
@@ -194,10 +197,15 @@ mod tests {
             None,
         );
 
-        let loaded_tensor: &Tensor<B, 3> = batch[0].get_column_checked(&schema, "tensor")?.unwrap();
-
-        assert_eq!(loaded_tensor.dtype(), burn::tensor::DType::F32);
-        assert_eq!(loaded_tensor.shape(), Shape::new([24, 16, 1]));
+        let row_tensor = row
+            .get_column_checked::<Tensor<B, 3>>(&schema, "tensor")?
+            .unwrap();
+        assert_eq!(row_tensor.dtype(), burn::tensor::DType::F32);
+        assert_eq!(row_tensor.shape(), Shape::new([24, 16, 1]));
+        row_tensor.to_data().assert_eq(
+            &image_to_f32_tensor::<B>(row_image, &device).to_data(),
+            true,
+        );
 
         Ok(())
     }

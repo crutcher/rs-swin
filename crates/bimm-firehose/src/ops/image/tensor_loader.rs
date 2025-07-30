@@ -219,7 +219,7 @@ impl<B: Backend> ImgToTensor<B> {
 /// # Returns
 ///
 /// A tensor representation of the image with shape `[height, width, channels]`.
-fn image_to_f32_tensor<B: Backend>(
+pub fn image_to_f32_tensor<B: Backend>(
     image: &DynamicImage,
     device: &B::Device,
 ) -> Tensor<B, 3> {
