@@ -1,6 +1,7 @@
 use operations::environment::OpEnvironment;
 use operations::runner::OperationRunner;
 use rows::RowBatch;
+use std::sync::Arc;
 
 /// Defines legal identifiers for firehose tables.
 pub mod identifiers;
@@ -19,14 +20,15 @@ pub fn experimental_run_batch_env<E>(
 where
     E: OpEnvironment,
 {
-    let schema = batch.schema.as_ref();
+    let schema = batch.schema.clone();
 
     let (_base, plans) = schema.build_order()?;
     // TODO: ensure that the base is present in the batch rows.
 
     for plan in &plans {
-        let builder = OperationRunner::new_for_plan(schema, plan, env)?;
-        builder.apply_batch(batch.rows.as_mut_slice()).unwrap();
+        let plan = Arc::new(plan.clone());
+        let runner = OperationRunner::new_for_plan(schema.clone(), plan, env)?;
+        runner.apply_batch(batch).unwrap();
     }
     Ok(())
 }
@@ -47,7 +49,7 @@ mod tests {
     use crate::core::operations::environment::new_default_operator_environment;
     use crate::core::operations::planner::OperationPlanner;
     use crate::core::rows::RowBatch;
-    use crate::core::schema::{ColumnSchema, TableSchema};
+    use crate::core::schema::{ColumnSchema, FirehoseTableSchema};
     use image::imageops::FilterType;
     use image::{ColorType, DynamicImage};
     use indoc::indoc;
@@ -68,49 +70,31 @@ mod tests {
         let mut env = new_default_operator_environment();
         env.add_binding(img_to_tensor_op_binding::<B>(&device))?;
 
-        let mut schema = TableSchema::from_columns(&[
+        let mut schema = FirehoseTableSchema::from_columns(&[
             ColumnSchema::new::<String>("path").with_description("path to the image")
         ]);
 
-        env.plan_operation(
-            &mut schema,
-            OperationPlanner::new(LOAD_IMAGE)
-                .with_input("path", "path")
-                .with_output("image", "image")
-                .with_output_extension(
-                    "image",
-                    ImageShape {
-                        width: 16,
-                        height: 24,
-                    },
-                )
-                .with_config(
-                    ImageLoader::default()
-                        .with_resize(
-                            ResizeSpec::new(ImageShape {
-                                width: 16,
-                                height: 24,
-                            })
-                            .with_filter(FilterType::Nearest),
-                        )
-                        .with_recolor(ColorType::L16),
-                ),
-        )?;
+        OperationPlanner::for_operation_id(LOAD_IMAGE)
+            .with_input("path", "path")
+            .with_output("image", "image")
+            .with_config(
+                ImageLoader::default()
+                    .with_resize(
+                        ResizeSpec::new(ImageShape {
+                            width: 16,
+                            height: 24,
+                        })
+                        .with_filter(FilterType::Nearest),
+                    )
+                    .with_recolor(ColorType::L16),
+            )
+            .apply_to_schema(&mut schema, &env)?;
 
-        env.plan_operation(
-            &mut schema,
-            OperationPlanner::new(IMAGE_TO_TENSOR)
-                .with_input("image", "image")
-                .with_output("tensor", "tensor")
-                .with_output_extension(
-                    "tensor",
-                    TensorDescription {
-                        shape: vec![24, 16, 1],
-                        dtype: burn::tensor::DType::F32,
-                    },
-                )
-                .with_config(ImgToTensorConfig::new().with_dtype(TargetDType::F32)),
-        )?;
+        OperationPlanner::for_operation_id(IMAGE_TO_TENSOR)
+            .with_input("image", "image")
+            .with_output("tensor", "tensor")
+            .with_config(ImgToTensorConfig::new().with_dtype(TargetDType::F32))
+            .apply_to_schema(&mut schema, &env)?;
 
         assert_eq!(
             serde_json::to_string_pretty(&schema).unwrap(),
@@ -128,26 +112,14 @@ mod tests {
                       "name": "image",
                       "description": "Image loaded from disk.",
                       "data_type": {
-                        "type_name": "image::dynimage::DynamicImage",
-                        "extension": {
-                          "height": 24,
-                          "width": 16
-                        }
+                        "type_name": "image::dynimage::DynamicImage"
                       }
                     },
                     {
                       "name": "tensor",
                       "description": "Tensor representation of the image.",
                       "data_type": {
-                        "type_name": "burn_tensor::tensor::api::base::Tensor<burn_ndarray::backend::NdArray, 3>",
-                        "extension": {
-                          "dtype": "F32",
-                          "shape": [
-                            24,
-                            16,
-                            1
-                          ]
-                        }
+                        "type_name": "burn_tensor::tensor::api::base::Tensor<burn_ndarray::backend::NdArray, 3>"
                       }
                     }
                   ],

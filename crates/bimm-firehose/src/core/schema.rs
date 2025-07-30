@@ -82,6 +82,11 @@ pub struct BuildPlan {
 }
 
 impl BuildPlan {
+    /// Returns a pretty-printed JSON string representation of the build plan.
+    pub fn pretty_json_string(&self) -> String {
+        serde_json::to_string_pretty(self).unwrap_or_else(|_| "Invalid build plan".to_string())
+    }
+
     /// Creates a new `ColumnBuildPlan` with the given operator spec.
     pub fn for_operator<S>(id: S) -> Self
     where
@@ -184,6 +189,56 @@ impl BuildPlan {
             ..self
         }
     }
+
+    /// Translation helper for parameter names to column names.
+    #[inline(always)]
+    fn translate_parameter_name<'a>(
+        &self,
+        parameter_type: &str,
+        parameter_name: &str,
+        parameter_map: &'a BTreeMap<String, String>,
+    ) -> Result<&'a str, String> {
+        parameter_map
+            .get(parameter_name)
+            .map(|column_name| column_name.as_str())
+            .ok_or_else(|| format!("'{parameter_name}' is not a {parameter_type} not parameter of build plan\n:{:?}", self.pretty_json_string()))
+    }
+
+    /// Translates an input parameter name to its corresponding column name.
+    ///
+    /// ## Arguments
+    ///
+    /// - `parameter_name`: The name of the input parameter to translate.
+    ///
+    /// ## Returns
+    ///
+    /// A `Result<&str, String>` where:
+    /// - `Ok(&str)` is the column name corresponding to the input parameter.
+    /// - `Err(String)` is an error message if the parameter name is not found in the inputs.
+    pub fn translate_input_name(
+        &self,
+        parameter_name: &str,
+    ) -> Result<&str, String> {
+        self.translate_parameter_name("input", parameter_name, &self.inputs)
+    }
+
+    /// Translates an output parameter name to its corresponding column name.
+    ///
+    /// ## Arguments
+    ///
+    /// - `parameter_name`: The name of the output parameter to translate.
+    ///
+    /// ## Returns
+    ///
+    /// A `Result<&str, String>` where:
+    /// - `Ok(&str)` is the column name corresponding to the output parameter.
+    /// - `Err(String)` is an error message if the parameter name is not found in the outputs.
+    pub fn translate_output_name(
+        &self,
+        parameter_name: &str,
+    ) -> Result<&str, String> {
+        self.translate_parameter_name("output", parameter_name, &self.outputs)
+    }
 }
 
 /// A description of a column in a data table.
@@ -204,11 +259,19 @@ pub struct ColumnSchema {
 impl ColumnSchema {
     /// Creates a new `DataColumnDescription` with the given name and type.
     pub fn new<T>(name: &str) -> Self {
+        Self::new_with_type(name, DataTypeDescription::new::<T>())
+    }
+
+    /// Creates a new `DataColumnDescription` with the given name and data type.
+    pub fn new_with_type(
+        name: &str,
+        data_type: DataTypeDescription,
+    ) -> Self {
         identifiers::check_ident(name).unwrap();
         ColumnSchema {
             name: name.to_string(),
             description: None,
-            data_type: DataTypeDescription::new::<T>(),
+            data_type,
         }
     }
 
@@ -234,7 +297,7 @@ impl ColumnSchema {
 
 /// Bimm Table Schema.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct TableSchema {
+pub struct FirehoseTableSchema {
     /// The columns in the table.
     pub columns: Vec<ColumnSchema>,
 
@@ -244,7 +307,7 @@ pub struct TableSchema {
     pub build_plans: Vec<BuildPlan>,
 }
 
-impl Index<usize> for TableSchema {
+impl Index<usize> for FirehoseTableSchema {
     type Output = ColumnSchema;
 
     fn index(
@@ -255,7 +318,7 @@ impl Index<usize> for TableSchema {
     }
 }
 
-impl IndexMut<usize> for TableSchema {
+impl IndexMut<usize> for FirehoseTableSchema {
     fn index_mut(
         &mut self,
         index: usize,
@@ -264,7 +327,7 @@ impl IndexMut<usize> for TableSchema {
     }
 }
 
-impl Index<&str> for TableSchema {
+impl Index<&str> for FirehoseTableSchema {
     type Output = ColumnSchema;
 
     fn index(
@@ -272,24 +335,59 @@ impl Index<&str> for TableSchema {
         index: &str,
     ) -> &Self::Output {
         let name = index;
-        self.column_index(name)
+        match self
+            .column_index(name)
             .and_then(|idx| self.columns.get(idx))
-            .expect("Column not found")
+        {
+            Some(column) => column,
+            None => panic!(
+                "Column {name:?} not found in schema:\n{}",
+                self.pretty_json_string()
+            ),
+        }
     }
 }
 
-impl IndexMut<&str> for TableSchema {
+impl IndexMut<&str> for FirehoseTableSchema {
     fn index_mut(
         &mut self,
         index: &str,
     ) -> &mut Self::Output {
         let name = index;
-        let idx = self.check_column_index(name).expect("Column not found");
-        &mut self.columns[idx]
+        match self.column_index(name) {
+            Some(idx) => &mut self.columns[idx],
+            None => panic!(
+                "Column {name:?} not found in schema:\n{}",
+                self.pretty_json_string()
+            ),
+        }
     }
 }
 
-impl TableSchema {
+impl FirehoseTableSchema {
+    /// Gets a reference to a column by its name.
+    pub fn get_column(
+        &self,
+        name: &str,
+    ) -> Option<&ColumnSchema> {
+        self.column_index(name)
+            .and_then(|idx| self.columns.get(idx))
+    }
+
+    /// Gets a mutable reference to a column by its name.
+    pub fn get_column_mut(
+        &mut self,
+        name: &str,
+    ) -> Option<&mut ColumnSchema> {
+        self.column_index(name)
+            .and_then(|idx| self.columns.get_mut(idx))
+    }
+
+    /// Returns a pretty-printed JSON string representation of the schema.
+    pub fn pretty_json_string(&self) -> String {
+        serde_json::to_string_pretty(self).unwrap_or_else(|_| "Invalid schema".to_string())
+    }
+
     fn check_graph(
         columns: &[ColumnSchema],
         plans: &[BuildPlan],
@@ -534,6 +632,39 @@ impl TableSchema {
         self.add_build_plan(plan)
     }
 
+    /// Extends the table schema with a build plan and its output columns.
+    ///
+    /// ## Arguments
+    ///
+    /// - `plan`: The build plan to extend the schema with.
+    /// - `output_columns`: A map of output column names to their schemas.
+    ///
+    /// ## Returns
+    ///
+    /// A `Result<(), String>` where:
+    /// - `Ok(())` indicates success.
+    /// - `Err(String)` contains an error message if the operation fails.
+    pub fn extend_via_plan(
+        &mut self,
+        plan: BuildPlan,
+        output_columns: &BTreeMap<String, ColumnSchema>,
+    ) -> Result<(), String> {
+        let all_plan_output_cnames = plan.outputs.values().collect::<HashSet<_>>();
+        let all_output_cnames = output_columns.keys().collect::<HashSet<_>>();
+
+        if all_plan_output_cnames != all_output_cnames {
+            return Err(format!(
+                "Output columns in plan do not match provided output columns: {all_plan_output_cnames:?} != {all_output_cnames:?}"
+            ));
+        }
+
+        for column in output_columns.values() {
+            self.add_column(column.clone());
+        }
+
+        self.add_build_plan(plan)
+    }
+
     /// Renames a column in the table description.
     pub fn rename_column(
         &mut self,
@@ -677,7 +808,7 @@ mod tests {
 
     #[test]
     fn test_schema() {
-        let mut schema = TableSchema::from_columns(&[ColumnSchema::new::<i32>("foo")]);
+        let mut schema = FirehoseTableSchema::from_columns(&[ColumnSchema::new::<i32>("foo")]);
         schema.add_column(ColumnSchema::new::<String>("bar"));
 
         // Index<usize>
@@ -752,7 +883,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "Duplicate column name 'foo'")]
     fn conflicting_column_names_on_validate() {
-        let _schema = TableSchema::from_columns(&[
+        let _schema = FirehoseTableSchema::from_columns(&[
             ColumnSchema::new::<i32>("foo"),
             ColumnSchema::new::<String>("foo"),
         ]);
@@ -761,7 +892,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "Duplicate column name 'foo'")]
     fn conflicting_column_names_on_add() {
-        let mut schema = TableSchema::from_columns(&[ColumnSchema::new::<i32>("foo")]);
+        let mut schema = FirehoseTableSchema::from_columns(&[ColumnSchema::new::<i32>("foo")]);
         schema.add_column(ColumnSchema::new::<String>("foo"));
     }
 }

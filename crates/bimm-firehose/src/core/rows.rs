@@ -1,4 +1,4 @@
-use crate::core::schema::TableSchema;
+use crate::core::schema::FirehoseTableSchema;
 use std::any::Any;
 use std::ops::{Index, IndexMut};
 use std::sync::Arc;
@@ -23,8 +23,25 @@ impl Row {
     }
 
     /// Creates an empty `BurnRow` with the size of the given table's columns.
-    pub fn new_for_table(table: &TableSchema) -> Self {
+    pub fn new_for_table(table: &FirehoseTableSchema) -> Self {
         Row::new_with_width(table.columns.len())
+    }
+
+    /// Assigns values from another `Row` to this one.
+    pub fn assign_from(
+        &mut self,
+        other: &Row,
+    ) {
+        if self.slots.len() != other.slots.len() {
+            panic!(
+                "Cannot assign from row with {} slots to row with {} slots",
+                other.slots.len(),
+                self.slots.len()
+            );
+        }
+        for (i, value) in other.slots.iter().enumerate() {
+            self.slots[i] = value.clone();
+        }
     }
 
     /// Sets the value at the specified index.
@@ -118,7 +135,7 @@ impl Row {
     /// Check if the row's format matches the schema of the table.
     fn fastcheck_schema(
         &self,
-        schema: &TableSchema,
+        schema: &FirehoseTableSchema,
     ) -> Result<(), String> {
         if self.slots.len() != schema.columns.len() {
             return Err(format!(
@@ -142,7 +159,7 @@ impl Row {
     /// An `Option<&T>` where `T` is the type of the column value.
     pub fn get_column<T: 'static>(
         &self,
-        schema: &TableSchema,
+        schema: &FirehoseTableSchema,
         column_name: &str,
     ) -> Option<&T> {
         self.fastcheck_schema(schema).unwrap();
@@ -167,7 +184,7 @@ impl Row {
     /// and `Err(String)` if the value exists but cannot be downcast to the specified type.
     pub fn get_column_checked<T: 'static>(
         &self,
-        schema: &TableSchema,
+        schema: &FirehoseTableSchema,
         column_name: &str,
     ) -> Result<Option<&T>, String> {
         self.fastcheck_schema(schema).unwrap();
@@ -185,7 +202,7 @@ impl Row {
     /// * `value`: The value to set for the specified column, wrapped in an `Option<AnyArc>`.
     pub fn set_column(
         &mut self,
-        schema: &TableSchema,
+        schema: &FirehoseTableSchema,
         column_name: &str,
         value: Option<AnyArc>,
     ) {
@@ -204,7 +221,7 @@ impl Row {
     /// * `values`: An array of values to set for the corresponding columns.
     pub fn set_columns<const K: usize>(
         &mut self,
-        schema: &TableSchema,
+        schema: &FirehoseTableSchema,
         names: &[&str; K],
         values: [AnyArc; K],
     ) {
@@ -229,7 +246,7 @@ impl Row {
     ///
     /// A new `BimmRow` instance with the specified values set for the given column names.
     pub fn new_with_columns<const K: usize>(
-        schema: &TableSchema,
+        schema: &FirehoseTableSchema,
         names: &[&str; K],
         values: [AnyArc; K],
     ) -> Self {
@@ -240,10 +257,10 @@ impl Row {
 }
 
 /// Represents a batch of `BimmRow`, with `BimmTableSchema` as its schema.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RowBatch {
     /// The schema of the table slice.
-    pub schema: Arc<TableSchema>,
+    pub schema: Arc<FirehoseTableSchema>,
 
     /// The rows in the table slice.
     pub rows: Vec<Row>,
@@ -291,7 +308,7 @@ impl RowBatch {
         rows: Vec<Row>,
     ) -> Self
     where
-        S: Into<Arc<TableSchema>>,
+        S: Into<Arc<FirehoseTableSchema>>,
     {
         let schema = schema.into();
         RowBatch { schema, rows }
@@ -310,7 +327,7 @@ impl RowBatch {
         size: usize,
     ) -> Self
     where
-        S: Into<Arc<TableSchema>>,
+        S: Into<Arc<FirehoseTableSchema>>,
     {
         let schema = schema.into();
         let width = schema.columns.len();
@@ -327,6 +344,26 @@ impl RowBatch {
     /// Checks if the table slice is empty.
     pub fn is_empty(&self) -> bool {
         self.rows.is_empty()
+    }
+
+    /// Assigns values from another `RowBatch` to this one.
+    pub fn assign_from(
+        &mut self,
+        other: &RowBatch,
+    ) {
+        if self.schema != other.schema {
+            panic!("Cannot assign from row batch with different schemas");
+        }
+        if self.rows.len() != other.rows.len() {
+            panic!(
+                "Cannot assign from row batch with {} rows to row batch with {} rows",
+                other.rows.len(),
+                self.rows.len()
+            );
+        }
+        for (i, row) in other.rows.iter().enumerate() {
+            self.rows[i].assign_from(row);
+        }
     }
 
     /// Takes a sub-slice of the table slice from `start` to `end`.
@@ -396,7 +433,7 @@ impl RowBatch {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::schema::{ColumnSchema, TableSchema};
+    use crate::core::schema::{ColumnSchema, FirehoseTableSchema};
     use burn::backend::NdArray;
     use burn::prelude::Tensor;
     use burn::tensor::TensorData;
@@ -404,7 +441,7 @@ mod tests {
 
     #[test]
     fn test_get_value() {
-        let schema = TableSchema::from_columns(&[
+        let schema = FirehoseTableSchema::from_columns(&[
             ColumnSchema::new::<i32>("foo"),
             ColumnSchema::new::<String>("bar"),
             ColumnSchema::new::<i32>("qux"),
@@ -433,7 +470,7 @@ mod tests {
 
     #[test]
     fn test_set_column() {
-        let schema = TableSchema::from_columns(&[
+        let schema = FirehoseTableSchema::from_columns(&[
             ColumnSchema::new::<i32>("foo"),
             ColumnSchema::new::<String>("bar"),
         ]);
@@ -450,7 +487,7 @@ mod tests {
 
     #[test]
     fn test_get_checked() {
-        let schema = TableSchema::from_columns(&[
+        let schema = FirehoseTableSchema::from_columns(&[
             ColumnSchema::new::<i32>("foo"),
             ColumnSchema::new::<String>("bar"),
         ]);
@@ -473,7 +510,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "Row has 2 slots, but table has 3 columns")]
     fn test_row_with_invalid_column_count() {
-        let schema = TableSchema::from_columns(&[
+        let schema = FirehoseTableSchema::from_columns(&[
             ColumnSchema::new::<i32>("foo"),
             ColumnSchema::new::<String>("bar"),
             ColumnSchema::new::<f64>("baz"),
@@ -486,7 +523,7 @@ mod tests {
 
     #[test]
     fn test_row_with_basic_types() {
-        let schema = TableSchema::from_columns(&[
+        let schema = FirehoseTableSchema::from_columns(&[
             ColumnSchema::new::<i32>("foo"),
             ColumnSchema::new::<String>("bar"),
         ]);
@@ -503,7 +540,7 @@ mod tests {
 
     #[test]
     fn test_row_with_tensor() {
-        let schema = TableSchema::from_columns(&[
+        let schema = FirehoseTableSchema::from_columns(&[
             ColumnSchema::new::<i32>("foo"),
             ColumnSchema::new::<String>("bar"),
             ColumnSchema::new::<Tensor<NdArray, 2>>("qux"),
@@ -536,7 +573,7 @@ mod tests {
 
     #[test]
     fn test_with_size() {
-        let schema = TableSchema::from_columns(&[
+        let schema = FirehoseTableSchema::from_columns(&[
             ColumnSchema::new::<i32>("foo"),
             ColumnSchema::new::<String>("bar"),
         ]);
@@ -548,7 +585,7 @@ mod tests {
 
     #[test]
     fn test_row_batch_with_basic_types() {
-        let schema = TableSchema::from_columns(&[
+        let schema = FirehoseTableSchema::from_columns(&[
             ColumnSchema::new::<i32>("foo"),
             ColumnSchema::new::<String>("bar"),
         ]);
@@ -591,7 +628,7 @@ mod tests {
 
     #[test]
     fn test_row_batch() {
-        let schema = TableSchema::from_columns(&[ColumnSchema::new::<i32>("foo")]);
+        let schema = FirehoseTableSchema::from_columns(&[ColumnSchema::new::<i32>("foo")]);
 
         let batch = RowBatch::new(
             Arc::new(schema.clone()),
@@ -611,7 +648,7 @@ mod tests {
 
     #[test]
     fn test_mut_row_batch() {
-        let schema = TableSchema::from_columns(&[
+        let schema = FirehoseTableSchema::from_columns(&[
             ColumnSchema::new::<i32>("foo"),
             ColumnSchema::new::<String>("bar"),
         ]);

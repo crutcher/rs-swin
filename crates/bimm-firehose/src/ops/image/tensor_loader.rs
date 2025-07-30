@@ -1,6 +1,5 @@
-use crate::core::operations::factory::{FirehoseOperatorFactory, OperatorInitializationContext};
-use crate::core::operations::operator::FirehoseOperator;
-use crate::core::operations::runner::OperatorApplyRowContext;
+use crate::core::operations::factory::{FirehoseOperatorFactory, FirehoseOperatorInitContext};
+use crate::core::operations::operator::{FirehoseOperator, OperatorRowTransaction};
 use crate::core::operations::signature::{FirehoseOperatorSignature, ParameterSpec};
 use crate::define_firehose_operator_id;
 use burn::data::dataset::vision::PixelDepth;
@@ -9,7 +8,6 @@ use burn::tensor::{TensorData, f16};
 use image::{ColorType, DynamicImage};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use std::any::Any;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -228,17 +226,15 @@ fn image_to_f32_tensor<B: Backend>(
 impl<B: Backend> FirehoseOperator for ImgToTensor<B> {
     fn apply_row(
         &self,
-        context: &mut OperatorApplyRowContext,
+        txn: &mut OperatorRowTransaction,
     ) -> Result<(), String> {
-        let image = context
-            .get_input_downcast::<DynamicImage>("image")
-            .ok_or("ImgToTensor expects input 'image' to be a DynamicImage")?;
+        let image = txn.get_required_scalar_input::<DynamicImage>("image")?;
 
         match self.config.dtype {
             TargetDType::F32 => {
                 let tensor: Tensor<B, 3> = image_to_f32_tensor(image, &self.device);
 
-                context.set_output("tensor", Some(Arc::new(tensor) as Arc<dyn Any>));
+                txn.set_scalar_output("tensor", Arc::new(tensor))?;
             }
         }
 
@@ -255,7 +251,7 @@ where
     T: FirehoseOperator,
     C: DeserializeOwned,
 {
-    spec: FirehoseOperatorSignature,
+    signature: FirehoseOperatorSignature,
     device: B::Device,
     bind_device: BindDeviceFunc<C, B::Device>,
     phantom: PhantomData<T>,
@@ -272,7 +268,7 @@ where
         f: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
         f.debug_struct("BurnDeviceOpBinding")
-            .field("spec", &self.spec)
+            .field("signature", &self.signature)
             .field("device", &self.device)
             .finish()
     }
@@ -286,13 +282,13 @@ where
 {
     /// Creates a new `BurnDeviceOpBinding`.
     pub fn new(
-        spec: FirehoseOperatorSignature,
+        signature: FirehoseOperatorSignature,
         device: &B::Device,
         bind_device: BindDeviceFunc<C, B::Device>,
     ) -> Self {
         BurnDeviceOpBinding {
             device: device.clone(),
-            spec,
+            signature,
             bind_device,
             phantom: PhantomData,
         }
@@ -305,24 +301,14 @@ where
     C: DeserializeOwned,
     T: FirehoseOperator,
 {
-    fn spec(&self) -> &FirehoseOperatorSignature {
-        &self.spec
+    fn signature(&self) -> &FirehoseOperatorSignature {
+        &self.signature
     }
 
-    fn supplemental_validation(
+    fn init(
         &self,
-        context: &OperatorInitializationContext,
-    ) -> Result<(), String> {
-        self.build(context).map(|_| ())
-    }
-
-    fn build(
-        &self,
-        context: &OperatorInitializationContext,
+        context: &dyn FirehoseOperatorInitContext,
     ) -> Result<Box<dyn FirehoseOperator>, String> {
-        self.spec
-            .validate(context.input_types(), context.output_types())?;
-
         let config = &context.build_plan().config;
         let config = serde_json::from_value(config.clone()).map_err(|_| {
             format!(

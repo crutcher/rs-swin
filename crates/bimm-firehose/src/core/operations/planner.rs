@@ -1,3 +1,6 @@
+use crate::core::operations::environment::OpEnvironment;
+use crate::core::operations::signature::FirehoseOperatorSignature;
+use crate::core::schema::{BuildPlan, ColumnSchema, FirehoseTableSchema};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -13,9 +16,6 @@ pub struct OperationPlanner {
     /// A map from formal parameter names to column names for outputs.
     pub outputs: BTreeMap<String, String>,
 
-    /// A map from formal parameter names to their extensions, serialized as JSON.
-    pub output_extensions: BTreeMap<String, serde_json::Value>,
-
     /// An optional configuration for the call, serialized as JSON.
     pub config: Option<serde_json::Value>,
 }
@@ -26,12 +26,11 @@ impl OperationPlanner {
     /// # Arguments
     ///
     /// * `operator_id` - The ID of the operator to be called.
-    pub fn new(operator_id: &str) -> Self {
+    pub fn for_operation_id(operator_id: &str) -> Self {
         Self {
             operator_id: operator_id.to_string(),
             inputs: BTreeMap::new(),
             outputs: BTreeMap::new(),
-            output_extensions: BTreeMap::new(),
             config: None,
         }
     }
@@ -80,28 +79,6 @@ impl OperationPlanner {
         self
     }
 
-    /// Adds an output extension to the call builder.
-    pub fn with_output_extension<T>(
-        mut self,
-        pname: &str,
-        extension: T,
-    ) -> Self
-    where
-        T: Serialize,
-    {
-        if !self.outputs.contains_key(pname) {
-            panic!("Output parameter '{pname}' must be defined before adding an extension.");
-        }
-        if self.output_extensions.contains_key(pname) {
-            panic!("Output extension for '{pname}' already exists.");
-        }
-        self.output_extensions.insert(
-            pname.to_string(),
-            serde_json::to_value(extension).expect("Failed to serialize output extension"),
-        );
-        self
-    }
-
     /// Adds a configuration to the call builder.
     ///
     /// The configuration is serialized to JSON and stored in the call.
@@ -122,5 +99,54 @@ impl OperationPlanner {
     {
         self.config = Some(serde_json::to_value(config).expect("Failed to serialize config"));
         self
+    }
+
+    /// Binds the context to a specific operator signature.
+    ///
+    /// This does not validate the plan and signature against any schema.
+    ///
+    /// # Arguments
+    ///
+    /// * `signature` - The operator signature to bind to the context.
+    ///
+    /// # Returns
+    ///
+    /// A result containing an `OperationInitSignatureContext` if successful, or an error message if the operation fails.
+    pub fn plan_for_signature(
+        self,
+        signature: &FirehoseOperatorSignature,
+    ) -> Result<(BuildPlan, BTreeMap<String, ColumnSchema>), String> {
+        let mut plan = BuildPlan::for_operator(self.operator_id);
+        plan.inputs = self.inputs.clone();
+        plan.outputs = self.outputs.clone();
+
+        if let Some(description) = &signature.description {
+            plan = plan.with_description(description);
+        }
+        if let Some(config) = &self.config {
+            plan = plan.with_config(config);
+        }
+
+        let output_cols = signature.output_column_schemas_for_plan(&plan)?;
+
+        Ok((plan, output_cols))
+    }
+
+    /// Applies the operation planner to a table schema and environment.
+    ///
+    /// # Arguments
+    ///
+    /// * `schema` - The mutable reference to the table schema to which the operation will be applied.
+    /// * `env` - The environment that can create the operator based on the build plan.
+    ///
+    /// # Returns
+    ///
+    /// A result containing a `BuildPlan` if successful, or an error message if the operation fails.
+    pub fn apply_to_schema(
+        self,
+        schema: &mut FirehoseTableSchema,
+        env: &dyn OpEnvironment,
+    ) -> Result<BuildPlan, String> {
+        env.apply_plan_to_schema(schema, self)
     }
 }
