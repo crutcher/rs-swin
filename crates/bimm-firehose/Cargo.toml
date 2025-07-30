@@ -15,7 +15,9 @@ serde_json = { workspace = true }
 
 anyhow = { workspace = true }
 
+itertools = { workspace = true }
 inventory = { workspace = true }
+threadpool = { workspace = true }
 
 indoc = { workspace = true }
 

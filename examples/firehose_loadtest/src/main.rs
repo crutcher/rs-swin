@@ -30,8 +30,6 @@ fn main() -> anyhow::Result<()> {
         Arc::new(env)
     };
 
-    let executor = SequentialBatchExecutor::new(env.clone());
-
     // Define a processing schema, from `path` -> `image` -> `tensor`.
     let schema = {
         let mut schema = FirehoseTableSchema::from_columns(&[
@@ -54,8 +52,10 @@ fn main() -> anyhow::Result<()> {
             .to_plan("image", "tensor")
             .apply_to_schema(&mut schema, env.as_ref())?;
 
-        schema
+        Arc::new(schema)
     };
+
+    let executor = SequentialBatchExecutor::new(schema.clone(), env.clone())?;
 
     // Track the time it takes to process the dataset in batches.
     let mut durations = Vec::new();
