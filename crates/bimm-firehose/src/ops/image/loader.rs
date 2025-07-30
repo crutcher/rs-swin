@@ -1,6 +1,5 @@
 use crate::core::operations::factory::SimpleConfigOperatorFactory;
-use crate::core::operations::operator::FirehoseOperator;
-use crate::core::operations::runner::OperatorApplyRowContext;
+use crate::core::operations::operator::{FirehoseOperator, FirehoseRowTransaction};
 use crate::core::operations::signature::{FirehoseOperatorSignature, ParameterSpec};
 use crate::define_firehose_operator;
 use crate::ops::image::{ImageShape, color_util};
@@ -130,13 +129,11 @@ impl ImageLoader {
 }
 
 impl FirehoseOperator for ImageLoader {
-    fn apply_row(
+    fn apply_to_row(
         &self,
-        context: &mut OperatorApplyRowContext,
+        txn: &mut FirehoseRowTransaction,
     ) -> Result<(), String> {
-        let path = context
-            .get_input_downcast::<String>("path")
-            .ok_or("ImageLoader expects input 'path' to be a String")?;
+        let path = txn.get_required_scalar_input::<String>("path")?;
 
         let mut image = image::open(path).map_err(|e| format!("Failed to load image: {e}"))?;
 
@@ -151,7 +148,7 @@ impl FirehoseOperator for ImageLoader {
             image = color_util::convert_to_colortype(image, color);
         }
 
-        context.set_output("image", Some(Arc::new(image)));
+        txn.set_scalar_output("image", Arc::new(image))?;
 
         Ok(())
     }
@@ -165,7 +162,7 @@ mod tests {
     use crate::core::operations::environment::{OpEnvironment, new_default_operator_environment};
     use crate::core::operations::planner::OperationPlanner;
     use crate::core::rows::RowBatch;
-    use crate::core::schema::{ColumnSchema, TableSchema};
+    use crate::core::schema::{ColumnSchema, FirehoseTableSchema};
     use crate::ops::image::test_util::{assert_image_close, generate_gradient_pattern};
     use image::DynamicImage;
     use std::sync::Arc;
@@ -192,19 +189,19 @@ mod tests {
 
         let env = new_default_operator_environment();
 
-        let mut schema = TableSchema::from_columns(&[ColumnSchema::new::<String>("path")]);
+        let mut schema = FirehoseTableSchema::from_columns(&[ColumnSchema::new::<String>("path")]);
 
-        env.plan_operation(
+        env.apply_plan_to_schema(
             &mut schema,
-            OperationPlanner::new(LOAD_IMAGE)
+            OperationPlanner::for_operation_id(LOAD_IMAGE)
                 .with_input("path", "path")
                 .with_output("image", "image")
                 .with_config(ImageLoader::default()),
         )?;
 
-        env.plan_operation(
+        env.apply_plan_to_schema(
             &mut schema,
-            OperationPlanner::new(LOAD_IMAGE)
+            OperationPlanner::for_operation_id(LOAD_IMAGE)
                 .with_input("path", "path")
                 .with_output("image", "resized_gray")
                 .with_config(

@@ -73,14 +73,16 @@ macro_rules! register_firehose_operator_factory {
 mod tests {
     use crate::core::operations::environment::MapOpEnvironment;
     use crate::core::operations::factory::SimpleConfigOperatorFactory;
-    use crate::core::operations::operator::FirehoseOperator;
-    use crate::core::operations::runner::{OperationRunner, OperatorApplyRowContext};
+    use crate::core::operations::operator::{
+        FirehoseOperator, FirehoseRowTransaction, OperatorSchedulingMetadata,
+    };
+    use crate::core::operations::runner::OperationRunner;
     use crate::core::operations::signature::{
         FirehoseOperatorSignature, ParameterArity, ParameterSpec,
     };
-    use crate::core::rows::AnyArc;
+
     use crate::core::rows::RowBatch;
-    use crate::core::schema::{BuildPlan, ColumnSchema, DataTypeDescription, TableSchema};
+    use crate::core::schema::{BuildPlan, ColumnSchema, DataTypeDescription, FirehoseTableSchema};
     use crate::define_firehose_operator_id;
     use indoc::indoc;
     use serde::{Deserialize, Serialize};
@@ -110,20 +112,16 @@ mod tests {
     }
 
     impl FirehoseOperator for AddOperator {
-        fn apply_row(
+        fn apply_to_row(
             &self,
-            context: &mut OperatorApplyRowContext,
+            txn: &mut FirehoseRowTransaction,
         ) -> Result<(), String> {
-            let x = context
-                .get_input_downcast::<i32>("x")
-                .ok_or("'x' expected type i32")?;
-            let y = context
-                .get_input_downcast::<i32>("y")
-                .ok_or("'y' expected type i32")?;
+            let x = txn.get_required_scalar_input::<i32>("x")?;
+            let y = txn.get_required_scalar_input::<i32>("y")?;
 
             let result: i32 = x + y + self.bias;
 
-            context.set_output("result", Some(Arc::new(result) as AnyArc));
+            txn.set_scalar_output("result", Arc::new(result))?;
 
             Ok(())
         }
@@ -132,7 +130,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "'x' expected type")]
     fn test_bad_input_data_type() {
-        let mut schema = TableSchema::from_columns(&[
+        let mut schema = FirehoseTableSchema::from_columns(&[
             ColumnSchema::new::<String>("a").with_description("First input"),
             ColumnSchema::new::<i32>("b").with_description("Second input"),
             ColumnSchema::new::<i32>("c").with_description("Output"),
@@ -149,14 +147,18 @@ mod tests {
 
         let env = MapOpEnvironment::from_bindings(&[add_operator_op_binding()]).unwrap();
 
-        let _builder =
-            OperationRunner::new_for_plan(&schema, &schema.build_plans[0], &env).unwrap();
+        let _builder = OperationRunner::new_for_plan(
+            Arc::new(schema.clone()),
+            Arc::new(schema.build_plans[0].clone()),
+            &env,
+        )
+        .unwrap();
     }
 
     #[test]
     #[should_panic(expected = "'result' expected type")]
     fn test_bad_output_data_type() {
-        let mut schema = TableSchema::from_columns(&[
+        let mut schema = FirehoseTableSchema::from_columns(&[
             ColumnSchema::new::<i32>("a").with_description("First input"),
             ColumnSchema::new::<i32>("b").with_description("Second input"),
             ColumnSchema::new::<String>("c").with_description("Output"),
@@ -173,13 +175,17 @@ mod tests {
 
         let env = MapOpEnvironment::from_bindings(&[add_operator_op_binding()]).unwrap();
 
-        let _builder =
-            OperationRunner::new_for_plan(&schema, &schema.build_plans[0], &env).unwrap();
+        let _builder = OperationRunner::new_for_plan(
+            Arc::new(schema.clone()),
+            Arc::new(schema.build_plans[0].clone()),
+            &env,
+        )
+        .unwrap();
     }
 
     #[test]
     fn test_simple_op() {
-        let mut schema = TableSchema::from_columns(&[
+        let mut schema = FirehoseTableSchema::from_columns(&[
             ColumnSchema::new::<i32>("a").with_description("First input"),
             ColumnSchema::new::<i32>("b").with_description("Second input"),
             ColumnSchema::new::<i32>("c").with_description("Output"),
@@ -197,10 +203,15 @@ mod tests {
 
         let env = MapOpEnvironment::from_bindings(&[add_operator_op_binding()]).unwrap();
 
-        let builder = OperationRunner::new_for_plan(&schema, &schema.build_plans[0], &env).unwrap();
+        let runner = OperationRunner::new_for_plan(
+            Arc::new(schema.clone()),
+            Arc::new(schema.build_plans[0].clone()),
+            &env,
+        )
+        .unwrap();
 
         assert_eq!(
-            format!("{builder:#?}"),
+            format!("{runner:#?}"),
             indoc! {r#"
                ColumnBuilder {
                    build_plan: BuildPlan {
@@ -223,15 +234,20 @@ mod tests {
             }
         );
 
-        assert_eq!(builder.effective_batch_size(), 1);
+        assert_eq!(
+            runner.scheduling_metadata(),
+            OperatorSchedulingMetadata {
+                effective_batch_size: 1,
+            }
+        );
 
-        assert_eq!(builder.build_plan.operator_id, ADD);
+        assert_eq!(runner.build_plan.operator_id, ADD);
 
         let mut batch = RowBatch::with_size(Arc::new(schema.clone()), 2);
         batch[0].set_columns(&schema, &["a", "b"], [Arc::new(10), Arc::new(20)]);
         batch[1].set_columns(&schema, &["a", "b"], [Arc::new(-5), Arc::new(2)]);
 
-        builder.apply_batch(batch.rows.as_mut_slice()).unwrap();
+        runner.apply_batch(&mut batch).unwrap();
 
         assert_eq!(batch[0].get_column::<i32>(&schema, "c").unwrap(), &40);
         assert_eq!(batch[1].get_column::<i32>(&schema, "c").unwrap(), &7);

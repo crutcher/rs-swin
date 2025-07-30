@@ -1,4 +1,4 @@
-use crate::core::schema::DataTypeDescription;
+use crate::core::schema::{BuildPlan, ColumnSchema, DataTypeDescription};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -11,6 +11,14 @@ pub enum ParameterArity {
 
     /// The parameter is optional and may be omitted.
     Optional,
+}
+
+impl ParameterArity {
+    /// Returns `true` if the parameter is scalar-valued.
+    pub fn is_scalar(&self) -> bool {
+        // TODO: support list/vector types.
+        true
+    }
 }
 
 /// Defines a single parameter specification
@@ -103,6 +111,22 @@ impl Default for FirehoseOperatorSignature {
 }
 
 impl FirehoseOperatorSignature {
+    /// Returns a reference to the input parameter named `name`, if it exists.
+    pub fn get_input_parameter(
+        &self,
+        name: &str,
+    ) -> Option<&ParameterSpec> {
+        self.inputs.iter().find(|spec| spec.name == name)
+    }
+
+    /// Returns a reference to the output parameter named `name`, if it exists.
+    pub fn get_output_parameter(
+        &self,
+        name: &str,
+    ) -> Option<&ParameterSpec> {
+        self.outputs.iter().find(|spec| spec.name == name)
+    }
+
     /// Creates a new `OperatorSpec` with no inputs or outputs.
     pub const fn new() -> Self {
         Self {
@@ -272,18 +296,31 @@ impl FirehoseOperatorSignature {
         }
     }
 
-    /// Generate an output plan suitable for `.add_build_plan_and_outputs()`.
-    pub fn output_plan(&self) -> Vec<(String, DataTypeDescription, Option<String>)> {
-        self.outputs
-            .iter()
-            .map(|spec| {
-                (
-                    spec.name.clone(),
-                    spec.data_type.clone(),
-                    spec.description.clone(),
-                )
-            })
-            .collect()
+    /// Generates a map of output column schemas for the given build plan.
+    pub fn output_column_schemas_for_plan(
+        &self,
+        build_plan: &BuildPlan,
+    ) -> Result<BTreeMap<String, ColumnSchema>, String> {
+        let mut result = BTreeMap::new();
+
+        for output_param in &self.outputs {
+            let param_name = &output_param.name;
+
+            let column_name = build_plan.outputs.get(param_name).ok_or_else(|| {
+                format!("Output parameter '{param_name}' not found in build plan")
+            })?;
+
+            let data_type = output_param.data_type.clone();
+
+            let mut col_schema = ColumnSchema::new_with_type(column_name, data_type);
+            if output_param.description.is_some() {
+                col_schema.description = output_param.description.clone();
+            }
+
+            result.insert(column_name.clone(), col_schema);
+        }
+
+        Ok(result)
     }
 
     /// Validates the provided input types against the specification

@@ -1,8 +1,9 @@
-use crate::core::operations::factory::FirehoseOperatorFactory;
-use crate::core::operations::operator::{FirehoseOperator, OperatorInitializationContext};
+use crate::core::operations::factory::{FirehoseOperatorFactory, FirehoseOperatorInitContext};
+use crate::core::operations::operator::FirehoseOperator;
 use crate::core::operations::planner::OperationPlanner;
 use crate::core::operations::registration;
-use crate::core::schema::{BuildPlan, DataTypeDescription, TableSchema};
+use crate::core::operations::signature::FirehoseOperatorSignature;
+use crate::core::schema::{BuildPlan, DataTypeDescription, FirehoseTableSchema};
 use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 
@@ -40,7 +41,7 @@ pub trait OpEnvironment {
     /// A `Result<Box<dyn BuildOperator>, String>` where:
     /// * `Ok` contains a boxed operator that implements the `BuildOperator` trait,
     /// * `Err` contains an error message if the initialization fails.
-    fn lookup_operation_builder(
+    fn lookup_operator_factory(
         &self,
         operator_id: &str,
     ) -> Result<Arc<dyn FirehoseOperatorFactory>, String> {
@@ -51,26 +52,47 @@ pub trait OpEnvironment {
             .clone())
     }
 
-    /// Validates the operator against the build plan and input/output types.
-    fn validate(
+    /// Validates the operator's context against the environment.
+    ///
+    /// By default, this method calls `init_operator` to perform the validation;
+    /// and maps successful results to `Ok(())`.
+    ///
+    /// # Arguments
+    ///
+    /// * `context` - The context containing the build plan and input/output types.
+    ///
+    /// # Returns
+    ///
+    /// A `Result<(), String>` where:
+    /// * `Ok` indicates successful validation,
+    /// * `Err` contains an error message if validation fails.
+    fn validate_context(
         &self,
-        context: &OperatorInitializationContext,
+        plan_context: BuildPlanContext,
     ) -> Result<(), String> {
-        let builder = self.lookup_operation_builder(&context.build_plan().operator_id)?;
-        builder
-            .spec()
-            .validate(context.input_types(), context.output_types())?;
-        builder.supplemental_validation(context)
+        self.init_operator(plan_context).map(|_| ())
     }
 
-    /// Builds an operator based on the provided context.
-    fn build(
+    /// Initializes an operator based on the provided context.
+    ///
+    /// # Arguments
+    ///
+    /// * `plan_context` - The context containing the build plan and input/output types.
+    ///
+    /// # Returns
+    ///
+    /// A `Result<Box<dyn FirehoseOperator>, String>` where:
+    /// * `Ok` contains a boxed operator that implements the `FirehoseOperator` trait,
+    /// * `Err` contains an error message if the initialization fails.
+    fn init_operator(
         &self,
-        context: &OperatorInitializationContext,
+        plan_context: BuildPlanContext,
     ) -> Result<Box<dyn FirehoseOperator>, String> {
-        let builder = self.lookup_operation_builder(&context.build_plan().operator_id)?;
-        builder.supplemental_validation(context)?;
-        builder.build(context)
+        let factory = self.lookup_operator_factory(plan_context.operator_id())?;
+
+        let context = plan_context.bind_signature(factory.signature())?;
+
+        factory.init(&context)
     }
 
     /// Extends a schema with a new operation.
@@ -81,85 +103,35 @@ pub trait OpEnvironment {
     ///
     /// # Arguments
     ///
-    /// * `table_schema` - A mutable reference to the `TableSchema` to be extended.
-    /// * `call` - A `CallBuilder` that describes the operation to be added.
+    /// * `schema` - A mutable reference to the `TableSchema` to be extended.
+    /// * `planner` - An `OperationPlanner` that contains the details of the operation to be planned.
     ///
     /// # Returns
     ///
     /// A `Result<BuildPlan, String>` where:
     /// * `Ok` contains the build plan for the operation,
     /// * `Err` contains an error message if the operation fails.
-    fn plan_operation(
+    fn apply_plan_to_schema(
         &self,
-        table_schema: &mut TableSchema,
-        call: OperationPlanner,
+        schema: &mut FirehoseTableSchema,
+        planner: OperationPlanner,
     ) -> Result<BuildPlan, String> {
-        let operator_id = &call.operator_id;
+        let operator_id = &planner.operator_id;
 
-        let input_types: BTreeMap<String, DataTypeDescription> = call
-            .inputs
-            .iter()
-            .map(|(pname, cname)| {
-                (
-                    pname.to_string(),
-                    table_schema[cname.as_str()].data_type.clone(),
-                )
-            })
-            .collect();
+        let factory = self.lookup_operator_factory(operator_id)?;
+        let signature = factory.signature();
 
-        let binding = self.lookup_operation_builder(operator_id)?;
-        let spec = binding.spec();
+        let (plan, output_cols) = planner.plan_for_signature(signature)?;
 
-        let input_bindings: Vec<(&str, &str)> = call
-            .inputs
-            .iter()
-            .map(|(pname, cname)| (pname.as_str(), cname.as_str()))
-            .collect();
+        {
+            let mut tmp_schema = schema.clone();
+            tmp_schema.extend_via_plan(plan.clone(), &output_cols)?;
 
-        let output_bindings: Vec<(&str, &str)> = call
-            .outputs
-            .iter()
-            .map(|(pname, cname)| (pname.as_str(), cname.as_str()))
-            .collect();
-
-        let mut plan = BuildPlan::for_operator(operator_id)
-            .with_inputs(&input_bindings)
-            .with_outputs(&output_bindings);
-
-        if let Some(description) = &spec.description {
-            plan = plan.with_description(description);
-        }
-        if let Some(config) = &call.config {
-            plan = plan.with_config(config);
+            let builder = BuildPlanContext::new(Arc::new(tmp_schema), Arc::new(plan.clone()));
+            self.validate_context(builder)?;
         }
 
-        // Fuse static output types with the call's output extensions.
-        let output_plan = spec
-            .output_plan()
-            .iter()
-            .map(|(pname, dtype, description)| {
-                let mut dtype = dtype.clone();
-                if let Some(extension) = call.output_extensions.get(pname) {
-                    dtype.extension = extension.clone();
-                }
-
-                (pname.clone(), dtype, description.clone())
-            })
-            .collect::<Vec<_>>();
-
-        let context = OperatorInitializationContext::new(
-            table_schema.clone(),
-            plan.clone(),
-            input_types.clone(),
-            output_plan
-                .iter()
-                .map(|(pname, dtype, _)| (pname.clone(), dtype.clone()))
-                .collect(),
-        );
-
-        self.validate(&context)?;
-
-        table_schema.add_build_plan_and_outputs(plan.clone(), &output_plan)?;
+        schema.extend_via_plan(plan.clone(), &output_cols)?;
 
         Ok(plan)
     }
@@ -315,5 +287,138 @@ impl UnionEnvironment {
 impl OpEnvironment for UnionEnvironment {
     fn operators(&self) -> &BTreeMap<String, Arc<dyn FirehoseOperatorFactory>> {
         &self.operators
+    }
+}
+
+/// A partially bound context for initializing an operator build plan.
+///
+/// This context is bound to a schema and build plan,
+/// but not yet to an operator signature.
+#[derive(Debug, Clone)]
+pub struct BuildPlanContext {
+    table_schema: Arc<FirehoseTableSchema>,
+    build_plan: Arc<BuildPlan>,
+}
+
+impl BuildPlanContext {
+    /// Creates a new `OperationInitPlanContext` with the given table schema and build plan.
+    pub fn new(
+        table_schema: Arc<FirehoseTableSchema>,
+        build_plan: Arc<BuildPlan>,
+    ) -> Self {
+        Self {
+            table_schema,
+            build_plan,
+        }
+    }
+
+    /// Returns a reference to the table schema.
+    pub fn operator_id(&self) -> &str {
+        &self.build_plan().operator_id
+    }
+
+    /// Returns the table schema that this context is bound to.
+    pub fn table_schema(&self) -> &FirehoseTableSchema {
+        &self.table_schema
+    }
+
+    /// Returns the build plan that this context is bound to.
+    pub fn build_plan(&self) -> &BuildPlan {
+        &self.build_plan
+    }
+
+    /// Binds the context to a specific operator signature.
+    pub fn bind_signature(
+        self,
+        signature: &FirehoseOperatorSignature,
+    ) -> Result<OperationInitializationContext, String> {
+        OperationInitializationContext::init(self, signature.clone())
+    }
+
+    /// Computes the input types for the operator based on the build plan and table schema.
+    pub fn input_types(&self) -> BTreeMap<String, DataTypeDescription> {
+        self.build_plan
+            .inputs
+            .iter()
+            .map(|(pname, cname)| {
+                (
+                    pname.clone(),
+                    self.table_schema[cname.as_ref()].data_type.clone(),
+                )
+            })
+            .collect()
+    }
+
+    /// Computes the output types for the operator based on the build plan and table schema.
+    pub fn output_types(&self) -> BTreeMap<String, DataTypeDescription> {
+        self.build_plan
+            .outputs
+            .iter()
+            .map(|(pname, cname)| {
+                (
+                    pname.clone(),
+                    self.table_schema[cname.as_ref()].data_type.clone(),
+                )
+            })
+            .collect()
+    }
+}
+
+/// An operator factory which deserializes the operator from a JSON value.
+/// Context for validating and initializing a column build operation.
+#[derive(Debug, Clone)]
+pub struct OperationInitializationContext {
+    /// The build plan context that this signature context wraps.
+    plan_context: BuildPlanContext,
+
+    /// The table schema that this operator is bound to.
+    signature: FirehoseOperatorSignature,
+}
+
+impl FirehoseOperatorInitContext for OperationInitializationContext {
+    fn operator_id(&self) -> &str {
+        &self.build_plan().operator_id
+    }
+
+    fn table_schema(&self) -> &FirehoseTableSchema {
+        &self.plan_context.table_schema
+    }
+
+    fn build_plan(&self) -> &BuildPlan {
+        self.plan_context().build_plan()
+    }
+
+    fn signature(&self) -> &FirehoseOperatorSignature {
+        &self.signature
+    }
+}
+
+impl OperationInitializationContext {
+    /// Creates a new `OperationInitSignatureContext` with the given plan context and signature.
+    pub fn init(
+        plan_context: BuildPlanContext,
+        signature: FirehoseOperatorSignature,
+    ) -> Result<Self, String> {
+        signature.validate(&plan_context.input_types(), &plan_context.output_types())?;
+
+        Ok(Self {
+            plan_context,
+            signature,
+        })
+    }
+
+    /// Returns the plan context.
+    pub fn plan_context(&self) -> &BuildPlanContext {
+        &self.plan_context
+    }
+
+    /// Returns a reference to the table schema.
+    pub fn table_schema(&self) -> &FirehoseTableSchema {
+        self.plan_context().table_schema()
+    }
+
+    /// Returns the signature of the operator.
+    pub fn signature(&self) -> &FirehoseOperatorSignature {
+        &self.signature
     }
 }
