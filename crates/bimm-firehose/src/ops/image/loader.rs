@@ -178,9 +178,9 @@ impl FirehoseOperator for ImageLoader {
 mod tests {
     use super::*;
 
-    use crate::core::experimental_run_batch_env;
     use crate::core::operations::environment::new_default_operator_environment;
 
+    use crate::core::operations::executor::{FirehoseBatchExecutor, SequentialBatchExecutor};
     use crate::core::rows::RowBatch;
     use crate::core::schema::{ColumnSchema, FirehoseTableSchema};
     use crate::ops::image::test_util::{assert_image_close, generate_gradient_pattern};
@@ -208,13 +208,15 @@ mod tests {
             .save(&image_path)
             .expect("Failed to save test image");
 
-        let env = new_default_operator_environment();
+        let env = Arc::new(new_default_operator_environment());
+
+        let executor = SequentialBatchExecutor::new(env.clone());
 
         let mut schema = FirehoseTableSchema::from_columns(&[ColumnSchema::new::<String>("path")]);
 
         ImageLoader::default()
             .to_plan("path", "raw_image")
-            .apply_to_schema(&mut schema, &env)?;
+            .apply_to_schema(&mut schema, env.as_ref())?;
 
         ImageLoader::default()
             .with_resize(
@@ -226,14 +228,14 @@ mod tests {
             )
             .with_recolor(ColorType::L16)
             .to_plan("path", "resized_gray")
-            .apply_to_schema(&mut schema, &env)?;
+            .apply_to_schema(&mut schema, env.as_ref())?;
 
         let schema = Arc::new(schema);
 
         let mut batch = RowBatch::with_size(schema.clone(), 1);
         batch[0].set_column(&schema, "path", Some(Arc::new(image_path)));
 
-        experimental_run_batch_env(&mut batch, &env)?;
+        executor.execute_batch(&mut batch)?;
 
         let loaded_image = batch[0]
             .get_column::<DynamicImage>(&schema, "raw_image")

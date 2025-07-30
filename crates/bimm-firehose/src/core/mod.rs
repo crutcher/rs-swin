@@ -1,8 +1,3 @@
-use operations::environment::OpEnvironment;
-use operations::runner::OperationRunner;
-use rows::RowBatch;
-use std::sync::Arc;
-
 /// Defines legal identifiers for firehose tables.
 pub mod identifiers;
 /// Defines the operator environment for firehose tables.
@@ -12,31 +7,8 @@ pub mod rows;
 /// Defines the symbolic schema for firehose tables.
 pub mod schema;
 
-/// Runs a batch of rows through the operator environment, applying the build plans defined in the schema.
-pub fn experimental_run_batch_env<E>(
-    batch: &mut RowBatch,
-    env: &E,
-) -> anyhow::Result<()>
-where
-    E: OpEnvironment,
-{
-    let schema = batch.schema.clone();
-
-    let (_base, plans) = schema.build_order()?;
-    // TODO: ensure that the base is present in the batch rows.
-
-    for plan in &plans {
-        let plan = Arc::new(plan.clone());
-        let runner = OperationRunner::new_for_plan(schema.clone(), plan, env)?;
-        runner.apply_to_batch(batch)?;
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use crate::ops::image::loader::{ImageLoader, ResizeSpec};
     use crate::ops::image::tensor_loader::{
         ImgToTensorConfig, TargetDType, image_to_f32_tensor, img_to_tensor_op_binding,
@@ -48,6 +20,7 @@ mod tests {
 
     use crate::core::operations::environment::new_default_operator_environment;
 
+    use crate::core::operations::executor::{FirehoseBatchExecutor, SequentialBatchExecutor};
     use crate::core::rows::RowBatch;
     use crate::core::schema::{ColumnSchema, FirehoseTableSchema};
     use image::imageops::FilterType;
@@ -71,6 +44,9 @@ mod tests {
 
         let mut env = new_default_operator_environment();
         env.add_binding(img_to_tensor_op_binding::<B>(&device))?;
+        let env = Arc::new(env);
+
+        let executor = SequentialBatchExecutor::new(env.clone());
 
         let mut schema = FirehoseTableSchema::from_columns(&[
             ColumnSchema::new::<String>("path").with_description("path to the image")
@@ -86,12 +62,12 @@ mod tests {
             )
             .with_recolor(ColorType::L16)
             .to_plan("path", "image")
-            .apply_to_schema(&mut schema, &env)?;
+            .apply_to_schema(&mut schema, env.as_ref())?;
 
         ImgToTensorConfig::new()
             .with_dtype(TargetDType::F32)
             .to_plan("image", "tensor")
-            .apply_to_schema(&mut schema, &env)?;
+            .apply_to_schema(&mut schema, env.as_ref())?;
 
         assert_eq!(
             serde_json::to_string_pretty(&schema).unwrap(),
@@ -181,7 +157,7 @@ mod tests {
             batch[0].set_column(&schema, "path", Some(Arc::new(image_path)));
         }
 
-        experimental_run_batch_env(&mut batch, &env)?;
+        executor.execute_batch(&mut batch)?;
 
         let row = &batch[0];
 

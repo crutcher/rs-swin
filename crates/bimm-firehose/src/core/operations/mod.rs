@@ -1,5 +1,7 @@
 /// Operator lookup environments.
 pub mod environment;
+/// Operator runner for executing operations on rows.
+pub mod executor;
 /// Defines operator factories and their registration.
 pub mod factory;
 /// Module defining the runtime operator implementation interface.
@@ -8,8 +10,6 @@ pub mod operator;
 pub mod planner;
 /// Global registration module for firehose operators.
 pub mod registration;
-/// Operator runner for executing operations on rows.
-pub mod runner;
 /// Operator signature and parameter specification.
 pub mod signature;
 
@@ -71,12 +71,12 @@ macro_rules! register_firehose_operator_factory {
 
 #[cfg(test)]
 mod tests {
-    use crate::core::operations::environment::MapOpEnvironment;
+    use crate::core::operations::environment::{MapOpEnvironment, OpEnvironment};
     use crate::core::operations::factory::SimpleConfigOperatorFactory;
+    use crate::core::operations::operator::OperationRunner;
     use crate::core::operations::operator::{
         FirehoseOperator, FirehoseRowTransaction, OperatorSchedulingMetadata,
     };
-    use crate::core::operations::runner::OperationRunner;
     use crate::core::operations::signature::{
         FirehoseOperatorSignature, ParameterArity, ParameterSpec,
     };
@@ -145,12 +145,13 @@ mod tests {
             )
             .unwrap();
 
-        let env = MapOpEnvironment::from_bindings(&[add_operator_op_binding()]).unwrap();
+        let env = Arc::new(MapOpEnvironment::from_bindings(&[add_operator_op_binding()]).unwrap())
+            as Arc<dyn OpEnvironment>;
 
         let _builder = OperationRunner::new_for_plan(
             Arc::new(schema.clone()),
             Arc::new(schema.build_plans[0].clone()),
-            &env,
+            env.as_ref(),
         )
         .unwrap();
     }
