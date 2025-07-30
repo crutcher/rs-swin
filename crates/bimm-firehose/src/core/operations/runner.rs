@@ -99,7 +99,7 @@ impl OperationRunner {
     /// # Returns
     ///
     /// A result indicating success or an error message if the operation fails.
-    pub fn apply_batch(
+    pub fn apply_to_batch(
         &self,
         batch: &mut RowBatch,
     ) -> Result<(), String> {
