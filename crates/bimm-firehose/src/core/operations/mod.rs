@@ -247,7 +247,7 @@ mod tests {
         batch[0].set_columns(&schema, &["a", "b"], [Arc::new(10), Arc::new(20)]);
         batch[1].set_columns(&schema, &["a", "b"], [Arc::new(-5), Arc::new(2)]);
 
-        runner.apply_batch(&mut batch).unwrap();
+        runner.apply_to_batch(&mut batch).unwrap();
 
         assert_eq!(batch[0].get_column::<i32>(&schema, "c").unwrap(), &40);
         assert_eq!(batch[1].get_column::<i32>(&schema, "c").unwrap(), &7);
