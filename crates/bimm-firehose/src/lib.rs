@@ -1,4 +1,5 @@
 #![warn(missing_docs)]
+#![warn(clippy::missing_docs_in_private_items)]
 //!# bimm-firehose - Burn-based Data Pipeline
 
 /// New Data Table module.

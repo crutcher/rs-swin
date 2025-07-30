@@ -89,7 +89,10 @@ pub struct SimpleConfigOperatorFactory<T>
 where
     T: DeserializeOwned + FirehoseOperator,
 {
+    /// The operator signature.
     signature: FirehoseOperatorSignature,
+
+    /// Phantom data to ensure the factory is generic over the operator type.
     phantom_data: PhantomData<T>,
 }
 

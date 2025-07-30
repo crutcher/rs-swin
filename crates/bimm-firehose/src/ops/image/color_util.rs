@@ -100,7 +100,7 @@ pub fn convert_to_colortype(
 ///
 /// This exists to allow serde to serialize `Option<ColorType>`,
 /// owing to a lagging bug in the upstream
-/// ColorType serialization implementation.
+/// `ColorType` serialization implementation.
 ///
 /// # Example
 ///
@@ -136,7 +136,7 @@ where
 ///
 /// This exists to allow serde to deserialize `Option<ColorType>`,
 /// owing to a lagging bug in the upstream
-/// ColorType serialization implementation.
+/// `ColorType` serialization implementation.
 ///
 /// # Example
 ///

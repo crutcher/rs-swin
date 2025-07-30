@@ -214,7 +214,7 @@ impl SwinTransformerV2Config {
     ///
     /// # Returns
     ///
-    /// A [SwinTransformerV2Plan] containing the patch embedding configuration.
+    /// A [`SwinTransformerV2Plan`] containing the patch embedding configuration.
     pub fn validate(&self) -> Result<SwinTransformerV2Plan, String> {
         let patch_config = PatchEmbedConfig::new(
             self.input_resolution,
@@ -305,7 +305,7 @@ impl SwinTransformerV2Config {
         })
     }
 
-    /// Initialize a new [SwinTransformerV2] model.
+    /// Initialize a new [`SwinTransformerV2`] model.
     #[must_use]
     pub fn init<B: Backend>(
         self,

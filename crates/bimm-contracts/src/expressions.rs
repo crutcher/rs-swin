@@ -94,7 +94,7 @@ impl<'a> DimExpr<'a> {
     ///
     /// ## Returns
     ///
-    /// A TryEvalResult:
+    /// A `TryEvalResult`:
     /// * `Value(value)` - the evaluated value of the expression.
     /// * `UnboundParams(count)` - the count of unbound parameters.
     #[must_use]

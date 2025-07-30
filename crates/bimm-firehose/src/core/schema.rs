@@ -143,6 +143,15 @@ impl BuildPlan {
         }
     }
 
+    /// Builds a name map from a slice of tuples.
+    ///
+    /// ## Arguments
+    ///
+    /// - `assoc`: A slice of tuples where each tuple contains a parameter name and a column name.
+    ///
+    /// ## Returns
+    ///
+    /// A `BTreeMap<String, String>` mapping parameter names to column names.
     fn build_name_map(assoc: &[(&str, &str)]) -> BTreeMap<String, String> {
         let mut btree = BTreeMap::new();
         for (param, column) in assoc {
@@ -385,6 +394,19 @@ impl FirehoseTableSchema {
         serde_json::to_string_pretty(self).unwrap_or_else(|_| "Invalid schema".to_string())
     }
 
+    /// Checks the build graph for the table schema.
+    ///
+    /// This function verifies the dependencies between build plans
+    /// and ensures that all columns can be built in a valid order.
+    ///
+    /// ## Arguments
+    ///
+    /// - `columns`: A slice of `ColumnSchema` representing the columns in the table.
+    /// - `plans`: A slice of `BuildPlan` representing the build plans for the table.
+    ///
+    /// ## Returns
+    ///
+    /// An `anyhow::Result<(Vec<String>, Vec<BuildPlan>)>` containing the base columns and the ordered build plans.
     fn check_graph(
         columns: &[ColumnSchema],
         plans: &[BuildPlan],

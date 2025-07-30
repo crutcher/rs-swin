@@ -24,9 +24,10 @@ pub fn new_default_operator_environment() -> MapOpEnvironment {
     env
 }
 
-/// OpEnvironment is a trait that provides access to a collection of operator bindings.
+/// `OpEnvironment` is a trait that provides access to a collection of operator bindings.
 pub trait OpEnvironment {
     /// Returns a reference to the map of operator bindings.
+    // TODO: This should be an iterator.
     fn operators(&self) -> &BTreeMap<String, Arc<dyn FirehoseOperatorFactory>>;
 
     /// Validates a build plan against the input and output types.
@@ -130,8 +131,9 @@ pub trait OpEnvironment {
     }
 }
 
-/// MapOpEnvironment is a simple implementation of OpEnvironment that uses a BTreeMap to store operators.
+/// `MapOpEnvironment` is a simple implementation of `OpEnvironment` that uses a `BTreeMap` to store operators.
 pub struct MapOpEnvironment {
+    /// A map of operator IDs to their corresponding operator factories.
     operators: BTreeMap<String, Arc<dyn FirehoseOperatorFactory>>,
 }
 
@@ -142,14 +144,14 @@ impl Default for MapOpEnvironment {
 }
 
 impl MapOpEnvironment {
-    /// Creates a new MapOpEnvironment with an empty operator map.
+    /// Creates a new `MapOpEnvironment` with an empty operator map.
     pub fn new() -> Self {
         Self {
             operators: BTreeMap::new(),
         }
     }
 
-    /// Creates a MapOpEnvironment from a list of operator bindings.
+    /// Creates a `MapOpEnvironment` from a list of operator bindings.
     ///
     /// # Arguments
     ///
@@ -210,13 +212,18 @@ impl MapOpEnvironment {
 
 impl OpEnvironment for MapOpEnvironment {
     fn operators(&self) -> &BTreeMap<String, Arc<dyn FirehoseOperatorFactory>> {
+        // TODO: This should be an iterator.
         &self.operators
     }
 }
 
-/// UnionEnvironment combines multiple OpEnvironment instances into a single environment.
+/// `UnionEnvironment` combines multiple `OpEnvironment` instances into a single environment.
 pub struct UnionEnvironment {
+    /// A vector of Arc-wrapped `OpEnvironment` instances.
     environments: Vec<Arc<dyn OpEnvironment>>,
+
+    /// A map of operator IDs to their corresponding operator factories.
+    // TODO: This should be an iterator; so that this field doesn't need to be constructed.
     operators: BTreeMap<String, Arc<dyn FirehoseOperatorFactory>>,
 }
 
@@ -227,7 +234,7 @@ impl Default for UnionEnvironment {
 }
 
 impl UnionEnvironment {
-    /// Creates a new UnionEnvironment with no environments.
+    /// Creates a new `UnionEnvironment` with no environments.
     pub fn new() -> Self {
         Self {
             environments: Vec::new(),
@@ -235,11 +242,11 @@ impl UnionEnvironment {
         }
     }
 
-    /// Creates a UnionEnvironment from a list of OpEnvironment instances.
+    /// Creates a `UnionEnvironment` from a list of `OpEnvironment` instances.
     ///
     /// # Arguments
     ///
-    /// * `environments` - A slice of Arc-wrapped OpEnvironment instances.
+    /// * `environments` - A slice of Arc-wrapped `OpEnvironment` instances.
     ///
     /// # Panics
     ///
@@ -252,11 +259,11 @@ impl UnionEnvironment {
         env
     }
 
-    /// Adds a new OpEnvironment to the UnionEnvironment.
+    /// Adds a new `OpEnvironment` to the `UnionEnvironment`.
     ///
     /// # Arguments
     ///
-    /// * `env` - An Arc-wrapped OpEnvironment instance to add.
+    /// * `env` - An Arc-wrapped `OpEnvironment` instance to add.
     ///
     /// # Panics
     ///
@@ -295,7 +302,10 @@ impl OpEnvironment for UnionEnvironment {
 /// but not yet to an operator signature.
 #[derive(Debug, Clone)]
 pub struct BuildPlanContext {
+    /// The table schema that this context is bound to.
     table_schema: Arc<FirehoseTableSchema>,
+
+    /// The build plan that this context is bound to.
     build_plan: Arc<BuildPlan>,
 }
 

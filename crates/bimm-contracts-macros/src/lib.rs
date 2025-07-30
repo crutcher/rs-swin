@@ -49,36 +49,56 @@ fn parse_dim_matcher_tokens(input: ParseStream) -> SynResult<DimMatcher> {
     Ok(DimMatcher::Expr { label, expr })
 }
 
+/// Represents a node in a dimension expression.
 #[derive(Debug, Clone, PartialEq)]
 enum ExprNode {
+    /// A parameter (string literal).
     Param(String),
+
+    /// Negation of another expression.
     Negate(Box<ExprNode>),
+
+    /// Power of an expression (base raised to an exponent).
     Pow(Box<ExprNode>, usize),
+
+    /// Sum of multiple expressions (addition and subtraction).
     Sum(Vec<ExprNode>),
+
+    /// Product of multiple expressions (multiplication).
     Prod(Vec<ExprNode>),
 }
 
+/// Represents a matcher for a dimension in a shape contract.
 #[derive(Debug, Clone, PartialEq)]
 enum DimMatcher {
-    Any {
-        label: Option<String>,
-    },
-    Ellipsis {
-        label: Option<String>,
-    },
+    /// Matches any dimension, ignoring size.
+    Any { label: Option<String> },
+
+    /// Matches an ellipsis, allowing any number of dimensions.
+    ///
+    /// There can only be one ellipsis in a shape contract.
+    Ellipsis { label: Option<String> },
+
+    /// Matches a dimension based on an expression.
     Expr {
         label: Option<String>,
         expr: ExprNode,
     },
 }
 
+/// Represents a shape contract, which consists of multiple dimension matchers.
+///
+/// The `shape_contract!` macro allows you to define a shape contract
+/// that can be used to match shapes in a type-safe manner.
 #[derive(Debug, Clone, PartialEq)]
 struct ShapeContract {
+    /// The terms of the shape contract, each represented by a `DimMatcher`.
     pub terms: Vec<DimMatcher>,
 }
 
 /// Custom parser for shape contract syntax.
 struct ContractSyntax {
+    /// The parsed shape contract.
     contract: ShapeContract,
 }
 
@@ -258,7 +278,7 @@ impl ShapeContract {
     }
 }
 
-/// Parse a shape contract at compile time and return the ShapePattern struct.
+/// Parse a shape contract at compile time and return the `ShapePattern` struct.
 ///
 /// A shape pattern is made of one or more dimension matcher terms:
 /// - `_`: for any shape; ignores the size, but requires the dimension to exist.,

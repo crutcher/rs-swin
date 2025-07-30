@@ -5,7 +5,7 @@ use burn::nn::conv::{Conv2d, Conv2dConfig};
 use burn::nn::{LayerNorm, LayerNormConfig};
 use burn::prelude::{Backend, Tensor};
 
-/// Common introspection interface for PatchEmbed modules.
+/// Common introspection interface for `PatchEmbed` modules.
 pub trait PatchEmbedMeta {
     /// Input resolution (height, width).
     fn input_resolution(&self) -> [usize; 2];
@@ -53,7 +53,7 @@ pub trait PatchEmbedMeta {
     fn enable_patch_norm(&self) -> bool;
 }
 
-/// Configuration for PatchEmbed.
+/// Configuration for `PatchEmbed`.
 #[derive(Config, Debug, Copy)]
 pub struct PatchEmbedConfig {
     /// Input resolution (height, width).
@@ -96,7 +96,7 @@ impl PatchEmbedMeta for PatchEmbedConfig {
 }
 
 impl PatchEmbedConfig {
-    /// Initialize a PatchEmbed module with the given configuration.
+    /// Initialize a `PatchEmbed` module with the given configuration.
     ///
     /// ## Arguments
     ///
@@ -133,7 +133,7 @@ impl PatchEmbedConfig {
     }
 }
 
-/// SWIN-Transformer v2 PatchEmbed module.
+/// SWIN-Transformer v2 `PatchEmbed` module.
 #[derive(Module, Debug)]
 pub struct PatchEmbed<B: Backend> {
     /// Input resolution (height, width).
@@ -172,7 +172,7 @@ impl<B: Backend> PatchEmbedMeta for PatchEmbed<B> {
 }
 
 impl<B: Backend> PatchEmbed<B> {
-    /// Apply the PatchEmbed module to an input tensor.
+    /// Apply the `PatchEmbed` module to an input tensor.
     ///
     /// ## Arguments
     ///

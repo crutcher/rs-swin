@@ -335,6 +335,17 @@ impl FirehoseOperatorSignature {
         Ok(())
     }
 
+    /// Utility function to validate parameters against their specifications.
+    ///
+    /// # Arguments
+    ///
+    /// * `param_type`: A string indicating the type of parameters being validated ("input" or "output").
+    /// * `specs`: A slice of `ParameterSpec` that defines the expected parameters.
+    /// * `provided`: A map of provided parameters, where keys are parameter names and values are their data types.
+    ///
+    /// # Returns
+    ///
+    /// An `anyhow::Result<()>` indicating success or failure.
     fn validate_parameters(
         &self,
         param_type: &str,

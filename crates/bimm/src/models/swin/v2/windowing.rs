@@ -12,7 +12,7 @@ use burn::tensor::BasicOps;
 /// - `window_size`: Window size.
 ///
 /// ## Returns
-///   - Output tensor of shape (B * h_windows * w_windows, window_size, window_size, C).
+///   - Output tensor of shape (B * `h_windows` * `w_windows`, `window_size`, `window_size`, C).
 #[inline]
 #[must_use]
 pub fn window_partition<B: Backend, K>(
@@ -43,7 +43,7 @@ where
 /// Window Reverse
 ///
 /// ## Parameters
-/// - `windows`: Input tensor of shape (B * h_windows * w_windows, window_size, window_size, C).
+/// - `windows`: Input tensor of shape (B * `h_windows` * `w_windows`, `window_size`, `window_size`, C).
 /// - `window_size`: Window size.
 /// - `h`: Height of the original image.
 /// - `w`: Width of the original image.
