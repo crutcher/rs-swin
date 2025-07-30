@@ -115,7 +115,7 @@ impl OperationPlan {
     pub fn plan_for_signature(
         self,
         signature: &FirehoseOperatorSignature,
-    ) -> Result<(BuildPlan, BTreeMap<String, ColumnSchema>), String> {
+    ) -> anyhow::Result<(BuildPlan, BTreeMap<String, ColumnSchema>)> {
         let mut plan = BuildPlan::for_operator(self.operator_id);
         plan.inputs = self.inputs.clone();
         plan.outputs = self.outputs.clone();
@@ -146,7 +146,7 @@ impl OperationPlan {
         self,
         schema: &mut FirehoseTableSchema,
         env: &dyn OpEnvironment,
-    ) -> Result<BuildPlan, String> {
+    ) -> anyhow::Result<BuildPlan> {
         env.apply_plan_to_schema(schema, self)
     }
 }

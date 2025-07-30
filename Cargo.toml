@@ -24,6 +24,8 @@ bimm-contracts-macros = { version = "0.2.0", path = "crates/bimm-contracts-macro
 
 burn = { version = "^0.18.0" }
 
+anyhow = { version = "^1.0.98" }
+
 regex = { version = "^1.11.1" }
 regex-macro = { version = "^0.3.0" }
 

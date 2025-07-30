@@ -1,4 +1,5 @@
 use crate::core::schema::{BuildPlan, ColumnSchema, DataTypeDescription};
+use anyhow::{Context, bail};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -183,19 +184,19 @@ impl FirehoseOperatorSignature {
     ///
     /// ## Returns
     ///
-    /// An `Result<Vec<ParameterSpec>, String>` where:
-    /// * `Ok(Vec<ParameterSpec>)`: A new vector of parameter specifications with the added parameter.
-    /// * `Err(String)`: An error message if the parameter name already exists in the list.
+    /// An `anyhow::Result<Vec<ParameterSpec>>` containing a new vector of parameter specifications with the added parameter.
     fn with_parameter(
         spec: ParameterSpec,
         ptype: &str,
         specs: &[ParameterSpec],
-    ) -> Result<Vec<ParameterSpec>, String> {
+    ) -> anyhow::Result<Vec<ParameterSpec>> {
         if let Some(that) = specs.iter().find(|prev| prev.name == spec.name) {
-            Err(format!(
+            bail!(
                 "Duplicate {ptype} parameter '{}':\na. {:?}\nb. {:?}",
-                spec.name, that, spec
-            ))
+                spec.name,
+                that,
+                spec
+            )
         } else {
             let mut new_specs = specs.to_vec();
             new_specs.push(spec);
@@ -217,7 +218,7 @@ impl FirehoseOperatorSignature {
     pub fn with_input_result(
         self,
         spec: ParameterSpec,
-    ) -> Result<Self, String> {
+    ) -> anyhow::Result<Self> {
         Ok(Self {
             operator_id: self.operator_id,
             description: self.description,
@@ -263,7 +264,7 @@ impl FirehoseOperatorSignature {
     pub fn with_output_result(
         self,
         spec: ParameterSpec,
-    ) -> Result<Self, String> {
+    ) -> anyhow::Result<Self> {
         Ok(Self {
             operator_id: self.operator_id,
             description: self.description,
@@ -300,13 +301,13 @@ impl FirehoseOperatorSignature {
     pub fn output_column_schemas_for_plan(
         &self,
         build_plan: &BuildPlan,
-    ) -> Result<BTreeMap<String, ColumnSchema>, String> {
+    ) -> anyhow::Result<BTreeMap<String, ColumnSchema>> {
         let mut result = BTreeMap::new();
 
         for output_param in &self.outputs {
             let param_name = &output_param.name;
 
-            let column_name = build_plan.outputs.get(param_name).ok_or_else(|| {
+            let column_name = build_plan.outputs.get(param_name).with_context(|| {
                 format!("Output parameter '{param_name}' not found in build plan")
             })?;
 
@@ -323,30 +324,14 @@ impl FirehoseOperatorSignature {
         Ok(result)
     }
 
-    /// Validates the provided input types against the specification
-    pub fn validate_inputs(
-        &self,
-        input_types: &BTreeMap<String, DataTypeDescription>,
-    ) -> Result<(), String> {
-        self.validate_parameters("input", &self.inputs, input_types)
-    }
-
-    /// Validates the provided output types against the specification
-    pub fn validate_outputs(
-        &self,
-        output_types: &BTreeMap<String, DataTypeDescription>,
-    ) -> Result<(), String> {
-        self.validate_parameters("output", &self.outputs, output_types)
-    }
-
     /// Validates both inputs and outputs
     pub fn validate(
         &self,
         input_types: &BTreeMap<String, DataTypeDescription>,
         output_types: &BTreeMap<String, DataTypeDescription>,
-    ) -> Result<(), String> {
-        self.validate_inputs(input_types)?;
-        self.validate_outputs(output_types)?;
+    ) -> anyhow::Result<()> {
+        self.validate_parameters("input", &self.inputs, input_types)?;
+        self.validate_parameters("output", &self.outputs, output_types)?;
         Ok(())
     }
 
@@ -355,7 +340,7 @@ impl FirehoseOperatorSignature {
         param_type: &str,
         specs: &[ParameterSpec],
         provided: &BTreeMap<String, DataTypeDescription>,
-    ) -> Result<(), String> {
+    ) -> anyhow::Result<()> {
         // Check for required parameters
         let required_params: Vec<_> = specs
             .iter()
@@ -364,17 +349,22 @@ impl FirehoseOperatorSignature {
 
         for spec in &required_params {
             if !provided.contains_key(&spec.name) {
-                return Err(format!(
+                bail!(
                     "Missing required {} parameter '{}' of type {:?}",
-                    param_type, spec.name, spec.data_type
-                ));
+                    param_type,
+                    spec.name,
+                    spec.data_type
+                );
             }
 
             if provided[&spec.name].type_name != spec.data_type.type_name {
-                return Err(format!(
+                bail!(
                     "{} parameter '{}' expected type {:?}, but got {:?}",
-                    param_type, spec.name, spec.data_type, provided[&spec.name]
-                ));
+                    param_type,
+                    spec.name,
+                    spec.data_type,
+                    provided[&spec.name]
+                );
             }
         }
 
@@ -388,13 +378,13 @@ impl FirehoseOperatorSignature {
             match expected_names.get(name) {
                 Some(expected_type) => {
                     if data_type.type_name != expected_type.type_name {
-                        return Err(format!(
+                        bail!(
                             "{param_type} parameter '{name}' expected type {expected_type:?}, but got {data_type:?}"
-                        ));
+                        );
                     }
                 }
                 None => {
-                    return Err(format!(
+                    bail!(
                         "Unexpected {} parameter '{}'. Expected parameters: [{}]",
                         param_type,
                         name,
@@ -403,7 +393,7 @@ impl FirehoseOperatorSignature {
                             .map(|s| s.name.as_str())
                             .collect::<Vec<_>>()
                             .join(", ")
-                    ));
+                    );
                 }
             }
         }

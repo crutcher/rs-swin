@@ -3,6 +3,7 @@ use crate::core::operations::operator::{FirehoseOperator, FirehoseRowTransaction
 use crate::core::operations::planner::OperationPlan;
 use crate::core::operations::signature::{FirehoseOperatorSignature, ParameterSpec};
 use crate::define_firehose_operator_id;
+use anyhow::Context;
 use burn::data::dataset::vision::PixelDepth;
 use burn::prelude::{Backend, Tensor};
 use burn::tensor::{TensorData, f16};
@@ -199,7 +200,7 @@ impl<B: Backend> ImgToTensor<B> {
     pub fn bind_device(
         config: ImgToTensorConfig,
         device: &B::Device,
-    ) -> Result<Box<dyn FirehoseOperator>, String> {
+    ) -> anyhow::Result<Box<dyn FirehoseOperator>> {
         let op: ImgToTensor<B> = ImgToTensor {
             config,
             device: device.clone(),
@@ -245,7 +246,7 @@ impl<B: Backend> FirehoseOperator for ImgToTensor<B> {
     fn apply_to_row(
         &self,
         txn: &mut FirehoseRowTransaction,
-    ) -> Result<(), String> {
+    ) -> anyhow::Result<()> {
         let image = txn.get_required_scalar_input::<DynamicImage>("image")?;
 
         match self.config.dtype {
@@ -260,7 +261,7 @@ impl<B: Backend> FirehoseOperator for ImgToTensor<B> {
     }
 }
 
-type BindDeviceFunc<C, D> = fn(config: C, device: &D) -> Result<Box<dyn FirehoseOperator>, String>;
+type BindDeviceFunc<C, D> = fn(config: C, device: &D) -> anyhow::Result<Box<dyn FirehoseOperator>>;
 
 /// A binding for the `BurnDeviceOpBinding` that allows it to be used with a specific backend and operator.
 pub struct BurnDeviceOpBinding<B, T, C>
@@ -326,11 +327,12 @@ where
     fn init(
         &self,
         context: &dyn FirehoseOperatorInitContext,
-    ) -> Result<Box<dyn FirehoseOperator>, String> {
+    ) -> anyhow::Result<Box<dyn FirehoseOperator>> {
         let config = &context.build_plan().config;
-        let config = serde_json::from_value(config.clone()).map_err(|_| {
+        let config = serde_json::from_value(config.clone()).with_context(|| {
             format!(
-                "Invalid config: {}",
+                "Failed to deserialize operator config for {}: {}",
+                self.signature.operator_id.as_deref().unwrap_or("unknown"),
                 serde_json::to_string_pretty(config).unwrap()
             )
         })?;

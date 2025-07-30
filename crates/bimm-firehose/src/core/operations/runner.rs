@@ -60,7 +60,7 @@ impl OperationRunner {
         table_schema: Arc<FirehoseTableSchema>,
         build_plan: Arc<BuildPlan>,
         env: &E,
-    ) -> Result<OperationRunner, String>
+    ) -> anyhow::Result<OperationRunner>
     where
         E: OpEnvironment,
     {
@@ -102,7 +102,7 @@ impl OperationRunner {
     pub fn apply_to_batch(
         &self,
         batch: &mut RowBatch,
-    ) -> Result<(), String> {
+    ) -> anyhow::Result<()> {
         // TODO: sub-batch based upon scheduling metadata.effective_batch_size.
         // Requires batch.slice(); batch.assign_slice_from();
 

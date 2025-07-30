@@ -16,7 +16,7 @@ pub mod schema;
 pub fn experimental_run_batch_env<E>(
     batch: &mut RowBatch,
     env: &E,
-) -> Result<(), String>
+) -> anyhow::Result<()>
 where
     E: OpEnvironment,
 {
@@ -62,7 +62,7 @@ mod tests {
     }
 
     #[test]
-    fn test_example() -> Result<(), String> {
+    fn test_example() -> anyhow::Result<()> {
         let temp_dir = tempfile::tempdir().unwrap();
 
         type B = NdArray;

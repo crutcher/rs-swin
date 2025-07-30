@@ -97,6 +97,25 @@ pub fn convert_to_colortype(
 }
 
 /// Adapter Serializer for `Option<ColorType>`.
+///
+/// This exists to allow serde to serialize `Option<ColorType>`,
+/// owing to a lagging bug in the upstream
+/// ColorType serialization implementation.
+///
+/// # Example
+///
+/// ```rust.norun
+/// use serde::{Serialize, Deserialize};
+///
+/// #[derive(Serialize, Deserialize)]
+/// pub struct Example {
+///     #[serde(skip_serializing_if = "Option::is_none")]
+///     #[serde(serialize_with = "option_colortype_serializer")]
+///     #[serde(deserialize_with = "option_colortype_deserializer")]
+///     #[serde(default)]
+///     color: Option<image::ColorType>,
+/// }
+/// ```
 pub fn option_colortype_serializer<S>(
     color: &Option<ColorType>,
     serializer: S,
@@ -114,6 +133,25 @@ where
 }
 
 /// Adapter Deserializer for `Option<ColorType>`.
+///
+/// This exists to allow serde to deserialize `Option<ColorType>`,
+/// owing to a lagging bug in the upstream
+/// ColorType serialization implementation.
+///
+/// # Example
+///
+/// ```rust.norun
+/// use serde::{Serialize, Deserialize};
+///
+/// #[derive(Serialize, Deserialize)]
+/// pub struct Example {
+///     #[serde(skip_serializing_if = "Option::is_none")]
+///     #[serde(serialize_with = "option_colortype_serializer")]
+///     #[serde(deserialize_with = "option_colortype_deserializer")]
+///     #[serde(default)]
+///     color: Option<image::ColorType>,
+/// }
+/// ```
 pub fn option_colortype_deserializer<'de, D>(deserializer: D) -> Result<Option<ColorType>, D::Error>
 where
     D: serde::Deserializer<'de>,

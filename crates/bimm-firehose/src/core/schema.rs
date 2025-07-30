@@ -1,4 +1,5 @@
 use crate::core::identifiers;
+use anyhow::{anyhow, bail};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 use std::ops::{Index, IndexMut};
@@ -197,11 +198,11 @@ impl BuildPlan {
         parameter_type: &str,
         parameter_name: &str,
         parameter_map: &'a BTreeMap<String, String>,
-    ) -> Result<&'a str, String> {
+    ) -> anyhow::Result<&'a str> {
         parameter_map
             .get(parameter_name)
             .map(|column_name| column_name.as_str())
-            .ok_or_else(|| format!("'{parameter_name}' is not a {parameter_type} not parameter of build plan\n:{:?}", self.pretty_json_string()))
+            .ok_or_else(|| anyhow!("'{parameter_name}' is not a {parameter_type} not parameter of build plan\n:{:?}", self.pretty_json_string()))
     }
 
     /// Translates an input parameter name to its corresponding column name.
@@ -212,13 +213,11 @@ impl BuildPlan {
     ///
     /// ## Returns
     ///
-    /// A `Result<&str, String>` where:
-    /// - `Ok(&str)` is the column name corresponding to the input parameter.
-    /// - `Err(String)` is an error message if the parameter name is not found in the inputs.
+    /// An `anyhow::Result<&str>` containing the column name corresponding to the input parameter.
     pub fn translate_input_name(
         &self,
         parameter_name: &str,
-    ) -> Result<&str, String> {
+    ) -> anyhow::Result<&str> {
         self.translate_parameter_name("input", parameter_name, &self.inputs)
     }
 
@@ -230,13 +229,11 @@ impl BuildPlan {
     ///
     /// ## Returns
     ///
-    /// A `Result<&str, String>` where:
-    /// - `Ok(&str)` is the column name corresponding to the output parameter.
-    /// - `Err(String)` is an error message if the parameter name is not found in the outputs.
+    /// An `anyhow::Result<&str>` containing the column name corresponding to the output parameter.
     pub fn translate_output_name(
         &self,
         parameter_name: &str,
-    ) -> Result<&str, String> {
+    ) -> anyhow::Result<&str> {
         self.translate_parameter_name("output", parameter_name, &self.outputs)
     }
 }
@@ -391,7 +388,7 @@ impl FirehoseTableSchema {
     fn check_graph(
         columns: &[ColumnSchema],
         plans: &[BuildPlan],
-    ) -> Result<(Vec<String>, Vec<BuildPlan>), String> {
+    ) -> anyhow::Result<(Vec<String>, Vec<BuildPlan>)> {
         let column_names: Vec<String> = columns.iter().map(|c| c.name.clone()).collect();
 
         let mut base_columns: Vec<String> = column_names.clone();
@@ -443,11 +440,11 @@ impl FirehoseTableSchema {
         }
 
         if scheduled_columns.len() != column_names.len() {
-            return Err(format!(
+            bail!(
                 "Not all columns are scheduled: expected {}, got {}",
                 column_names.len(),
                 scheduled_columns.len()
-            ));
+            );
         }
 
         let order: Vec<BuildPlan> = plan_order.iter().map(|&idx| plans[idx].clone()).collect();
@@ -461,10 +458,8 @@ impl FirehoseTableSchema {
     ///
     /// ## Returns
     ///
-    /// A `Result<(Vec<String>, Vec<BuildPlan>), String>` where:
-    /// - `Ok((Vec<String>, Vec<BuildPlan>))` contains the base columns and the ordered build plans.
-    /// - `Err(String)` contains an error message if the build order cannot be determined.
-    pub fn build_order(&self) -> Result<(Vec<String>, Vec<BuildPlan>), String> {
+    /// An `anyhow::Result<(Vec<String>, Vec<BuildPlan>)>` containing the base columns and the ordered build plans.
+    pub fn build_order(&self) -> anyhow::Result<(Vec<String>, Vec<BuildPlan>)> {
         Self::check_graph(&self.columns, &self.build_plans)
     }
 
@@ -479,14 +474,12 @@ impl FirehoseTableSchema {
     ///
     /// ## Returns
     ///
-    /// A `Result<Vec<BuildPlan>, String>` where:
-    /// - `Ok(Vec<BuildPlan>)` contains the ordered build plans needed to produce the target columns.
-    /// - `Err(String)` contains an error message if the build order cannot be determined.
+    /// An `anyhow::Result<Vec<BuildPlan>>` containing the ordered build plans needed to produce the target columns.
     pub fn target_build_order(
         &self,
         extant_columns: &[&str],
         target_columns: &[&str],
-    ) -> Result<Vec<BuildPlan>, String> {
+    ) -> anyhow::Result<Vec<BuildPlan>> {
         let (_, plans) = self.build_order()?;
 
         let mut needed: HashSet<String> = HashSet::new();
@@ -542,11 +535,11 @@ impl FirehoseTableSchema {
     fn check_name(
         &self,
         name: &str,
-    ) -> Result<(), String> {
+    ) -> anyhow::Result<()> {
         identifiers::check_ident(name)?;
 
         if self.columns.iter().any(|c| c.name == name) {
-            Err(format!("Duplicate column name '{name}'"))
+            Err(anyhow!("Duplicate column name '{name}'"))
         } else {
             Ok(())
         }
@@ -566,27 +559,21 @@ impl FirehoseTableSchema {
     pub fn add_build_plan(
         &mut self,
         plan: BuildPlan,
-    ) -> Result<(), String> {
+    ) -> anyhow::Result<()> {
         // Check that all the input and output columns exist.
         for cname in plan.inputs.values() {
             if self.column_index(cname).is_none() {
-                return Err(format!(
-                    "Input column '{cname}' does not exist in the schema"
-                ));
+                bail!("Input column '{cname}' does not exist in the schema");
             }
         }
         for cname in plan.outputs.values() {
             if self.column_index(cname).is_none() {
-                return Err(format!(
-                    "Output column '{cname}' does not exist in the schema"
-                ));
+                bail!("Output column '{cname}' does not exist in the schema");
             }
 
             for alt_plan in &self.build_plans {
                 if alt_plan.outputs.values().any(|v| v == cname) {
-                    return Err(format!(
-                        "Output column '{cname}' already exists in another build plan"
-                    ));
+                    bail!("Output column '{cname}' already exists in another build plan");
                 }
             }
         }
@@ -610,14 +597,12 @@ impl FirehoseTableSchema {
     ///
     /// ## Returns
     ///
-    /// A `Result<(), String>` where:
-    /// - `Ok(())` indicates success.
-    /// - `Err(String)` contains an error message if the operation fails.
+    /// An `anyhow::Result<()>` indicating success or containing an error if the operation fails.
     pub fn add_build_plan_and_outputs(
         &mut self,
         plan: BuildPlan,
         output_info: &[(String, DataTypeDescription, Option<String>)],
-    ) -> Result<(), String> {
+    ) -> anyhow::Result<()> {
         // Now add the output columns.
         for (pname, data_type, description) in output_info {
             let cname = plan.outputs.get(pname).expect("Output column not found");
@@ -641,21 +626,19 @@ impl FirehoseTableSchema {
     ///
     /// ## Returns
     ///
-    /// A `Result<(), String>` where:
-    /// - `Ok(())` indicates success.
-    /// - `Err(String)` contains an error message if the operation fails.
+    /// An `anyhow::Result<()>` indicating success or containing an error if the operation fails.
     pub fn extend_via_plan(
         &mut self,
         plan: BuildPlan,
         output_columns: &BTreeMap<String, ColumnSchema>,
-    ) -> Result<(), String> {
+    ) -> anyhow::Result<()> {
         let all_plan_output_cnames = plan.outputs.values().collect::<HashSet<_>>();
         let all_output_cnames = output_columns.keys().collect::<HashSet<_>>();
 
         if all_plan_output_cnames != all_output_cnames {
-            return Err(format!(
+            bail!(
                 "Output columns in plan do not match provided output columns: {all_plan_output_cnames:?} != {all_output_cnames:?}"
-            ));
+            );
         }
 
         for column in output_columns.values() {
@@ -670,11 +653,11 @@ impl FirehoseTableSchema {
         &mut self,
         old_name: &str,
         new_name: &str,
-    ) -> Result<(), String> {
+    ) -> anyhow::Result<()> {
         let index = match self.column_index(old_name) {
             Some(idx) => idx,
             None => {
-                return Err(format!("Column '{old_name}' not found"));
+                bail!("Column '{old_name}' not found");
             }
         };
 
@@ -684,7 +667,7 @@ impl FirehoseTableSchema {
         }
 
         if self.column_index(new_name).is_some() {
-            return Err(format!("Column name '{new_name}' already exists"));
+            bail!("Column name '{new_name}' already exists");
         }
 
         self.check_name(new_name)?;
@@ -738,15 +721,15 @@ impl FirehoseTableSchema {
     ///
     /// ## Returns
     ///
-    /// A `Result<usize, String>` where:
-    /// - `Ok(usize)` is the index of the column if it exists.
-    /// - `Err(String)` is an error message if the column does not exist.
+    /// An `anyhow::Result<usize>` containing the index of the column if it exists.
     pub fn check_column_index(
         &self,
         name: &str,
-    ) -> Result<usize, String> {
-        self.column_index(name)
-            .ok_or_else(|| format!("Column '{name}' not found"))
+    ) -> anyhow::Result<usize> {
+        match self.column_index(name) {
+            Some(idx) => Ok(idx),
+            None => bail!("Column '{name}' not found in schema"),
+        }
     }
 
     /// Selects the indices of the columns with the given names.
@@ -757,9 +740,7 @@ impl FirehoseTableSchema {
     ///
     /// ## Returns
     ///
-    /// A `Result<[usize; K], String>` where:
-    /// - `Ok([usize; K])` is an array of indices corresponding to the column names.
-    /// - `Err(String)` is an error message if any of the column names do not exist.
+    /// An `anyhow::Result<[usize; K]>` containing an array of indices corresponding to the column names.
     ///
     /// ## Example
     ///
@@ -778,7 +759,7 @@ impl FirehoseTableSchema {
     pub fn select_indices<const K: usize>(
         &self,
         names: &[&str; K],
-    ) -> Result<[usize; K], String> {
+    ) -> anyhow::Result<[usize; K]> {
         let mut indices = [0; K];
         for (i, name) in names.iter().enumerate() {
             indices[i] = self.check_column_index(name)?

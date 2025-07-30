@@ -1,3 +1,4 @@
+use anyhow::bail;
 use regex::Regex;
 use regex_macro::regex;
 
@@ -33,11 +34,11 @@ pub fn is_ident(s: &str) -> bool {
 /// Results in:
 /// - `Ok(())` if the string is a valid identifier,
 /// - `Err` with a message if it is not.
-pub fn check_ident(s: &str) -> Result<(), String> {
+pub fn check_ident(s: &str) -> anyhow::Result<()> {
     if is_ident(s) {
         Ok(())
     } else {
-        Err(format!("Invalid identifier: '{s}'"))
+        bail!("Invalid identifier: '{s}'")
     }
 }
 
@@ -59,13 +60,13 @@ pub fn path_ident_regex() -> &'static Regex {
 ///
 /// - `Ok(Vec<String>)` containing the components of the path identifier,
 /// - `Err(String)` if the identifier is invalid.
-pub fn parse_path_ident(ident: &str) -> Result<Vec<String>, String> {
+pub fn parse_path_ident(ident: &str) -> anyhow::Result<Vec<String>> {
     match path_ident_regex().find(ident) {
         Some(m) => {
             let parts = m.as_str().split("::").map(String::from).collect();
             Ok(parts)
         }
-        None => Err(format!("Invalid path identifier: '{ident}'")),
+        None => bail!("Invalid path identifier: '{ident}'"),
     }
 }
 
@@ -89,31 +90,34 @@ mod tests {
         assert!(check_ident("a_9").is_ok());
         assert!(check_ident("_abc9").is_ok());
 
-        assert_eq!(check_ident(""), Err("Invalid identifier: ''".to_string()));
         assert_eq!(
-            check_ident("9a"),
-            Err("Invalid identifier: '9a'".to_string())
+            check_ident("").unwrap_err().to_string(),
+            "Invalid identifier: ''"
+        );
+        assert_eq!(
+            check_ident("9a").unwrap_err().to_string(),
+            "Invalid identifier: '9a'"
         );
     }
 
     #[test]
     fn test_parse_path_ident() {
         assert_eq!(
-            parse_path_ident("a::b"),
-            Ok(vec!["a".to_string(), "b".to_string()])
+            parse_path_ident("a::b").unwrap(),
+            vec!["a".to_string(), "b".to_string()]
         );
         assert_eq!(
-            parse_path_ident("a::b2::c"),
-            Ok(vec!["a".to_string(), "b2".to_string(), "c".to_string()])
+            parse_path_ident("a::b2::c").unwrap(),
+            vec!["a".to_string(), "b2".to_string(), "c".to_string()]
         );
 
         assert_eq!(
-            parse_path_ident("a"),
-            Err("Invalid path identifier: 'a'".to_string())
+            parse_path_ident("a").unwrap_err().to_string(),
+            "Invalid path identifier: 'a'"
         );
         assert_eq!(
-            parse_path_ident("9a::x"),
-            Err("Invalid path identifier: '9a::x'".to_string())
+            parse_path_ident("9a::x").unwrap_err().to_string(),
+            "Invalid path identifier: '9a::x'"
         );
     }
 }

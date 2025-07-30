@@ -1,6 +1,7 @@
 use crate::core::operations::operator::FirehoseOperator;
 use crate::core::operations::signature::FirehoseOperatorSignature;
 use crate::core::schema::{BuildPlan, DataTypeDescription, FirehoseTableSchema};
+use anyhow::Context;
 use serde::de::DeserializeOwned;
 use std::fmt::Debug;
 use std::marker::PhantomData;
@@ -32,7 +33,7 @@ pub trait FirehoseOperatorFactory: Debug + Send + Sync {
     fn init(
         &self,
         context: &dyn FirehoseOperatorInitContext,
-    ) -> Result<Box<dyn FirehoseOperator>, String>;
+    ) -> anyhow::Result<Box<dyn FirehoseOperator>>;
 }
 
 /// The init interface for `FirehoseOperatorFactory`.
@@ -119,14 +120,16 @@ where
     fn init(
         &self,
         context: &dyn FirehoseOperatorInitContext,
-    ) -> Result<Box<dyn FirehoseOperator>, String> {
+    ) -> anyhow::Result<Box<dyn FirehoseOperator>> {
         let config = &context.build_plan().config;
-        let loader: Box<T> = Box::new(serde_json::from_value(config.clone()).map_err(|_| {
-            format!(
-                "Invalid config: {}",
-                serde_json::to_string_pretty(config).unwrap()
-            )
-        })?);
+        let loader: Box<T> =
+            Box::new(serde_json::from_value(config.clone()).with_context(|| {
+                format!(
+                    "Failed to deserialize operator config for {}: {}",
+                    self.signature.operator_id.as_deref().unwrap_or("unknown"),
+                    serde_json::to_string_pretty(config).unwrap()
+                )
+            })?);
 
         Ok(loader)
     }
