@@ -39,9 +39,7 @@ pub trait OpEnvironment {
     ///
     /// # Returns
     ///
-    /// A `Result<Box<dyn BuildOperator>, String>` where:
-    /// * `Ok` contains a boxed operator that implements the `BuildOperator` trait,
-    /// * `Err` contains an error message if the initialization fails.
+    /// An `anyhow::Result<Arc<dyn FirehoseOperatorFactory>>` containing the operator factory.
     fn lookup_operator_factory(
         &self,
         operator_id: &str,
@@ -64,9 +62,7 @@ pub trait OpEnvironment {
     ///
     /// # Returns
     ///
-    /// A `Result<(), String>` where:
-    /// * `Ok` indicates successful validation,
-    /// * `Err` contains an error message if validation fails.
+    /// An `anyhow::Result<()>` indicating successful validation.
     fn validate_context(
         &self,
         plan_context: BuildPlanContext,
@@ -82,9 +78,7 @@ pub trait OpEnvironment {
     ///
     /// # Returns
     ///
-    /// A `Result<Box<dyn FirehoseOperator>, String>` where:
-    /// * `Ok` contains a boxed operator that implements the `FirehoseOperator` trait,
-    /// * `Err` contains an error message if the initialization fails.
+    /// An `anyhow::Result<Box<dyn FirehoseOperator>>` containing the initialized operator.
     fn init_operator(
         &self,
         plan_context: BuildPlanContext,
@@ -109,9 +103,7 @@ pub trait OpEnvironment {
     ///
     /// # Returns
     ///
-    /// A `Result<BuildPlan, String>` where:
-    /// * `Ok` contains the build plan for the operation,
-    /// * `Err` contains an error message if the operation fails.
+    /// An `anyhow::Result<BuildPlan>` containing the build plan for the operation.
     fn apply_plan_to_schema(
         &self,
         schema: &mut FirehoseTableSchema,
@@ -162,6 +154,10 @@ impl MapOpEnvironment {
     /// # Arguments
     ///
     /// * `bindings` - A slice of Arc-wrapped operator bindings to initialize the environment with.
+    ///
+    /// # Returns
+    ///
+    /// An `anyhow::Result<Self>` containing the initialized environment.
     pub fn from_bindings(bindings: &[Arc<dyn FirehoseOperatorFactory>]) -> anyhow::Result<Self> {
         let mut this = Self::new();
         this.add_bindings(bindings)?;
@@ -173,6 +169,10 @@ impl MapOpEnvironment {
     /// # Arguments
     ///
     /// * `op` - An Arc-wrapped operator binding to add to the environment.
+    ///
+    /// # Returns
+    ///
+    /// An `anyhow::Result<()>` indicating success or containing an error if the binding already exists.
     pub fn add_binding(
         &mut self,
         binding: Arc<dyn FirehoseOperatorFactory>,
@@ -193,7 +193,7 @@ impl MapOpEnvironment {
     ///
     /// # Returns
     ///
-    /// A `Result<(), String>` indicating success or an error message if any binding fails to be added.
+    /// An `anyhow::Result<()>` indicating success or containing an error if any binding fails to be added.
     pub fn add_bindings<'a, B>(
         &mut self,
         bindings: B,
@@ -327,6 +327,10 @@ impl BuildPlanContext {
     }
 
     /// Binds the context to a specific operator signature.
+    ///
+    /// # Returns
+    ///
+    /// An `anyhow::Result<OperationInitializationContext>` containing the bound context.
     pub fn bind_signature(
         self,
         signature: &FirehoseOperatorSignature,
@@ -394,6 +398,10 @@ impl FirehoseOperatorInitContext for OperationInitializationContext {
 
 impl OperationInitializationContext {
     /// Creates a new `OperationInitSignatureContext` with the given plan context and signature.
+    ///
+    /// # Returns
+    ///
+    /// An `anyhow::Result<Self>` containing the initialized context.
     pub fn init(
         plan_context: BuildPlanContext,
         signature: FirehoseOperatorSignature,

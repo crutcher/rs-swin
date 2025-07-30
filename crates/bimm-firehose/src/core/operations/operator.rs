@@ -24,6 +24,10 @@ pub trait FirehoseOperator: 'static + Send + Sync + Debug {
     }
 
     /// Apply the operator to a batch of rows in the provided context.
+    ///
+    /// # Returns
+    ///
+    /// An `anyhow::Result<()>` indicating success or containing an error if the operation fails.
     #[must_use]
     fn apply_to_batch(
         &self,
@@ -40,6 +44,10 @@ pub trait FirehoseOperator: 'static + Send + Sync + Debug {
     /// Apply the operator to a single row in the provided context.
     ///
     /// Implementations which override `apply_batch` should leave this as unimplemented.
+    ///
+    /// # Returns
+    ///
+    /// An `anyhow::Result<()>` indicating success or containing an error if the operation fails.
     #[must_use]
     fn apply_to_row(
         &self,
@@ -104,6 +112,10 @@ impl FirehoseBatchTransaction {
     }
 
     /// Commits a row back to the row batch at the specified index.
+    ///
+    /// # Returns
+    ///
+    /// An `anyhow::Result<()>` indicating success or containing an error if the index is out of bounds.
     pub fn commit_row(
         &mut self,
         row: &Row,
@@ -120,6 +132,10 @@ impl FirehoseBatchTransaction {
     }
 
     /// Commits a row transaction back to the row batch.
+    ///
+    /// # Returns
+    ///
+    /// An `anyhow::Result<()>` indicating success or containing an error if the operation fails.
     pub fn commit_row_transaction(
         &mut self,
         row_txn: &FirehoseRowTransaction,
@@ -159,7 +175,7 @@ impl FirehoseRowTransaction {
     ///
     /// # Returns
     ///
-    /// A `Result` containing a reference to the value of type `T` if found, or an error message if not found.
+    /// An `anyhow::Result<&T>` containing a reference to the value of type `T` if found.
     #[must_use]
     pub fn get_required_scalar_input<T: 'static>(
         &self,
@@ -197,7 +213,7 @@ impl FirehoseRowTransaction {
     ///
     /// # Returns
     ///
-    /// A `Result` indicating success or an error message if the operation fails.
+    /// An `anyhow::Result<()>` indicating success or containing an error if the operation fails.
     #[must_use]
     pub fn set_scalar_output(
         &mut self,

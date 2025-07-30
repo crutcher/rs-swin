@@ -213,9 +213,7 @@ impl BuildPlan {
     ///
     /// ## Returns
     ///
-    /// A `Result<&str, String>` where:
-    /// - `Ok(&str)` is the column name corresponding to the input parameter.
-    /// - `Err(String)` is an error message if the parameter name is not found in the inputs.
+    /// An `anyhow::Result<&str>` containing the column name corresponding to the input parameter.
     pub fn translate_input_name(
         &self,
         parameter_name: &str,
@@ -231,9 +229,7 @@ impl BuildPlan {
     ///
     /// ## Returns
     ///
-    /// A `Result<&str, String>` where:
-    /// - `Ok(&str)` is the column name corresponding to the output parameter.
-    /// - `Err(String)` is an error message if the parameter name is not found in the outputs.
+    /// An `anyhow::Result<&str>` containing the column name corresponding to the output parameter.
     pub fn translate_output_name(
         &self,
         parameter_name: &str,
@@ -462,9 +458,7 @@ impl FirehoseTableSchema {
     ///
     /// ## Returns
     ///
-    /// A `Result<(Vec<String>, Vec<BuildPlan>), String>` where:
-    /// - `Ok((Vec<String>, Vec<BuildPlan>))` contains the base columns and the ordered build plans.
-    /// - `Err(String)` contains an error message if the build order cannot be determined.
+    /// An `anyhow::Result<(Vec<String>, Vec<BuildPlan>)>` containing the base columns and the ordered build plans.
     pub fn build_order(&self) -> anyhow::Result<(Vec<String>, Vec<BuildPlan>)> {
         Self::check_graph(&self.columns, &self.build_plans)
     }
@@ -480,9 +474,7 @@ impl FirehoseTableSchema {
     ///
     /// ## Returns
     ///
-    /// A `Result<Vec<BuildPlan>, String>` where:
-    /// - `Ok(Vec<BuildPlan>)` contains the ordered build plans needed to produce the target columns.
-    /// - `Err(String)` contains an error message if the build order cannot be determined.
+    /// An `anyhow::Result<Vec<BuildPlan>>` containing the ordered build plans needed to produce the target columns.
     pub fn target_build_order(
         &self,
         extant_columns: &[&str],
@@ -605,9 +597,7 @@ impl FirehoseTableSchema {
     ///
     /// ## Returns
     ///
-    /// A `Result<(), String>` where:
-    /// - `Ok(())` indicates success.
-    /// - `Err(String)` contains an error message if the operation fails.
+    /// An `anyhow::Result<()>` indicating success or containing an error if the operation fails.
     pub fn add_build_plan_and_outputs(
         &mut self,
         plan: BuildPlan,
@@ -636,9 +626,7 @@ impl FirehoseTableSchema {
     ///
     /// ## Returns
     ///
-    /// A `Result<(), String>` where:
-    /// - `Ok(())` indicates success.
-    /// - `Err(String)` contains an error message if the operation fails.
+    /// An `anyhow::Result<()>` indicating success or containing an error if the operation fails.
     pub fn extend_via_plan(
         &mut self,
         plan: BuildPlan,
@@ -733,9 +721,7 @@ impl FirehoseTableSchema {
     ///
     /// ## Returns
     ///
-    /// A `Result<usize, String>` where:
-    /// - `Ok(usize)` is the index of the column if it exists.
-    /// - `Err(String)` is an error message if the column does not exist.
+    /// An `anyhow::Result<usize>` containing the index of the column if it exists.
     pub fn check_column_index(
         &self,
         name: &str,
@@ -754,9 +740,7 @@ impl FirehoseTableSchema {
     ///
     /// ## Returns
     ///
-    /// A `Result<[usize; K], String>` where:
-    /// - `Ok([usize; K])` is an array of indices corresponding to the column names.
-    /// - `Err(String)` is an error message if any of the column names do not exist.
+    /// An `anyhow::Result<[usize; K]>` containing an array of indices corresponding to the column names.
     ///
     /// ## Example
     ///

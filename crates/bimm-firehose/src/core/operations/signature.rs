@@ -184,9 +184,7 @@ impl FirehoseOperatorSignature {
     ///
     /// ## Returns
     ///
-    /// An `Result<Vec<ParameterSpec>, String>` where:
-    /// * `Ok(Vec<ParameterSpec>)`: A new vector of parameter specifications with the added parameter.
-    /// * `Err(String)`: An error message if the parameter name already exists in the list.
+    /// An `anyhow::Result<Vec<ParameterSpec>>` containing a new vector of parameter specifications with the added parameter.
     fn with_parameter(
         spec: ParameterSpec,
         ptype: &str,
