@@ -8,7 +8,10 @@ use std::sync::Arc;
 
 /// Represents a row in a Firehose table, containing values for each column.
 pub struct ValueRow {
+    /// The schema of the row, defining the columns and their data types.
     schema: Arc<FirehoseTableSchema>,
+
+    /// The values in the row, where each value is an `Option<ValueBox>`.
     slots: Vec<Option<ValueBox>>,
 }
 
@@ -32,19 +35,22 @@ impl ValueRow {
         &self,
         f: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
-        write!(f, "{{\n")?;
-        for (idx, (name, value)) in self.iter().enumerate() {
+        writeln!(f, "{{")?;
+        for (idx, col) in self.schema.iter().enumerate() {
             if idx > 0 {
-                write!(f, "\n")?;
+                writeln!(f)?;
             }
 
-            let data_type = &self.schema[name].data_type;
+            let name = col.name.as_str();
+            let type_name = col.data_type.type_name.as_str();
 
-            write!(f, "  # {}\n", data_type.type_name)?;
-            write!(f, "  {}: ", name)?;
+            writeln!(f, "  # {type_name}")?;
+            write!(f, "  {name}: ")?;
+
+            let value = &self.slots[idx];
             match value {
-                Some(v) => write!(f, "{:?},\n", v),
-                None => write!(f, "None,\n"),
+                Some(v) => writeln!(f, "{v:?},"),
+                None => writeln!(f, "None,"),
             }?;
         }
         write!(f, "}}")
@@ -60,9 +66,9 @@ impl ValueRow {
             if idx > 0 {
                 write!(f, ", ")?;
             }
-            write!(f, "{}: ", name)?;
+            write!(f, "{name}: ")?;
             match value {
-                Some(v) => write!(f, "{:?}", v),
+                Some(v) => write!(f, "{v:?}"),
                 None => write!(f, "None"),
             }?;
         }
@@ -85,11 +91,7 @@ impl ValueRow {
 
     /// Returns an iterator over the column names and their corresponding values.
     pub fn iter(&self) -> impl Iterator<Item = (&str, &Option<ValueBox>)> {
-        self.schema
-            .columns
-            .iter()
-            .map(|c| c.name.as_str())
-            .zip(self.slots.iter())
+        self.schema.names_iter().zip(self.slots.iter())
     }
 
     /// Returns true if the row has a value for the specified column name.
@@ -187,11 +189,12 @@ impl Index<&str> for ValueRow {
 
         match self.slots[index].as_ref() {
             Some(value) => value,
-            None => panic!("Column {} has no value", column_name),
+            None => panic!("Column {column_name} has no value"),
         }
     }
 }
 
+/// Represents a batch of `ValueRow`, with `FirehoseTableSchema` as its schema.
 pub struct ValueRowBatch {
     /// The schema of the row batch.
     schema: Arc<FirehoseTableSchema>,
@@ -205,11 +208,11 @@ impl Debug for ValueRowBatch {
         &self,
         f: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
-        write!(f, "ValueRowBatch {{\n")?;
+        writeln!(f, "ValueRowBatch {{")?;
         for (idx, row) in self.iter().enumerate() {
             write!(f, "  {idx}: ")?;
             row.inner_fmt_horiz(f)?;
-            write!(f, ",\n")?;
+            writeln!(f, ",")?;
         }
         write!(f, "}}")
     }
@@ -263,6 +266,13 @@ impl ValueRowBatch {
         self.rows.push(row);
     }
 
+    /// Creates a new row in the batch with the same schema as the batch.
+    ///
+    /// This initializes the row with all slots set to `None`.
+    ///
+    /// # Returns
+    ///
+    /// A mutable reference to the newly created `ValueRow`.
     pub fn new_row(&mut self) -> &mut ValueRow {
         let row = ValueRow::new(self.schema.clone());
         self.rows.push(row);
@@ -1024,8 +1034,8 @@ mod tests {
 
         let row = ValueRow::new(schema.clone());
         assert_eq!(row.slots.len(), 2);
-        assert_eq!(row.has_column_value("foo"), false);
-        assert_eq!(row.has_column_value("bar"), false);
+        assert!(!row.has_column_value("foo"));
+        assert!(!row.has_column_value("bar"));
     }
 
     #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1054,11 +1064,11 @@ mod tests {
         assert!(row.has_column_value("bar"));
 
         assert_eq!(
-            format!("{:?}", row),
+            format!("{row:?}"),
             "ValueRow { foo: {42}, bar: [Any { .. }], qux: None }"
         );
         assert_eq!(
-            format!("{:#?}", row),
+            format!("{row:#?}"),
             indoc::indoc! {r#"
               ValueRow {
                 # i32
@@ -1090,7 +1100,7 @@ mod tests {
         row.set("bar", ValueBox::serializing("Hello").unwrap());
 
         assert_eq!(
-            format!("{:#?}", batch),
+            format!("{batch:#?}"),
             indoc::indoc! {r#"
                 ValueRowBatch {
                   0: { foo: {42}, bar: None },

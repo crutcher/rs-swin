@@ -371,6 +371,16 @@ impl IndexMut<&str> for FirehoseTableSchema {
 }
 
 impl FirehoseTableSchema {
+    /// Returns an iterator over the columns in the schema.
+    pub fn iter(&self) -> impl Iterator<Item = &ColumnSchema> {
+        self.columns.iter()
+    }
+
+    /// Returns an iterator over the names of the columns in the schema.
+    pub fn names_iter(&self) -> impl Iterator<Item = &str> {
+        self.iter().map(|c| c.name.as_str())
+    }
+
     /// Gets a reference to a column by its name.
     pub fn get_column(
         &self,
