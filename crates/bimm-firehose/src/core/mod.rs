@@ -7,6 +7,10 @@ pub mod rows;
 /// Defines the symbolic schema for firehose tables.
 pub mod schema;
 
+/// Defines `ValueBox`, a sum type for Json Values and boxed values.
+mod value_box;
+pub use value_box::*;
+
 #[cfg(test)]
 mod tests {
     use crate::ops::image::loader::{ImageLoader, ResizeSpec};
