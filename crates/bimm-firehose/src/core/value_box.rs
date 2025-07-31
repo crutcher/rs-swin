@@ -1,4 +1,4 @@
-use anyhow::{bail, Context};
+use anyhow::{Context, bail};
 use serde::de::DeserializeOwned;
 use std::any::{Any, TypeId};
 use std::fmt::Debug;
@@ -11,7 +11,6 @@ pub enum ValueBox {
     /// Holds a boxed value of any type that implements `Any` and `Send`.
     Boxed(Box<dyn Any + 'static + Send>),
 }
-
 
 /// Checks if a type is boxable in a `ValueBox::Boxed`.
 ///
@@ -38,7 +37,7 @@ pub fn try_boxable<T: 'static>() -> anyhow::Result<()> {
         TypeId::of::<isize>(),
         TypeId::of::<bool>(),
     ];
-    if forbidden_types.contains(&type_id)  {
+    if forbidden_types.contains(&type_id) {
         let type_name = std::any::type_name::<T>();
         bail!(
             "Type `{type_name}` cannot be stored in ValueBox::Boxed; \
@@ -65,15 +64,15 @@ impl Debug for ValueBox {
         f: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
         match self {
-            ValueBox::Value(value) => write!(f, "ValueBox::Value({value})"),
-            ValueBox::Boxed(boxed) => write!(f, "ValueBox::Boxed({boxed:?})"),
+            ValueBox::Value(value) => write!(f, "{{{value}}}"),
+            ValueBox::Boxed(boxed) => write!(f, "[{boxed:?}]"),
         }
     }
 }
 
 impl ValueBox {
     /// Creates a new `ValueBox::Value` by serializing an object.
-    pub fn from_serialize<T: serde::Serialize>(obj: T) -> anyhow::Result<Self> {
+    pub fn serializing<T: serde::Serialize>(obj: T) -> anyhow::Result<Self> {
         serde_json::to_value(obj)
             .with_context(|| "Failed to serialize value")
             .map(ValueBox::Value)
@@ -86,14 +85,16 @@ impl ValueBox {
 
     /// Creates a new `ValueBox::Boxed` by boxing an object that implements `Any` and `Send`.
     pub fn boxing<T>(obj: T) -> Self
-    where T: Any + Send + 'static,
+    where
+        T: Any + Send + 'static,
     {
         Self::from_box(Box::new(obj))
     }
 
     /// Creates a new `ValueBox::Boxed` from a boxed object that implements `Any` and `Send`.
     pub fn from_box<T>(boxed: Box<T>) -> Self
-    where T: Any + Send + 'static,
+    where
+        T: Any + Send + 'static,
     {
         check_boxable::<T>();
         ValueBox::Boxed(boxed)
@@ -132,7 +133,7 @@ impl ValueBox {
     ///
     /// An `anyhow::Result<T>` where `T` is the deserialized type;
     /// if deserialization fails, it returns an error with context.
-    pub fn deserialize_value<T>(&self) -> anyhow::Result<T>
+    pub fn deserializing<T>(&self) -> anyhow::Result<T>
     where
         T: DeserializeOwned + 'static,
     {
@@ -204,23 +205,23 @@ mod tests {
         assert!(vb.is_value());
         assert!(!vb.is_boxed());
 
-        assert_eq!(vb.deserialize_value::<Vec<String>>()?, vec!["foo", "bar"]);
+        assert_eq!(vb.deserializing::<Vec<String>>()?, vec!["foo", "bar"]);
 
-        assert_eq!(format!("{vb:?}"), format!("ValueBox::Value({json_value})"));
+        assert_eq!(format!("{vb:?}"), format!("{{[\"foo\",\"bar\"]}}"));
 
         Ok(())
     }
 
     #[test]
     fn test_string_value() -> anyhow::Result<()> {
-        let vb = ValueBox::from_serialize("abc")?;
+        let vb = ValueBox::serializing("abc")?;
         assert!(vb.is_value());
         assert!(!vb.is_boxed());
 
-        assert_eq!(vb.deserialize_value::<String>()?, "abc");
+        assert_eq!(vb.deserializing::<String>()?, "abc");
 
         assert_eq!(
-            vb.deserialize_value::<i32>().unwrap_err().to_string(),
+            vb.deserializing::<i32>().unwrap_err().to_string(),
             "ValueBox::deserialize_value::<i32>() failed on: \"abc\""
         );
 
@@ -230,9 +231,9 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = r"called on Value")]
+    #[should_panic(expected = r"called on {")]
     fn test_unwrap_value_as_boxed() {
-        let vb = ValueBox::from_serialize("abc").unwrap();
+        let vb = ValueBox::serializing("abc").unwrap();
         assert!(vb.is_value());
         assert!(!vb.is_boxed());
 
@@ -240,7 +241,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = r"called on ValueBox::Boxed")]
+    #[should_panic(expected = r"unwrap_value() called")]
     fn test_unwrap_boxed_as_value() {
         let my_struct = MyStruct {
             field1: "test".to_string(),
@@ -251,18 +252,18 @@ mod tests {
         assert!(!vb.is_value());
         assert!(vb.is_boxed());
 
-        vb.deserialize_value::<String>().unwrap();
+        vb.deserializing::<String>().unwrap();
     }
 
     #[test]
     fn test_int_value() -> anyhow::Result<()> {
-        let vb = ValueBox::from_serialize(42_i32)?;
+        let vb = ValueBox::serializing(42_i32)?;
         assert!(vb.is_value());
         assert!(!vb.is_boxed());
 
-        assert_eq!(vb.deserialize_value::<i32>()?, 42_i32);
-        assert_eq!(vb.deserialize_value::<i64>()?, 42_i64);
-        assert_eq!(vb.deserialize_value::<usize>()?, 42_usize);
+        assert_eq!(vb.deserializing::<i32>()?, 42_i32);
+        assert_eq!(vb.deserializing::<i64>()?, 42_i64);
+        assert_eq!(vb.deserializing::<usize>()?, 42_usize);
 
         assert_eq!(vb.unwrap_value().as_i64().unwrap(), 42_i64);
 
@@ -271,16 +272,13 @@ mod tests {
 
     #[test]
     fn test_int_array() -> anyhow::Result<()> {
-        let vb = ValueBox::from_serialize(vec![42_i32, 0_i32])?;
+        let vb = ValueBox::serializing(vec![42_i32, 0_i32])?;
         assert!(vb.is_value());
         assert!(!vb.is_boxed());
 
-        assert_eq!(vb.deserialize_value::<Vec<i32>>()?, vec![42_i32, 0_i32]);
-        assert_eq!(vb.deserialize_value::<Vec<i64>>()?, vec![42_i64, 0_i64]);
-        assert_eq!(
-            vb.deserialize_value::<Vec<usize>>()?,
-            vec![42_usize, 0_usize]
-        );
+        assert_eq!(vb.deserializing::<Vec<i32>>()?, vec![42_i32, 0_i32]);
+        assert_eq!(vb.deserializing::<Vec<i64>>()?, vec![42_i64, 0_i64]);
+        assert_eq!(vb.deserializing::<Vec<usize>>()?, vec![42_usize, 0_usize]);
 
         Ok(())
     }
