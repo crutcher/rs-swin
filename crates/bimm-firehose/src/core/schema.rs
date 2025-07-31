@@ -795,6 +795,13 @@ mod tests {
     use super::*;
     use indoc::indoc;
 
+    /// Ensures that `FirehoseTableSchema` is `Send`.
+    #[allow(dead_code)]
+    const FIREHOSE_TABLE_SCHEMA_IS_SEND: fn() = || {
+        fn assert_send<T: Send>() {}
+        assert_send::<FirehoseTableSchema>();
+    };
+
     #[test]
     fn test_data_type_description() {
         let schema = DataTypeDescription::new::<Option<i32>>();
