@@ -10,12 +10,34 @@ use itertools::Itertools;
 use rs_cinic_10_index::Cinic10Index;
 use std::sync::Arc;
 
-use bimm_firehose::core::operations::executor::{FirehoseBatchExecutor, SequentialBatchExecutor};
+use bimm_firehose::core::operations::executor::{FirehoseBatchExecutor, ThreadedBatchExecutor};
 use bimm_firehose::core::{FirehoseRowBatch, FirehoseRowReader, FirehoseRowWriter, ValueBox};
 use burn::prelude::Tensor;
+use clap::Parser;
 use std::time::Instant;
 
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Number of workers to use for processing
+    #[arg(short, long, default_value_t = 1)]
+    workers: usize,
+
+    /// Batch size for processing
+    #[arg(short, long, default_value_t = 512)]
+    batch_size: usize,
+
+    /// Whether to simulate the stack operation
+    #[arg(long, default_value_t = false)]
+    simulate_stack: bool,
+}
+
 fn main() -> anyhow::Result<()> {
+    let args = Args::parse();
+
+    let batch_size = args.batch_size;
+    let workers = args.workers;
+
     let index: Cinic10Index = Default::default();
 
     type B = Cuda;
@@ -55,13 +77,25 @@ fn main() -> anyhow::Result<()> {
         Arc::new(schema)
     };
 
-    let executor = SequentialBatchExecutor::new(schema.clone(), env.clone())?;
+    let executor: Arc<dyn FirehoseBatchExecutor> = if workers == 1 {
+        Arc::new(
+            bimm_firehose::core::operations::executor::SequentialBatchExecutor::new(
+                schema.clone(),
+                env.clone(),
+            )?,
+        )
+    } else {
+        Arc::new(ThreadedBatchExecutor::new(
+            workers,
+            schema.clone(),
+            env.clone(),
+        )?)
+    };
 
     // Track the time it takes to process the dataset in batches.
     let mut durations = Vec::new();
 
     // Simulate processing the dataset in batches, without threading.
-    let batch_size = 512;
     for chunk in (0..index.test.len()).chunks(batch_size).into_iter() {
         let start_time = Instant::now();
 
@@ -80,20 +114,22 @@ fn main() -> anyhow::Result<()> {
         // Run the batch.
         executor.execute_batch(&mut batch)?;
 
-        // Simulate the batch collation function.
-        let _stack: Tensor<B, 4> = Tensor::stack(
-            batch
-                .iter()
-                .map(|row| {
-                    row.get("tensor")
-                        .unwrap()
-                        .as_ref::<Tensor<B, 3>>()
-                        .unwrap()
-                        .clone()
-                })
-                .collect::<Vec<_>>(),
-            0,
-        );
+        if args.simulate_stack {
+            // Simulate the batch collation function.
+            let _stack: Tensor<B, 4> = Tensor::stack(
+                batch
+                    .iter()
+                    .map(|row| {
+                        row.get("tensor")
+                            .unwrap()
+                            .as_ref::<Tensor<B, 3>>()
+                            .unwrap()
+                            .clone()
+                    })
+                    .collect::<Vec<_>>(),
+                0,
+            );
+        }
 
         let end_time = Instant::now();
         let duration = end_time.duration_since(start_time);

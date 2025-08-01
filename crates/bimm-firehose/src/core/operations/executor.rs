@@ -79,3 +79,108 @@ impl FirehoseBatchExecutor for SequentialBatchExecutor {
         Ok(())
     }
 }
+
+pub struct ThreadedBatchExecutor {
+    workers: usize,
+    pool: threadpool::ThreadPool,
+
+    schema: Arc<FirehoseTableSchema>,
+    environment: Arc<dyn OpEnvironment>,
+    op_runners: Vec<Arc<OperationRunner>>,
+
+    tx: std::sync::mpsc::Sender<(usize, FirehoseRowBatch)>,
+    rx: std::sync::mpsc::Receiver<(usize, FirehoseRowBatch)>,
+}
+
+impl ThreadedBatchExecutor {
+    pub fn new(
+        workers: usize,
+        schema: Arc<FirehoseTableSchema>,
+        environment: Arc<dyn OpEnvironment>,
+    ) -> anyhow::Result<Self> {
+        let mut op_runners = Vec::new();
+        let (_base, build_order) = schema.build_order()?;
+        for plan in &build_order {
+            let plan = Arc::new(plan.clone());
+            op_runners.push(Arc::new(OperationRunner::new_for_plan(
+                schema.clone(),
+                plan,
+                environment.as_ref(),
+            )?));
+        }
+
+        let pool = threadpool::ThreadPool::new(workers);
+
+        let (tx, rx) = std::sync::mpsc::channel();
+
+        Ok(ThreadedBatchExecutor {
+            schema,
+            environment,
+            workers,
+            pool,
+            op_runners,
+            tx,
+            rx,
+        })
+    }
+}
+
+impl FirehoseBatchExecutor for ThreadedBatchExecutor {
+    fn schema(&self) -> &Arc<FirehoseTableSchema> {
+        &self.schema
+    }
+
+    fn environment(&self) -> &Arc<dyn OpEnvironment> {
+        &self.environment
+    }
+
+    fn execute_batch(
+        &self,
+        batch: &mut FirehoseRowBatch,
+    ) -> anyhow::Result<()> {
+        let chunk_size = batch.len() / self.workers;
+        for idx in 0..self.workers {
+            let mut chunk = FirehoseRowBatch::new(batch.schema().clone());
+            let k: usize = std::cmp::min(chunk_size, batch.len());
+            batch.drain(0..k).for_each(|r| chunk.add_row(r));
+
+            let tx = self.tx.clone();
+            let op_runners = self.op_runners.clone();
+            self.pool.execute(move || {
+                let mut chunk = chunk;
+                for runner in &op_runners {
+                    runner
+                        .apply_to_batch(&mut chunk)
+                        .expect("Failed to apply operation");
+                }
+                tx.send((idx, chunk))
+                    .expect("Failed to send processed chunk");
+            });
+        }
+
+        let mut chunks = Vec::with_capacity(self.workers);
+        for _ in 0..self.workers {
+            let recieved = self.rx.recv().expect("Failed to receive chunk");
+            chunks.push(recieved);
+        }
+        chunks.sort_by_key(|(idx, _)| *idx);
+
+        chunks
+            .into_iter()
+            .for_each(|(_, chunk)| batch.append_batch(chunk));
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    #[allow(dead_code)]
+    const SE_IS_SEND: fn() = || {
+        fn assert_send<T: Send>() {}
+        assert_send::<Vec<Arc<OperationRunner>>>();
+    };
+}

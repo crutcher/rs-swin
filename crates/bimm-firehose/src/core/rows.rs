@@ -2,8 +2,9 @@ use crate::core::ValueBox;
 use crate::core::operations::signature::FirehoseOperatorSignature;
 use crate::core::schema::{BuildPlan, FirehoseTableSchema};
 use std::fmt::Debug;
-use std::ops::{Index, IndexMut, Range};
+use std::ops::{Index, IndexMut, Range, RangeBounds};
 use std::sync::Arc;
+use std::vec::Drain;
 
 /// Represents a row in a Firehose table, containing values for each column.
 pub struct FirehoseRow {
@@ -286,6 +287,45 @@ impl FirehoseRowBatch {
         let row = FirehoseRow::new(self.schema.clone());
         self.rows.push(row);
         self.rows.last_mut().unwrap()
+    }
+
+    /// Removes the subslice indicated by the given range from the vector,
+    /// returning a double-ended iterator over the removed subslice.
+    ///
+    /// If the iterator is dropped before being fully consumed,
+    /// it drops the remaining removed elements.
+    ///
+    /// The returned iterator keeps a mutable borrow on the vector to optimize
+    /// its implementation.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the starting point is greater than the end point or if
+    /// the end point is greater than the length of the vector.
+    ///
+    /// # Leaking
+    ///
+    /// If the returned iterator goes out of scope without being dropped (due to
+    /// [`mem::forget`], for example), the vector may have lost and leaked
+    /// elements arbitrarily, including elements outside the range.
+    pub fn drain<R>(
+        &mut self,
+        range: R,
+    ) -> Drain<FirehoseRow>
+    where
+        R: RangeBounds<usize>,
+    {
+        self.rows.drain(range)
+    }
+
+    /// Consume and append the rows in a batch to this batch.
+    pub fn append_batch(
+        &mut self,
+        other: FirehoseRowBatch,
+    ) {
+        for row in other.rows {
+            self.add_row(row);
+        }
     }
 }
 
