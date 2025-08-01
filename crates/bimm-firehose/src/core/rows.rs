@@ -2,7 +2,7 @@ use crate::core::ValueBox;
 use crate::core::operations::signature::FirehoseOperatorSignature;
 use crate::core::schema::{BuildPlan, FirehoseTableSchema};
 use std::fmt::Debug;
-use std::ops::{Index, IndexMut, Range, RangeBounds};
+use std::ops::{Index, IndexMut, RangeBounds};
 use std::sync::Arc;
 use std::vec::Drain;
 
@@ -56,9 +56,9 @@ impl FirehoseRow {
 
             let value = &self.slots[idx];
             match value {
-                Some(v) => writeln!(f, "{v:?},"),
-                None => writeln!(f, "None,"),
-            }?;
+                Some(v) => writeln!(f, "{v:?},")?,
+                None => writeln!(f, "None,")?,
+            }
         }
         write!(f, "}}")
     }
@@ -75,20 +75,21 @@ impl FirehoseRow {
             }
             write!(f, "{name}: ")?;
             match value {
-                Some(v) => write!(f, "{v:?}"),
-                None => write!(f, "None"),
-            }?;
+                Some(v) => write!(f, "{v:?}")?,
+                None => write!(f, "None")?,
+            }
         }
         write!(f, " }}")
     }
 }
 
+/// A trait for reading rows from a Firehose table.
 pub trait FirehoseRowReader {
     /// Returns the schema of the row.
     fn schema(&self) -> &Arc<FirehoseTableSchema>;
 
     /// Returns an iterator over the column names and their corresponding values.
-    fn iter(&self) -> impl Iterator<Item = (&str, &Option<ValueBox>)>;
+    fn iter(&self) -> impl Iterator<Item = (&str, Option<&ValueBox>)>;
 
     /// Returns true if the row has a value for the specified column name.
     ///
@@ -124,6 +125,7 @@ pub trait FirehoseRowReader {
     ) -> Option<&ValueBox>;
 }
 
+/// A trait for writing rows to a Firehose table.
 pub trait FirehoseRowWriter {
     /// Sets the value of the specified column.
     ///
@@ -153,8 +155,10 @@ impl FirehoseRowReader for FirehoseRow {
         &self.schema
     }
 
-    fn iter(&self) -> impl Iterator<Item = (&str, &Option<ValueBox>)> {
-        self.schema.names_iter().zip(self.slots.iter())
+    fn iter(&self) -> impl Iterator<Item = (&str, Option<&ValueBox>)> {
+        self.schema
+            .names_iter()
+            .zip(self.slots.iter().map(|v| v.as_ref()))
     }
 
     fn has_column_value(
@@ -223,6 +227,11 @@ impl FirehoseRowBatch {
         Self::new_with_size(schema, 0)
     }
 
+    /// Creates an empty `ValueRowBatch` with the same schema as this batch.
+    pub fn empty_like(&self) -> Self {
+        FirehoseRowBatch::new_with_size(self.schema.clone(), 0)
+    }
+
     /// Creates a new `ValueRowBatch` with the given schema and row count.
     pub fn new_with_size(
         schema: Arc<FirehoseTableSchema>,
@@ -253,6 +262,7 @@ impl FirehoseRowBatch {
         self.rows.iter_mut()
     }
 
+    /// Returns a reference to the schema of the row batch.
     pub fn schema(&self) -> &Arc<FirehoseTableSchema> {
         &self.schema
     }
@@ -285,7 +295,7 @@ impl FirehoseRowBatch {
     /// A mutable reference to the newly created `ValueRow`.
     pub fn new_row(&mut self) -> &mut FirehoseRow {
         let row = FirehoseRow::new(self.schema.clone());
-        self.rows.push(row);
+        self.add_row(row);
         self.rows.last_mut().unwrap()
     }
 
@@ -308,7 +318,7 @@ impl FirehoseRowBatch {
     /// If the returned iterator goes out of scope without being dropped (due to
     /// [`mem::forget`], for example), the vector may have lost and leaked
     /// elements arbitrarily, including elements outside the range.
-    pub fn drain<R>(
+    pub fn drain_rows<R>(
         &mut self,
         range: R,
     ) -> Drain<FirehoseRow>
@@ -359,66 +369,96 @@ impl IndexMut<usize> for FirehoseRowBatch {
     }
 }
 
-impl Index<Range<usize>> for FirehoseRowBatch {
-    type Output = [FirehoseRow];
-
-    /// Returns a slice of rows for the specified range.
-    ///
-    /// # Arguments
-    ///
-    /// * `range`: The range of indices to retrieve.
-    fn index(
-        &self,
-        range: Range<usize>,
-    ) -> &Self::Output {
-        &self.rows[range]
-    }
-}
-
-impl IndexMut<Range<usize>> for FirehoseRowBatch {
-    /// Returns a mutable slice of rows for the specified range.
-    ///
-    /// # Arguments
-    ///
-    /// * `range`: The range of indices to retrieve.
-    fn index_mut(
-        &mut self,
-        range: Range<usize>,
-    ) -> &mut Self::Output {
-        &mut self.rows[range]
-    }
-}
-
-pub struct ParameterMap {
+/// A map of formal parameters to their corresponding input and output columns in a build plan.
+struct ParameterMapper {
+    /// The build plan that describes the operator and its inputs/outputs.
     build_plan: Arc<BuildPlan>,
 }
 
-impl ParameterMap {
-    pub fn new(build_plan: Arc<BuildPlan>) -> Self {
-        ParameterMap { build_plan }
+impl ParameterMapper {
+    /// Creates a new `ParameterMapper` for the given build plan.
+    fn new(build_plan: Arc<BuildPlan>) -> Self {
+        ParameterMapper { build_plan }
     }
 
-    pub fn assert_input_column(
+    /// Maps an input parameter name to its corresponding column name in the build plan.
+    ///
+    /// # Arguments
+    ///
+    /// * `parameter_name`: The name of the input parameter to map.
+    ///
+    /// # Returns
+    ///
+    /// An `Option<&str>` containing the column name if the parameter is an input parameter,
+    fn try_map_input_name(
+        &self,
+        parameter_name: &str,
+    ) -> Option<&str> {
+        self.build_plan
+            .inputs
+            .get(parameter_name)
+            .map(|s| s.as_str())
+    }
+
+    /// Returns the build plan associated with this parameter mapper.
+    ///
+    /// # Panics
+    ///
+    /// Panics if this parameter is not an input parameter.
+    fn assert_map_input_name(
         &self,
         parameter_name: &str,
     ) -> &str {
-        self.build_plan.inputs[parameter_name].as_str()
+        match self.try_map_input_name(parameter_name) {
+            Some(name) => name,
+            None => panic!("Parameter '{}' is not an input parameter", parameter_name),
+        }
     }
 
-    pub fn assert_output_column(
+    /// Maps an output parameter name to its corresponding column name in the build plan.
+    ///
+    /// # Arguments
+    ///
+    /// * `parameter_name`: The name of the output parameter to map.
+    ///
+    /// # Returns
+    ///
+    /// An `Option<&str>` containing the column name if the parameter is an output parameter,
+    fn try_map_output_name(
+        &self,
+        parameter_name: &str,
+    ) -> Option<&str> {
+        self.build_plan
+            .outputs
+            .get(parameter_name)
+            .map(|s| s.as_str())
+    }
+
+    /// Returns the build plan associated with this parameter mapper.
+    ///
+    /// # Panics
+    ///
+    /// Panics if this parameter is not an output parameter.
+    fn assert_map_output_name(
         &self,
         parameter_name: &str,
     ) -> &str {
-        self.build_plan.outputs[parameter_name].as_str()
+        match self.try_map_output_name(parameter_name) {
+            Some(name) => name,
+            None => panic!("Parameter '{}' is not an output parameter", parameter_name),
+        }
     }
 }
 
 /// A transaction for a batch of rows processed by an operator.
 pub struct FirehoseBatchTransaction<'a> {
-    parameter_map: ParameterMap,
+    /// A mapper for translating between operator parameters and column names.
+    parameter_mapper: ParameterMapper,
 
+    /// The original row batch being processed.
     original: &'a mut FirehoseRowBatch,
 
+    /// A batch of updates to be applied to the original row batch.
     updates: FirehoseRowBatch,
 
     /// The build plan that describes the operator and its inputs/outputs.
@@ -438,7 +478,7 @@ impl<'a> FirehoseBatchTransaction<'a> {
         let updates = FirehoseRowBatch::new_with_size(original.schema().clone(), original.len());
 
         FirehoseBatchTransaction {
-            parameter_map: ParameterMap::new(build_plan.clone()),
+            parameter_mapper: ParameterMapper::new(build_plan.clone()),
             original,
             updates,
             build_plan,
@@ -446,11 +486,20 @@ impl<'a> FirehoseBatchTransaction<'a> {
         }
     }
 
+    /// Commit the updates made in this transaction to the original row batch.
+    ///
+    /// This applies all changes made to the rows in the `updates` batch
+    /// back to the corresponding rows in the `original` batch.
+    ///
+    /// # Returns
+    ///
+    /// An `anyhow::Result<()>` indicating success or failure.
     pub fn commit(mut self) -> anyhow::Result<()> {
         for (original, update) in self.original.iter_mut().zip(self.updates.iter_mut()) {
-            for column_name in self.build_plan.outputs.values() {
-                if let Some(value) = update.take(column_name) {
-                    original.set(column_name, value)
+            for target_column in self.build_plan.outputs.values() {
+                // Transfer the ownership of the value from the update row to the original row.
+                if let Some(value) = update.take(target_column) {
+                    original.set(target_column, value);
                 }
             }
         }
@@ -467,23 +516,35 @@ impl<'a> FirehoseBatchTransaction<'a> {
         self.original.is_empty()
     }
 
-    pub fn row_txn(
+    /// Returns a view of the operation signature.
+    pub fn signature(&self) -> &Arc<FirehoseOperatorSignature> {
+        &self.signature
+    }
+
+    /// Construct a mutable row-transaction for the row at the given index.
+    pub fn mut_row_transaction(
         &mut self,
         index: usize,
     ) -> FirehoseRowTransaction<'_> {
-        let original = &mut self.original.rows[index];
-        let updates = &mut self.updates.rows[index];
         FirehoseRowTransaction {
-            parameter_map: &self.parameter_map,
-            original,
-            updates,
+            parameter_mapper: &self.parameter_mapper,
+            original: &mut self.original.rows[index],
+            updates: &mut self.updates.rows[index],
         }
     }
 }
 
+/// A row-transaction for a single row in a batch, allowing both reading and writing of values.
+///
+/// This is a view-class of a backing `FirehoseBatchTransaction`.
 pub struct FirehoseRowTransaction<'a> {
-    parameter_map: &'a ParameterMap,
+    /// A mapper for translating between operator parameters and column names.
+    parameter_mapper: &'a ParameterMapper,
+
+    /// The original row being processed.
     original: &'a mut FirehoseRow,
+
+    /// A row of updates to be applied to the original row.
     updates: &'a mut FirehoseRow,
 }
 
@@ -492,23 +553,29 @@ impl FirehoseRowReader for FirehoseRowTransaction<'_> {
         self.original.schema()
     }
 
-    fn iter(&self) -> impl Iterator<Item = (&str, &Option<ValueBox>)> {
-        self.original.iter()
+    fn iter(&self) -> impl Iterator<Item = (&str, Option<&ValueBox>)> {
+        self.parameter_mapper
+            .build_plan
+            .inputs
+            .iter()
+            .map(|(pname, cname)| (pname.as_str(), self.original.get(cname)))
     }
 
     fn has_column_value(
         &self,
         column_name: &str,
     ) -> bool {
-        let column_name = self.parameter_map.assert_input_column(column_name);
-        self.original.has_column_value(column_name)
+        match self.parameter_mapper.try_map_input_name(column_name) {
+            None => false,
+            Some(name) => self.original.has_column_value(name),
+        }
     }
 
     fn get(
         &self,
         column_name: &str,
     ) -> Option<&ValueBox> {
-        let column_name = self.parameter_map.assert_input_column(column_name);
+        let column_name = self.parameter_mapper.assert_map_input_name(column_name);
         self.original.get(column_name)
     }
 }
@@ -519,23 +586,23 @@ impl FirehoseRowWriter for FirehoseRowTransaction<'_> {
         column_name: &str,
         value: ValueBox,
     ) {
-        let column_name = self.parameter_map.assert_output_column(column_name);
+        let column_name = self.parameter_mapper.assert_map_output_name(column_name);
         self.updates.set(column_name, value);
     }
 
     fn take(
         &mut self,
-        column_name: &str,
+        _column_name: &str,
     ) -> Option<ValueBox> {
-        let column_name = self.parameter_map.assert_output_column(column_name);
-        self.updates.take(column_name)
+        unimplemented!("take() is not supported in FirehoseRowTransaction");
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::schema::{ColumnSchema, FirehoseTableSchema};
+    use crate::core::operations::signature::ParameterSpec;
+    use crate::core::schema::{ColumnSchema, DataTypeDescription, FirehoseTableSchema};
     use std::sync::Arc;
 
     /// Ensures that `ValueRow` is `Send`, allowing it to be safely shared across threads.
@@ -546,7 +613,7 @@ mod tests {
     };
 
     #[test]
-    fn test_value_row_creation() {
+    fn test_row_creation() {
         let schema = Arc::new(FirehoseTableSchema::from_columns(&[
             ColumnSchema::new::<i32>("foo"),
             ColumnSchema::new::<String>("bar"),
@@ -556,6 +623,124 @@ mod tests {
         assert_eq!(row.slots.len(), 2);
         assert!(!row.has_column_value("foo"));
         assert!(!row.has_column_value("bar"));
+
+        assert_eq!(row.schema(), &schema);
+    }
+
+    #[test]
+    fn test_batch_creation() {
+        let schema = Arc::new(FirehoseTableSchema::from_columns(&[
+            ColumnSchema::new::<i32>("foo"),
+            ColumnSchema::new::<String>("bar"),
+        ]));
+
+        let mut batch = FirehoseRowBatch::new(schema.clone());
+        assert_eq!(batch.schema(), &schema);
+        assert_eq!(batch.len(), 0);
+        assert!(batch.is_empty());
+
+        batch.new_row();
+        assert_eq!(batch.len(), 1);
+        assert!(!batch.is_empty());
+
+        let empty = batch.empty_like();
+        assert_eq!(empty.len(), 0);
+        assert!(empty.is_empty());
+        assert_eq!(empty.schema(), &schema);
+    }
+
+    #[test]
+    fn test_batch_index() {
+        let schema = Arc::new(FirehoseTableSchema::from_columns(&[
+            ColumnSchema::new::<i32>("foo"),
+            ColumnSchema::new::<String>("bar"),
+        ]));
+
+        let mut batch = FirehoseRowBatch::new(schema.clone());
+        batch.new_row();
+        // IndexMut<usize>
+        batch[0].set("foo", ValueBox::serializing(42).unwrap());
+
+        let row2 = batch.new_row();
+        row2.set("bar", ValueBox::serializing("Hello").unwrap());
+
+        // Index<usize>
+        assert_eq!(
+            batch[0].get("foo").unwrap().deserializing::<i32>().unwrap(),
+            42
+        );
+        assert_eq!(
+            batch[1]
+                .get("bar")
+                .unwrap()
+                .deserializing::<String>()
+                .unwrap(),
+            "Hello"
+        );
+    }
+
+    #[should_panic(expected = "Cannot add row with different schema")]
+    #[test]
+    fn test_add_row_with_different_schema() {
+        let schema1 = Arc::new(FirehoseTableSchema::from_columns(&[
+            ColumnSchema::new::<i32>("foo"),
+        ]));
+
+        let schema2 = Arc::new(FirehoseTableSchema::from_columns(&[ColumnSchema::new::<
+            String,
+        >("bar")]));
+
+        let mut batch = FirehoseRowBatch::new(schema1);
+        let row = FirehoseRow::new(schema2);
+        batch.add_row(row); // This should panic
+    }
+
+    #[test]
+    fn test_drain_rows() {
+        let schema = Arc::new(FirehoseTableSchema::from_columns(&[
+            ColumnSchema::new::<i32>("foo"),
+            ColumnSchema::new::<String>("bar"),
+        ]));
+
+        let mut batch = FirehoseRowBatch::new(schema.clone());
+        for i in 0..5 {
+            let row = batch.new_row();
+            row.set("foo", ValueBox::serializing(i as i32).unwrap());
+            row.set("bar", ValueBox::serializing(format!("Row {i}")).unwrap());
+        }
+
+        assert_eq!(batch.len(), 5);
+        let drained: Vec<_> = batch.drain_rows(1..3).collect();
+        assert_eq!(drained.len(), 2);
+        assert_eq!(batch.len(), 3);
+    }
+
+    #[test]
+    fn test_append_batch() {
+        let schema = Arc::new(FirehoseTableSchema::from_columns(&[
+            ColumnSchema::new::<i32>("foo"),
+            ColumnSchema::new::<String>("bar"),
+        ]));
+
+        let mut batch1 = FirehoseRowBatch::new(schema.clone());
+        for i in 0..3 {
+            let row = batch1.new_row();
+            row.set("foo", ValueBox::serializing(i).unwrap());
+            row.set("bar", ValueBox::serializing(format!("Row {i}")).unwrap());
+        }
+
+        let mut batch2 = FirehoseRowBatch::new(schema.clone());
+        for i in 3..5 {
+            let row = batch2.new_row();
+            row.set("foo", ValueBox::serializing(i).unwrap());
+            row.set("bar", ValueBox::serializing(format!("Row {i}")).unwrap());
+        }
+
+        assert_eq!(batch1.len(), 3);
+        assert_eq!(batch2.len(), 2);
+
+        batch1.append_batch(batch2);
+        assert_eq!(batch1.len(), 5);
     }
 
     #[derive(Debug, Clone, PartialEq, Eq)]
@@ -627,5 +812,68 @@ mod tests {
                   1: { foo: None, bar: {"Hello"} },
                 }"#}
         );
+    }
+
+    #[test]
+    fn test_batch_transaction() -> anyhow::Result<()> {
+        let mut schema = FirehoseTableSchema::from_columns(&[
+            ColumnSchema::new::<i32>("foo"),
+            ColumnSchema::new::<String>("bar"),
+        ]);
+
+        let build_plan = BuildPlan::for_operator("foo/bar")
+            .with_inputs(&[("source", "foo")])
+            .with_outputs(&[("result", "xyz")]);
+        schema.add_build_plan_and_outputs(
+            build_plan.clone(),
+            &[(
+                "result".to_string(),
+                DataTypeDescription::new::<String>(),
+                None,
+            )],
+        )?;
+        let schema = Arc::new(schema);
+
+        let mut batch = FirehoseRowBatch::new(schema.clone());
+        let row = batch.new_row();
+        row.set("foo", ValueBox::serializing(42)?);
+        row.set("bar", ValueBox::serializing("Hello")?);
+
+        let signature = Arc::new(
+            FirehoseOperatorSignature::new()
+                .with_input(
+                    ParameterSpec::new::<String>("source")
+                        .with_description("Source parameter for the operator"),
+                )
+                .with_output(
+                    ParameterSpec::new::<String>("result")
+                        .with_description("Result parameter for the operator"),
+                ),
+        );
+
+        let mut txn = FirehoseBatchTransaction::new(
+            &mut batch,
+            Arc::new(build_plan.clone()),
+            signature.clone(),
+        );
+
+        assert_eq!(txn.len(), 1);
+        assert_eq!(txn.is_empty(), false);
+
+        assert_eq!(txn.signature(), &signature);
+
+        let row_txn = txn.mut_row_transaction(0);
+        assert_eq!(row_txn.schema(), &schema);
+        assert_eq!(row_txn.get("source").unwrap().deserializing::<i32>()?, 42);
+
+        assert_eq!(row_txn.has_column_value("source"), true);
+        assert_eq!(row_txn.has_column_value("foo"), false);
+
+        let vals = row_txn.iter().collect::<Vec<_>>();
+        assert_eq!(vals.len(), 1);
+        assert_eq!(vals[0].0, "source");
+        assert_eq!(vals[0].1.unwrap().deserializing::<i32>()?, 42);
+
+        Ok(())
     }
 }

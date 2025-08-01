@@ -9,11 +9,6 @@ use std::ops::{Index, IndexMut};
 pub struct DataTypeDescription {
     /// The name of the data type.
     pub type_name: String,
-
-    /// Type-specific extension data, serialized as JSON.
-    #[serde(skip_serializing_if = "serde_json::Value::is_null")]
-    #[serde(default)]
-    pub extension: serde_json::Value,
 }
 
 impl DataTypeDescription {
@@ -28,29 +23,6 @@ impl DataTypeDescription {
     pub fn from_type_name(type_name: &str) -> Self {
         DataTypeDescription {
             type_name: type_name.to_string(),
-            extension: serde_json::Value::Null,
-        }
-    }
-
-    /// Extends the data type description with a custom extension.
-    ///
-    /// ## Arguments
-    ///
-    /// - `extension`: The extension to attach to the data type description, serialized as JSON.
-    ///
-    /// ## Returns
-    ///
-    /// A new `DataTypeDescription` with the extension attached.
-    pub fn with_extension<T>(
-        self,
-        extension: T,
-    ) -> Self
-    where
-        T: Serialize,
-    {
-        DataTypeDescription {
-            extension: serde_json::to_value(extension).expect("Failed to serialize extension"),
-            ..self
         }
     }
 }
@@ -827,7 +799,7 @@ mod tests {
     }
 
     #[test]
-    fn test_schema() {
+    fn test_schema() -> anyhow::Result<()> {
         let mut schema = FirehoseTableSchema::from_columns(&[ColumnSchema::new::<i32>("foo")]);
         schema.add_column(ColumnSchema::new::<String>("bar"));
 
@@ -840,6 +812,18 @@ mod tests {
         assert_eq!(schema["foo"].name, "foo");
         // IndexMut<usize>
         schema["foo"].description = Some("An integer column".to_string());
+        // Index<usize>
+        assert_eq!(
+            schema["foo"].description,
+            Some("An integer column".to_string())
+        );
+        // .get_column
+        assert_eq!(
+            schema.get_column("foo").unwrap().description,
+            Some("An integer column".to_string())
+        );
+        // .get_column_mut
+        schema.get_column_mut("bar").unwrap().description = Some("A string column".to_string());
 
         assert_eq!(schema.columns.len(), 2);
         assert_eq!(schema.columns[0].name, "foo");
@@ -863,6 +847,7 @@ mod tests {
                     },
                     {
                       "name": "bar",
+                      "description": "A string column",
                       "data_type": {
                         "type_name": "alloc::string::String"
                       }
@@ -890,6 +875,7 @@ mod tests {
                     },
                     {
                       "name": "bar",
+                      "description": "A string column",
                       "data_type": {
                         "type_name": "alloc::string::String"
                       }
@@ -898,6 +884,22 @@ mod tests {
                 }"#
             }
         );
+
+        Ok(())
+    }
+
+    #[should_panic(expected = "Column \"nonexistent\" not found in schema")]
+    #[test]
+    fn test_lookup_column_nonexistent() {
+        let schema = FirehoseTableSchema::from_columns(&[ColumnSchema::new::<i32>("foo")]);
+        let _ = schema["nonexistent"];
+    }
+
+    #[should_panic(expected = "Column \"nonexistent\" not found in schema")]
+    #[test]
+    fn test_lookup_mut_column_nonexistent() {
+        let mut schema = FirehoseTableSchema::from_columns(&[ColumnSchema::new::<i32>("foo")]);
+        schema["nonexistent"].description = Some("A string column".to_string());
     }
 
     #[test]
@@ -914,5 +916,26 @@ mod tests {
     fn conflicting_column_names_on_add() {
         let mut schema = FirehoseTableSchema::from_columns(&[ColumnSchema::new::<i32>("foo")]);
         schema.add_column(ColumnSchema::new::<String>("foo"));
+    }
+
+    #[test]
+    fn test_build_plan_translation() {
+        let plan = BuildPlan::for_operator("test_operator")
+            .with_description("A test operator")
+            .with_config(serde_json::json!({"key": "value"}))
+            .with_inputs(&[("input1", "column1"), ("input2", "column2")])
+            .with_outputs(&[("output1", "column3")]);
+
+        assert_eq!(plan.operator_id, "test_operator");
+        assert_eq!(plan.description, Some("A test operator".to_string()));
+        assert_eq!(plan.config, serde_json::json!({"key": "value"}));
+        assert_eq!(plan.inputs.get("input1"), Some(&"column1".to_string()));
+        assert_eq!(plan.outputs.get("output1"), Some(&"column3".to_string()));
+
+        let translated_input = plan.translate_input_name("input1").unwrap();
+        assert_eq!(translated_input, "column1");
+
+        let translated_output = plan.translate_output_name("output1").unwrap();
+        assert_eq!(translated_output, "column3");
     }
 }

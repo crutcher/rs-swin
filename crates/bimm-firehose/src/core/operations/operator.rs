@@ -34,7 +34,7 @@ pub trait FirehoseOperator: 'static + Send + Sync + Debug {
         txn: &mut FirehoseBatchTransaction,
     ) -> anyhow::Result<()> {
         for index in 0..txn.len() {
-            let mut row_txn = txn.row_txn(index);
+            let mut row_txn = txn.mut_row_transaction(index);
             self.apply_to_row(&mut row_txn)?;
         }
         Ok(())
