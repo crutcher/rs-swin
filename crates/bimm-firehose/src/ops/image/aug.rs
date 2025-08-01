@@ -27,9 +27,13 @@ define_firehose_operator!(
     )
 );
 
+/// Represents the specifications for flipping an image.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlipSpec {
+    /// The probability of flipping the image horizontally.
     pub horizontal: f32,
+
+    /// The probability of flipping the image vertically.
     pub vertical: f32,
 }
 
@@ -48,6 +52,7 @@ impl FlipSpec {
         }
     }
 
+    /// Creates a new `FlipSpec` with the specified horizontal flip probabilities.
     pub fn with_horizontal(
         self,
         horizontal: f32,
@@ -58,6 +63,7 @@ impl FlipSpec {
         }
     }
 
+    /// Creates a new `FlipSpec` with the specified vertical flip probabilities.
     pub fn with_vertical(
         self,
         vertical: f32,
@@ -69,8 +75,10 @@ impl FlipSpec {
     }
 }
 
+/// Image augmentation operator.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageAugmenter {
+    /// The flip specifications for the image.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     pub flip: Option<FlipSpec>,
@@ -94,6 +102,8 @@ impl ImageAugmenter {
             rotate: false,
         }
     }
+
+    /// Extend the augmenter with a `FlipSpec`.
     pub fn with_flip(
         self,
         flip: FlipSpec,
@@ -104,6 +114,7 @@ impl ImageAugmenter {
         }
     }
 
+    /// Extend the augmenter by enabling/disabling rotate.
     pub fn with_rotate(
         self,
         rotate: bool,

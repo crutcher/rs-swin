@@ -80,21 +80,34 @@ impl FirehoseBatchExecutor for SequentialBatchExecutor {
     }
 }
 
+/// A threaded batch executor.
 pub struct ThreadedBatchExecutor {
-    workers: usize,
+    /// The number of worker threads to use for executing the batch.
+    num_workers: usize,
+
+    /// The thread pool used for executing operations in parallel.
     pool: threadpool::ThreadPool,
 
+    /// The schema of the batch to execute.
     schema: Arc<FirehoseTableSchema>,
+
+    /// The operator environment to use for executing the batch.
     environment: Arc<dyn OpEnvironment>,
+
+    /// The operation runners for each plan in the schema.
     op_runners: Vec<Arc<OperationRunner>>,
 
+    /// The sender for sending processed chunks back to the main thread.
     tx: std::sync::mpsc::Sender<(usize, FirehoseRowBatch)>,
+
+    /// The receiver for receiving processed chunks from worker threads.
     rx: std::sync::mpsc::Receiver<(usize, FirehoseRowBatch)>,
 }
 
 impl ThreadedBatchExecutor {
+    /// Creates a new `ThreadedBatchExecutor` with the given number of workers and operator environment.
     pub fn new(
-        workers: usize,
+        num_workers: usize,
         schema: Arc<FirehoseTableSchema>,
         environment: Arc<dyn OpEnvironment>,
     ) -> anyhow::Result<Self> {
@@ -109,14 +122,14 @@ impl ThreadedBatchExecutor {
             )?));
         }
 
-        let pool = threadpool::ThreadPool::new(workers);
+        let pool = threadpool::ThreadPool::new(num_workers);
 
         let (tx, rx) = std::sync::mpsc::channel();
 
         Ok(ThreadedBatchExecutor {
             schema,
             environment,
-            workers,
+            num_workers,
             pool,
             op_runners,
             tx,
@@ -138,11 +151,11 @@ impl FirehoseBatchExecutor for ThreadedBatchExecutor {
         &self,
         batch: &mut FirehoseRowBatch,
     ) -> anyhow::Result<()> {
-        let chunk_size = batch.len() / self.workers;
-        for idx in 0..self.workers {
-            let mut chunk = FirehoseRowBatch::new(batch.schema().clone());
+        let chunk_size = batch.len() / self.num_workers;
+        for idx in 0..self.num_workers {
+            let mut chunk = batch.empty_like();
             let k: usize = std::cmp::min(chunk_size, batch.len());
-            batch.drain(0..k).for_each(|r| chunk.add_row(r));
+            batch.drain_rows(0..k).for_each(|r| chunk.add_row(r));
 
             let tx = self.tx.clone();
             let op_runners = self.op_runners.clone();
@@ -158,8 +171,8 @@ impl FirehoseBatchExecutor for ThreadedBatchExecutor {
             });
         }
 
-        let mut chunks = Vec::with_capacity(self.workers);
-        for _ in 0..self.workers {
+        let mut chunks = Vec::with_capacity(self.num_workers);
+        for _ in 0..self.num_workers {
             let recieved = self.rx.recv().expect("Failed to receive chunk");
             chunks.push(recieved);
         }
