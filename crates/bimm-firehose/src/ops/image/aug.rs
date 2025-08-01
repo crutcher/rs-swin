@@ -74,6 +74,10 @@ pub struct ImageAugmenter {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     pub flip: Option<FlipSpec>,
+
+    /// Whether to rotate the image.
+    #[serde(default)]
+    pub rotate: bool,
 }
 
 impl Default for ImageAugmenter {
@@ -85,13 +89,29 @@ impl Default for ImageAugmenter {
 impl ImageAugmenter {
     /// Creates a new `ImageLoader` with optional resize and recolor specifications.
     pub fn new() -> Self {
-        ImageAugmenter { flip: None }
+        ImageAugmenter {
+            flip: None,
+            rotate: false,
+        }
     }
     pub fn with_flip(
         self,
         flip: FlipSpec,
     ) -> Self {
-        ImageAugmenter { flip: Some(flip) }
+        ImageAugmenter {
+            rotate: self.rotate,
+            flip: Some(flip),
+        }
+    }
+
+    pub fn with_rotate(
+        self,
+        rotate: bool,
+    ) -> Self {
+        ImageAugmenter {
+            flip: self.flip,
+            rotate,
+        }
     }
 
     /// Converts into an `OperationPlanner`
@@ -133,6 +153,12 @@ impl FirehoseOperator for ImageAugmenter {
             }
             if flip.vertical > 0.0 && rng.random::<f32>() < flip.vertical {
                 image = image.flipv();
+            }
+        }
+
+        if self.rotate {
+            for _ in 0..rng.random_range(0..=3) {
+                image = image.rotate90();
             }
         }
 

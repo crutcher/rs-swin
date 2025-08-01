@@ -72,6 +72,7 @@ fn main() -> anyhow::Result<()> {
 
         ImageAugmenter::new()
             .with_flip(FlipSpec::new().with_vertical(0.5).with_horizontal(0.5))
+            .with_rotate(true)
             .to_plan("seed", "image", "aug")
             .apply_to_schema(&mut schema, env.as_ref())?;
 
