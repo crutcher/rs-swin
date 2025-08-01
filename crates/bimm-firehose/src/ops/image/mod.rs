@@ -4,6 +4,10 @@ use serde::{Deserialize, Serialize};
 pub mod color_util;
 /// Image loader operators.
 pub mod loader;
+
+/// Image augmentation operators.
+pub mod aug;
+
 /// Image/Tensor conversion utilities.
 pub mod tensor_loader;
 /// Image test utilities.

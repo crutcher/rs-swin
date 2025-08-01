@@ -12,6 +12,7 @@ use std::sync::Arc;
 
 use bimm_firehose::core::operations::executor::{FirehoseBatchExecutor, ThreadedBatchExecutor};
 use bimm_firehose::core::{FirehoseRowBatch, FirehoseRowReader, FirehoseRowWriter, ValueBox};
+use bimm_firehose::ops::image::aug::{FlipSpec, ImageAugmenter};
 use burn::prelude::Tensor;
 use clap::Parser;
 use std::time::Instant;
@@ -55,7 +56,8 @@ fn main() -> anyhow::Result<()> {
     // Define a processing schema, from `path` -> `image` -> `tensor`.
     let schema = {
         let mut schema = FirehoseTableSchema::from_columns(&[
-            ColumnSchema::new::<String>("path").with_description("path to the image")
+            ColumnSchema::new::<String>("path").with_description("path to the image"),
+            ColumnSchema::new::<u64>("seed").with_description("aug seed"),
         ]);
 
         // Load the image from the path, resize it to 32x32 pixels, and convert it to RGB8.
@@ -68,10 +70,16 @@ fn main() -> anyhow::Result<()> {
             .to_plan("path", "image")
             .apply_to_schema(&mut schema, env.as_ref())?;
 
+        ImageAugmenter::new()
+            .with_flip(FlipSpec::new().with_vertical(0.5).with_horizontal(0.5))
+            .with_rotate(true)
+            .to_plan("seed", "image", "aug")
+            .apply_to_schema(&mut schema, env.as_ref())?;
+
         // Convert the image to a tensor of shape (32, 32, 3) with float32 dtype.
         ImgToTensorConfig::new()
             .with_dtype(TargetDType::F32)
-            .to_plan("image", "tensor")
+            .to_plan("aug", "tensor")
             .apply_to_schema(&mut schema, env.as_ref())?;
 
         Arc::new(schema)
@@ -102,10 +110,13 @@ fn main() -> anyhow::Result<()> {
         let selection = chunk.collect::<Vec<_>>();
 
         // Fill a batch with the selected paths.
-        let mut batch = FirehoseRowBatch::new_with_size(schema.clone(), selection.len());
-        for (i, &idx) in selection.iter().enumerate() {
+        let mut batch = FirehoseRowBatch::new(schema.clone());
+        for &idx in selection.iter() {
             let item = &index.test.items[idx];
-            batch[i].set(
+
+            let row = batch.new_row();
+            row.set("seed", ValueBox::serializing::<u64>(idx as u64)?);
+            row.set(
                 "path",
                 ValueBox::serializing(item.path.to_string_lossy().to_string())?,
             );
