@@ -66,7 +66,20 @@ fn main() -> anyhow::Result<()> {
         Arc::new(schema)
     };
 
-    let executor = ThreadedBatchExecutor::new(args.workers, schema.clone(), env.clone())?;
+    let executor: Arc<dyn FirehoseBatchExecutor> = if args.workers == 1 {
+        Arc::new(
+            bimm_firehose::core::operations::executor::SequentialBatchExecutor::new(
+                schema.clone(),
+                env.clone(),
+            )?,
+        )
+    } else {
+        Arc::new(ThreadedBatchExecutor::new(
+            args.workers,
+            schema.clone(),
+            env.clone(),
+        )?)
+    };
 
     // Track the time it takes to process the dataset in batches.
     let mut durations = Vec::new();
