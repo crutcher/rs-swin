@@ -8,11 +8,17 @@ pub mod rows;
 pub mod schema;
 
 /// Defines `ValueBox`, a sum type for Json Values and boxed values.
-mod value_box;
-pub use value_box::*;
+pub mod valuebox;
+
+// TODO: Work out what the `$crate::core::*` re-exports should be.
+pub use rows::{FirehoseRow, FirehoseRowBatch, FirehoseRowReader, FirehoseRowWriter};
+pub use schema::FirehoseTableSchema;
+pub use valuebox::ValueBox;
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     use crate::ops::image::loader::{ImageLoader, ResizeSpec};
     use crate::ops::image::tensor_loader::{
         ImgToTensorConfig, TargetDType, image_to_f32_tensor, img_to_tensor_op_binding,
@@ -24,9 +30,10 @@ mod tests {
 
     use crate::core::operations::environment::new_default_operator_environment;
 
+    use crate::core::ValueBox;
     use crate::core::operations::executor::{FirehoseBatchExecutor, SequentialBatchExecutor};
-    use crate::core::rows::RowBatch;
-    use crate::core::schema::{ColumnSchema, FirehoseTableSchema};
+    use crate::core::rows::{FirehoseRowReader, FirehoseRowWriter};
+    use crate::core::schema::ColumnSchema;
     use image::imageops::FilterType;
     use image::{ColorType, DynamicImage};
     use indoc::indoc;
@@ -144,7 +151,7 @@ mod tests {
             }
         );
 
-        let mut batch = RowBatch::with_size(schema.clone(), 1);
+        let mut batch = FirehoseRowBatch::new_with_size(schema.clone(), 1);
 
         let source_image: DynamicImage = test_util::generate_gradient_pattern(ImageShape {
             width: 32,
@@ -163,16 +170,14 @@ mod tests {
                 .save(&image_path)
                 .expect("Failed to save test image");
 
-            batch[0].set_column(&schema, "path", Some(Arc::new(image_path)));
+            batch[0].set("path", ValueBox::serializing(image_path)?);
         }
 
         executor.execute_batch(&mut batch)?;
 
         let row = &batch[0];
 
-        let row_image = row
-            .get_column_checked::<DynamicImage>(&schema, "image")?
-            .unwrap();
+        let row_image = row.get("image").unwrap().as_ref::<DynamicImage>()?;
         assert_image_close(
             row_image,
             &source_image
@@ -182,9 +187,7 @@ mod tests {
             None,
         );
 
-        let row_tensor = row
-            .get_column_checked::<Tensor<B, 3>>(&schema, "tensor")?
-            .unwrap();
+        let row_tensor = row.get("tensor").unwrap().as_ref::<Tensor<B, 3>>()?;
         assert_eq!(row_tensor.dtype(), burn::tensor::DType::F32);
         assert_eq!(row_tensor.shape(), Shape::new([24, 16, 1]));
         row_tensor.to_data().assert_eq(

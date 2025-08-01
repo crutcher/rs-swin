@@ -1,7 +1,9 @@
 use crate::core::operations::factory::SimpleConfigOperatorFactory;
-use crate::core::operations::operator::{FirehoseOperator, FirehoseRowTransaction};
+use crate::core::operations::operator::FirehoseOperator;
 use crate::core::operations::planner::OperationPlan;
 use crate::core::operations::signature::{FirehoseOperatorSignature, ParameterSpec};
+use crate::core::rows::FirehoseRowTransaction;
+use crate::core::{FirehoseRowReader, FirehoseRowWriter, ValueBox};
 use crate::define_firehose_operator;
 use crate::ops::image::{ImageShape, color_util};
 use anyhow::Context;
@@ -152,10 +154,10 @@ impl FirehoseOperator for ImageLoader {
         &self,
         txn: &mut FirehoseRowTransaction,
     ) -> anyhow::Result<()> {
-        let path = txn.get_required_scalar_input::<String>("path")?;
+        let path = txn.get("path").unwrap().deserializing::<String>()?;
 
-        let mut image =
-            image::open(path).with_context(|| format!("Failed to load image from path: {path}"))?;
+        let mut image = image::open(path.clone())
+            .with_context(|| format!("Failed to load image from path: {path}"))?;
 
         if let Some(spec) = &self.resize {
             if image.width() != spec.shape.width || image.height() != spec.shape.height {
@@ -168,7 +170,7 @@ impl FirehoseOperator for ImageLoader {
             image = color_util::convert_to_colortype(image, color);
         }
 
-        txn.set_scalar_output("image", Arc::new(image))?;
+        txn.set("image", ValueBox::boxing(image));
 
         Ok(())
     }
@@ -181,9 +183,10 @@ mod tests {
     use crate::core::operations::environment::new_default_operator_environment;
 
     use crate::core::operations::executor::{FirehoseBatchExecutor, SequentialBatchExecutor};
-    use crate::core::rows::RowBatch;
     use crate::core::schema::{ColumnSchema, FirehoseTableSchema};
+    use crate::core::{FirehoseRowBatch, FirehoseRowReader, FirehoseRowWriter, ValueBox};
     use crate::ops::image::test_util::{assert_image_close, generate_gradient_pattern};
+    use anyhow::Context;
     use image::DynamicImage;
     use std::sync::Arc;
 
@@ -235,22 +238,24 @@ mod tests {
 
         let executor = SequentialBatchExecutor::new(schema.clone(), env.clone())?;
 
-        let mut batch = RowBatch::with_size(schema.clone(), 1);
-        batch[0].set_column(&schema, "path", Some(Arc::new(image_path)));
+        let mut batch = FirehoseRowBatch::new_with_size(schema.clone(), 1);
+        batch[0].set("path", ValueBox::serializing(image_path)?);
 
         executor.execute_batch(&mut batch)?;
 
         let loaded_image = batch[0]
-            .get_column::<DynamicImage>(&schema, "raw_image")
-            .expect("Failed to get loaded image");
+            .get("raw_image")
+            .unwrap()
+            .as_ref::<DynamicImage>()?;
         assert_eq!(loaded_image.width(), 32);
         assert_eq!(loaded_image.height(), 32);
         assert_eq!(loaded_image.color(), ColorType::Rgb8);
         assert_image_close(loaded_image, &source_image, None);
 
         let gray_image = batch[0]
-            .get_column::<DynamicImage>(&schema, "resized_gray")
-            .expect("Failed to get resized gray image");
+            .get("resized_gray")
+            .unwrap()
+            .as_ref::<DynamicImage>()?;
         assert_eq!(gray_image.width(), 16);
         assert_eq!(gray_image.height(), 16);
         assert_eq!(gray_image.color(), ColorType::L16);

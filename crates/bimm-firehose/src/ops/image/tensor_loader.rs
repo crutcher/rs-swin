@@ -1,7 +1,9 @@
 use crate::core::operations::factory::{FirehoseOperatorFactory, FirehoseOperatorInitContext};
-use crate::core::operations::operator::{FirehoseOperator, FirehoseRowTransaction};
+use crate::core::operations::operator::FirehoseOperator;
 use crate::core::operations::planner::OperationPlan;
 use crate::core::operations::signature::{FirehoseOperatorSignature, ParameterSpec};
+use crate::core::rows::FirehoseRowTransaction;
+use crate::core::{FirehoseRowReader, FirehoseRowWriter, ValueBox};
 use crate::define_firehose_operator_id;
 use anyhow::Context;
 use burn::data::dataset::vision::PixelDepth;
@@ -251,13 +253,13 @@ impl<B: Backend> FirehoseOperator for ImgToTensor<B> {
         &self,
         txn: &mut FirehoseRowTransaction,
     ) -> anyhow::Result<()> {
-        let image = txn.get_required_scalar_input::<DynamicImage>("image")?;
+        let image = txn.get("image").unwrap().as_ref::<DynamicImage>()?;
 
         match self.config.dtype {
             TargetDType::F32 => {
                 let tensor: Tensor<B, 3> = image_to_f32_tensor(image, &self.device);
 
-                txn.set_scalar_output("tensor", Arc::new(tensor))?;
+                txn.set("tensor", ValueBox::boxing(tensor));
             }
         }
 
