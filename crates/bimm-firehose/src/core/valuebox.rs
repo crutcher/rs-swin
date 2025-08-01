@@ -160,7 +160,7 @@ impl ValueBox {
     ///
     /// An `anyhow::Result<&T>` where `T` is the down-cast type;
     /// if the downcast fails, it returns an error with context.
-    pub fn unwrap_boxed<T>(&self) -> anyhow::Result<&T>
+    pub fn as_ref<T>(&self) -> anyhow::Result<&T>
     where
         T: 'static,
     {
@@ -237,7 +237,7 @@ mod tests {
         assert!(vb.is_value());
         assert!(!vb.is_boxed());
 
-        vb.unwrap_boxed::<MyStruct>().unwrap();
+        vb.as_ref::<MyStruct>().unwrap();
     }
 
     #[test]
@@ -300,10 +300,10 @@ mod tests {
         assert!(!vb.is_value());
         assert!(vb.is_boxed());
 
-        assert_eq!(vb.unwrap_boxed::<MyStruct>()?, &my_struct);
+        assert_eq!(vb.as_ref::<MyStruct>()?, &my_struct);
 
         assert_eq!(
-            vb.unwrap_boxed::<Vec<String>>().unwrap_err().to_string(),
+            vb.as_ref::<Vec<String>>().unwrap_err().to_string(),
             "Failed to downcast boxed value"
         );
 

@@ -11,7 +11,7 @@ use rs_cinic_10_index::Cinic10Index;
 use std::sync::Arc;
 
 use bimm_firehose::core::operations::executor::{FirehoseBatchExecutor, SequentialBatchExecutor};
-use bimm_firehose::core::rows::RowBatch;
+use bimm_firehose::core::{FirehoseRowBatch, FirehoseRowReader, FirehoseRowWriter, ValueBox};
 use burn::prelude::Tensor;
 use std::time::Instant;
 
@@ -68,13 +68,12 @@ fn main() -> anyhow::Result<()> {
         let selection = chunk.collect::<Vec<_>>();
 
         // Fill a batch with the selected paths.
-        let mut batch = RowBatch::with_size(schema.clone(), selection.len());
+        let mut batch = FirehoseRowBatch::new_with_size(schema.clone(), selection.len());
         for (i, &idx) in selection.iter().enumerate() {
             let item = &index.test.items[idx];
-            batch[i].set_column(
-                &schema,
+            batch[i].set(
                 "path",
-                Some(Arc::new(item.path.to_string_lossy().to_string())),
+                ValueBox::serializing(item.path.to_string_lossy().to_string())?,
             );
         }
 
@@ -84,14 +83,15 @@ fn main() -> anyhow::Result<()> {
         // Simulate the batch collation function.
         let _stack: Tensor<B, 4> = Tensor::stack(
             batch
-                .rows
                 .iter()
                 .map(|row| {
-                    let value = row.get_column::<Tensor<B, 3>>(&schema, "tensor");
-                    let value = value.expect("Failed to get tensor from row");
-                    value.clone()
+                    row.get("tensor")
+                        .unwrap()
+                        .as_ref::<Tensor<B, 3>>()
+                        .unwrap()
+                        .clone()
                 })
-                .collect::<Vec<Tensor<B, 3>>>(),
+                .collect::<Vec<_>>(),
             0,
         );
 

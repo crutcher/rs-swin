@@ -74,14 +74,15 @@ mod tests {
     use crate::core::operations::environment::{MapOpEnvironment, OpEnvironment};
     use crate::core::operations::factory::SimpleConfigOperatorFactory;
     use crate::core::operations::operator::OperationRunner;
-    use crate::core::operations::operator::{
-        FirehoseOperator, FirehoseRowTransaction, OperatorSchedulingMetadata,
-    };
+    use crate::core::operations::operator::{FirehoseOperator, OperatorSchedulingMetadata};
     use crate::core::operations::signature::{
         FirehoseOperatorSignature, ParameterArity, ParameterSpec,
     };
 
-    use crate::core::rows::RowBatch;
+    use crate::core::ValueBox;
+    use crate::core::rows::{
+        FirehoseRowBatch, FirehoseRowReader, FirehoseRowTransaction, FirehoseRowWriter,
+    };
     use crate::core::schema::{BuildPlan, ColumnSchema, DataTypeDescription, FirehoseTableSchema};
     use crate::define_firehose_operator_id;
     use indoc::indoc;
@@ -116,12 +117,12 @@ mod tests {
             &self,
             txn: &mut FirehoseRowTransaction,
         ) -> anyhow::Result<()> {
-            let x = txn.get_required_scalar_input::<i32>("x")?;
-            let y = txn.get_required_scalar_input::<i32>("y")?;
+            let x = txn.get("x").unwrap().deserializing::<i32>()?;
+            let y = txn.get("y").unwrap().deserializing::<i32>()?;
 
             let result: i32 = x + y + self.bias;
 
-            txn.set_scalar_output("result", Arc::new(result))?;
+            txn.set("result", ValueBox::serializing(result)?);
 
             Ok(())
         }
@@ -185,7 +186,7 @@ mod tests {
     }
 
     #[test]
-    fn test_simple_op() {
+    fn test_simple_op() -> anyhow::Result<()> {
         let mut schema = FirehoseTableSchema::from_columns(&[
             ColumnSchema::new::<i32>("a").with_description("First input"),
             ColumnSchema::new::<i32>("b").with_description("Second input"),
@@ -244,14 +245,18 @@ mod tests {
 
         assert_eq!(runner.build_plan.operator_id, ADD);
 
-        let mut batch = RowBatch::with_size(Arc::new(schema.clone()), 2);
-        batch[0].set_columns(&schema, &["a", "b"], [Arc::new(10), Arc::new(20)]);
-        batch[1].set_columns(&schema, &["a", "b"], [Arc::new(-5), Arc::new(2)]);
+        let mut batch = FirehoseRowBatch::new_with_size(Arc::new(schema.clone()), 2);
+        batch[0].set("a", ValueBox::serializing(10)?);
+        batch[0].set("b", ValueBox::serializing(20)?);
+        batch[1].set("a", ValueBox::serializing(-5)?);
+        batch[1].set("b", ValueBox::serializing(2)?);
 
         runner.apply_to_batch(&mut batch).unwrap();
 
-        assert_eq!(batch[0].get_column::<i32>(&schema, "c").unwrap(), &40);
-        assert_eq!(batch[1].get_column::<i32>(&schema, "c").unwrap(), &7);
+        assert_eq!(batch[0].get("c").unwrap().deserializing::<i32>()?, 40);
+        assert_eq!(batch[1].get("c").unwrap().deserializing::<i32>()?, 7);
+
+        Ok(())
     }
 
     #[test]

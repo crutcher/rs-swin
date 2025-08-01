@@ -1,6 +1,6 @@
 use crate::core::operations::environment::OpEnvironment;
 use crate::core::operations::operator::OperationRunner;
-use crate::core::rows::RowBatch;
+use crate::core::rows::FirehoseRowBatch;
 use crate::core::schema::FirehoseTableSchema;
 use std::sync::Arc;
 
@@ -15,7 +15,7 @@ pub trait FirehoseBatchExecutor {
     /// Runs the butch under the policy of the executor.
     fn execute_batch(
         &self,
-        batch: &mut RowBatch,
+        batch: &mut FirehoseRowBatch,
     ) -> anyhow::Result<()>;
 }
 
@@ -71,7 +71,7 @@ impl FirehoseBatchExecutor for SequentialBatchExecutor {
 
     fn execute_batch(
         &self,
-        batch: &mut RowBatch,
+        batch: &mut FirehoseRowBatch,
     ) -> anyhow::Result<()> {
         for runner in &self.op_runners {
             runner.apply_to_batch(batch)?;
