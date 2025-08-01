@@ -113,8 +113,7 @@ impl ThreadedBatchExecutor {
 
         let (tx, rx) = std::sync::mpsc::channel();
 
-        Ok(
-        ThreadedBatchExecutor {
+        Ok(ThreadedBatchExecutor {
             schema,
             environment,
             workers,
@@ -122,8 +121,7 @@ impl ThreadedBatchExecutor {
             op_runners,
             tx,
             rx,
-        }
-        )
+        })
     }
 }
 
@@ -144,16 +142,19 @@ impl FirehoseBatchExecutor for ThreadedBatchExecutor {
         for idx in 0..self.workers {
             let mut chunk = FirehoseRowBatch::new(batch.schema().clone());
             let k: usize = std::cmp::min(chunk_size, batch.len());
-            batch.drain(0..k).into_iter().for_each(|r| chunk.add_row(r));
+            batch.drain(0..k).for_each(|r| chunk.add_row(r));
 
             let tx = self.tx.clone();
             let op_runners = self.op_runners.clone();
             self.pool.execute(move || {
                 let mut chunk = chunk;
                 for runner in &op_runners {
-                    runner.apply_to_batch(&mut chunk).expect("Failed to apply operation");
+                    runner
+                        .apply_to_batch(&mut chunk)
+                        .expect("Failed to apply operation");
                 }
-                tx.send((idx, chunk)).expect("Failed to send processed chunk");
+                tx.send((idx, chunk))
+                    .expect("Failed to send processed chunk");
             });
         }
 
@@ -164,7 +165,9 @@ impl FirehoseBatchExecutor for ThreadedBatchExecutor {
         }
         chunks.sort_by_key(|(idx, _)| *idx);
 
-        chunks.into_iter().for_each(|(idx, chunk)| {batch.append_batch(chunk)});
+        chunks
+            .into_iter()
+            .for_each(|(_, chunk)| batch.append_batch(chunk));
 
         Ok(())
     }
@@ -180,5 +183,4 @@ mod tests {
         fn assert_send<T: Send>() {}
         assert_send::<Vec<Arc<OperationRunner>>>();
     };
-
 }

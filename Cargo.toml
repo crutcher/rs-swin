@@ -26,6 +26,8 @@ bimm-firehose = { version = "0.2.0", path = "crates/bimm-firehose" }
 
 burn = { version = "^0.18.0" }
 
+clap = { version = "^4.5.42"}
+
 anyhow = { version = "^1.0.98" }
 itertools = { version = "^0.14.0" }
 threadpool = { version = "^1.8.1" }

@@ -10,12 +10,23 @@ use itertools::Itertools;
 use rs_cinic_10_index::Cinic10Index;
 use std::sync::Arc;
 
-use bimm_firehose::core::operations::executor::{FirehoseBatchExecutor, SequentialBatchExecutor, ThreadedBatchExecutor};
+use bimm_firehose::core::operations::executor::{FirehoseBatchExecutor, ThreadedBatchExecutor};
 use bimm_firehose::core::{FirehoseRowBatch, FirehoseRowReader, FirehoseRowWriter, ValueBox};
 use burn::prelude::Tensor;
+use clap::Parser;
 use std::time::Instant;
 
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Number of workers to use for processing
+    #[arg(short, long, default_value_t = 1)]
+    workers: usize,
+}
+
 fn main() -> anyhow::Result<()> {
+    let args = Args::parse();
+
     let index: Cinic10Index = Default::default();
 
     type B = Cuda;
@@ -55,12 +66,7 @@ fn main() -> anyhow::Result<()> {
         Arc::new(schema)
     };
 
-    let num_workers = 4;
-    let executor = ThreadedBatchExecutor::new(
-        num_workers,
-        schema.clone(),
-        env.clone()
-    )?;
+    let executor = ThreadedBatchExecutor::new(args.workers, schema.clone(), env.clone())?;
 
     // Track the time it takes to process the dataset in batches.
     let mut durations = Vec::new();

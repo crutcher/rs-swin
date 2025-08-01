@@ -1,10 +1,10 @@
 use crate::core::ValueBox;
 use crate::core::operations::signature::FirehoseOperatorSignature;
 use crate::core::schema::{BuildPlan, FirehoseTableSchema};
-use std::vec::Drain;
 use std::fmt::Debug;
 use std::ops::{Index, IndexMut, Range, RangeBounds};
 use std::sync::Arc;
+use std::vec::Drain;
 
 /// Represents a row in a Firehose table, containing values for each column.
 pub struct FirehoseRow {
