@@ -1,4 +1,4 @@
-use crate::pipeline::{DataLoadError, DataLoadMetaDataItem};
+use crate::pipeline::DataLoadMetaDataItem;
 use std::fmt::Debug;
 
 /// Support super-trait for loadable data types.
@@ -32,7 +32,7 @@ where
     fn load(
         &self,
         meta: &M,
-    ) -> Result<T, DataLoadError>;
+    ) -> anyhow::Result<T>;
 }
 
 /// A function-based operator for loading data.
@@ -41,7 +41,7 @@ pub struct FnOperator<M, T, F>
 where
     M: DataLoadMetaDataItem,
     T: DataLoadDataItem,
-    F: Fn(&M) -> Result<T, DataLoadError> + Send + Sync,
+    F: Fn(&M) -> anyhow::Result<T> + Send + Sync,
 {
     /// The function that defines how to load the data.
     func: F,
@@ -54,7 +54,7 @@ impl<M, T, F> Debug for FnOperator<M, T, F>
 where
     M: DataLoadMetaDataItem,
     T: DataLoadDataItem,
-    F: Fn(&M) -> Result<T, DataLoadError> + Send + Sync,
+    F: Fn(&M) -> anyhow::Result<T> + Send + Sync,
 {
     fn fmt(
         &self,
@@ -70,7 +70,7 @@ impl<M, T, F> FnOperator<M, T, F>
 where
     M: DataLoadMetaDataItem,
     T: DataLoadDataItem,
-    F: Fn(&M) -> Result<T, DataLoadError> + Send + Sync,
+    F: Fn(&M) -> anyhow::Result<T> + Send + Sync,
 {
     /// Creates a new `FnOperator` with the provided function.
     pub fn new(func: F) -> Self {
@@ -86,12 +86,12 @@ impl<M, T, F> DataLoadOperator<M, T> for FnOperator<M, T, F>
 where
     M: DataLoadMetaDataItem,
     T: DataLoadDataItem,
-    F: Fn(&M) -> Result<T, DataLoadError> + Send + Sync,
+    F: Fn(&M) -> anyhow::Result<T> + Send + Sync,
 {
     fn load(
         &self,
         meta: &M,
-    ) -> Result<T, DataLoadError> {
+    ) -> anyhow::Result<T> {
         (self.func)(meta)
     }
 }

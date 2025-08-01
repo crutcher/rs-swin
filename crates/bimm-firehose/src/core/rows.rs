@@ -411,7 +411,7 @@ impl ParameterMapper {
     ) -> &str {
         match self.try_map_input_name(parameter_name) {
             Some(name) => name,
-            None => panic!("Parameter '{}' is not an input parameter", parameter_name),
+            None => panic!("Parameter '{parameter_name}' is not an input parameter"),
         }
     }
 
@@ -445,7 +445,7 @@ impl ParameterMapper {
     ) -> &str {
         match self.try_map_output_name(parameter_name) {
             Some(name) => name,
-            None => panic!("Parameter '{}' is not an output parameter", parameter_name),
+            None => panic!("Parameter '{parameter_name}' is not an output parameter"),
         }
     }
 }
@@ -705,7 +705,7 @@ mod tests {
         let mut batch = FirehoseRowBatch::new(schema.clone());
         for i in 0..5 {
             let row = batch.new_row();
-            row.set("foo", ValueBox::serializing(i as i32).unwrap());
+            row.set("foo", ValueBox::serializing(i).unwrap());
             row.set("bar", ValueBox::serializing(format!("Row {i}")).unwrap());
         }
 
@@ -858,7 +858,7 @@ mod tests {
         );
 
         assert_eq!(txn.len(), 1);
-        assert_eq!(txn.is_empty(), false);
+        assert!(!txn.is_empty());
 
         assert_eq!(txn.signature(), &signature);
 
@@ -866,8 +866,8 @@ mod tests {
         assert_eq!(row_txn.schema(), &schema);
         assert_eq!(row_txn.get("source").unwrap().deserializing::<i32>()?, 42);
 
-        assert_eq!(row_txn.has_column_value("source"), true);
-        assert_eq!(row_txn.has_column_value("foo"), false);
+        assert!(row_txn.has_column_value("source"));
+        assert!(!row_txn.has_column_value("foo"));
 
         let vals = row_txn.iter().collect::<Vec<_>>();
         assert_eq!(vals.len(), 1);

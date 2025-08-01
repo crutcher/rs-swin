@@ -64,3 +64,49 @@ impl FirehoseOperatorFactoryRegistration {
             .collect()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::operations::factory::SimpleConfigOperatorFactory;
+    use crate::core::operations::operator::FirehoseOperator;
+    use crate::core::operations::signature::{FirehoseOperatorSignature, ParameterSpec};
+    use crate::define_firehose_operator;
+    use serde::{Deserialize, Serialize};
+
+    define_firehose_operator!(
+        EXAMPLE_OPERATOR,
+        SimpleConfigOperatorFactory::<ExampleOp>::new(
+            FirehoseOperatorSignature::new()
+                .with_operator_id(EXAMPLE_OPERATOR)
+                .with_input(ParameterSpec::new::<i32>("x"))
+                .with_input(ParameterSpec::new::<i32>("y"))
+        )
+    );
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct ExampleOp {
+        #[serde(default)]
+        pub z: bool,
+    }
+
+    impl FirehoseOperator for ExampleOp {}
+
+    #[test]
+    fn test_list_default_registrations() {
+        let reg = FirehoseOperatorFactoryRegistration::list_default_registrations()
+            .into_iter()
+            .find(|r| r.operator_id == EXAMPLE_OPERATOR)
+            .expect("Could not find registration");
+
+        assert_eq!(reg.operator_id, EXAMPLE_OPERATOR);
+
+        assert_eq!(
+            format!("{reg:?}"),
+            format!(
+                "FirehoseOperatorFactoryRegistration {{ operator_id: \"{}\" }}",
+                EXAMPLE_OPERATOR
+            )
+        );
+    }
+}

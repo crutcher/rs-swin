@@ -1,4 +1,4 @@
-use crate::pipeline::{DataLoadError, DataLoadMetaDataItem, DataLoadSchedule};
+use crate::pipeline::{DataLoadMetaDataItem, DataLoadSchedule};
 use std::fmt::Debug;
 
 /// Data-pipeline trait for schedule sources.
@@ -7,7 +7,7 @@ where
     M: DataLoadMetaDataItem,
 {
     /// Builds a schedule from the source.
-    fn build_schedule(&self) -> Result<DataLoadSchedule<M>, DataLoadError>;
+    fn build_schedule(&self) -> anyhow::Result<DataLoadSchedule<M>>;
 }
 
 /// Boxed extension trait for `DataScheduleSource`.
@@ -61,7 +61,7 @@ impl<M> DataScheduleSource<M> for FixedScheduleSource<M>
 where
     M: DataLoadMetaDataItem,
 {
-    fn build_schedule(&self) -> Result<DataLoadSchedule<M>, DataLoadError> {
+    fn build_schedule(&self) -> anyhow::Result<DataLoadSchedule<M>> {
         Ok(self.schedule.clone())
     }
 }
@@ -114,7 +114,7 @@ impl<M> DataScheduleSource<M> for SimpleFilterSource<M>
 where
     M: DataLoadMetaDataItem,
 {
-    fn build_schedule(&self) -> Result<DataLoadSchedule<M>, DataLoadError> {
+    fn build_schedule(&self) -> anyhow::Result<DataLoadSchedule<M>> {
         self.inner
             .build_schedule()
             .map(|schedule| schedule.filter(|item| (self.predicate)(item)))
@@ -126,10 +126,7 @@ pub struct ScheduleSourceMappingWrapper<A, B, F>
 where
     A: DataLoadMetaDataItem,
     B: DataLoadMetaDataItem,
-    F: Fn(&DataLoadSchedule<A>) -> Result<DataLoadSchedule<B>, DataLoadError>
-        + Send
-        + Sync
-        + 'static,
+    F: Fn(&DataLoadSchedule<A>) -> anyhow::Result<DataLoadSchedule<B>> + Send + Sync + 'static,
 {
     /// The inner source that provides the initial schedule.
     inner: Box<dyn DataScheduleSource<A>>,
@@ -142,10 +139,7 @@ impl<A, B, F> Debug for ScheduleSourceMappingWrapper<A, B, F>
 where
     A: DataLoadMetaDataItem,
     B: DataLoadMetaDataItem,
-    F: Fn(&DataLoadSchedule<A>) -> Result<DataLoadSchedule<B>, DataLoadError>
-        + Send
-        + Sync
-        + 'static,
+    F: Fn(&DataLoadSchedule<A>) -> anyhow::Result<DataLoadSchedule<B>> + Send + Sync + 'static,
 {
     fn fmt(
         &self,
@@ -161,10 +155,7 @@ impl<A, B, F> ScheduleSourceMappingWrapper<A, B, F>
 where
     A: DataLoadMetaDataItem,
     B: DataLoadMetaDataItem,
-    F: Fn(&DataLoadSchedule<A>) -> Result<DataLoadSchedule<B>, DataLoadError>
-        + Send
-        + Sync
-        + 'static,
+    F: Fn(&DataLoadSchedule<A>) -> anyhow::Result<DataLoadSchedule<B>> + Send + Sync + 'static,
 {
     /// Creates a new `ScheduleSourceMappingWrapper` with the provided inner source and mapping function.
     ///
@@ -184,12 +175,9 @@ impl<A, B, F> DataScheduleSource<B> for ScheduleSourceMappingWrapper<A, B, F>
 where
     A: DataLoadMetaDataItem,
     B: DataLoadMetaDataItem,
-    F: Fn(&DataLoadSchedule<A>) -> Result<DataLoadSchedule<B>, DataLoadError>
-        + Send
-        + Sync
-        + 'static,
+    F: Fn(&DataLoadSchedule<A>) -> anyhow::Result<DataLoadSchedule<B>> + Send + Sync + 'static,
 {
-    fn build_schedule(&self) -> Result<DataLoadSchedule<B>, DataLoadError> {
+    fn build_schedule(&self) -> anyhow::Result<DataLoadSchedule<B>> {
         self.inner
             .build_schedule()
             .and_then(|schedule| (self.map_func)(&schedule))
@@ -202,26 +190,30 @@ mod tests {
     use crate::pipeline::DataLoadSchedule;
 
     #[test]
-    fn test_fixed_schedule_source() {
+    fn test_fixed_schedule_source() -> anyhow::Result<()> {
         let items = vec![2, 3, 5];
         let source = FixedScheduleSource::from(items.clone());
 
         assert_eq!(
-            source.build_schedule(),
-            Ok(DataLoadSchedule::from(items.clone()))
+            source.build_schedule()?,
+            DataLoadSchedule::from(items.clone())
         );
+
+        Ok(())
     }
 
     #[test]
-    fn test_simple_filter_source() {
+    fn test_simple_filter_source() -> anyhow::Result<()> {
         let items = vec![1, 2, 3, 4, 5];
         let source = FixedScheduleSource::from(items.clone());
         let filter_source = SimpleFilterSource::new(source.boxed(), Box::new(|&x| x % 2 == 0));
 
         let expected = vec![2, 4];
         assert_eq!(
-            filter_source.build_schedule(),
-            Ok(DataLoadSchedule::from(expected))
+            filter_source.build_schedule()?,
+            DataLoadSchedule::from(expected)
         );
+
+        Ok(())
     }
 }
