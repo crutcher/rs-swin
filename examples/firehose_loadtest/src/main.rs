@@ -26,6 +26,10 @@ struct Args {
     /// Batch size for processing
     #[arg(short, long, default_value_t = 512)]
     batch_size: usize,
+
+    /// Whether to simulate the stack operation
+    #[arg(long, default_value_t = false)]
+    simulate_stack: bool,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -110,20 +114,22 @@ fn main() -> anyhow::Result<()> {
         // Run the batch.
         executor.execute_batch(&mut batch)?;
 
-        // Simulate the batch collation function.
-        let _stack: Tensor<B, 4> = Tensor::stack(
-            batch
-                .iter()
-                .map(|row| {
-                    row.get("tensor")
-                        .unwrap()
-                        .as_ref::<Tensor<B, 3>>()
-                        .unwrap()
-                        .clone()
-                })
-                .collect::<Vec<_>>(),
-            0,
-        );
+        if args.simulate_stack {
+            // Simulate the batch collation function.
+            let _stack: Tensor<B, 4> = Tensor::stack(
+                batch
+                    .iter()
+                    .map(|row| {
+                        row.get("tensor")
+                            .unwrap()
+                            .as_ref::<Tensor<B, 3>>()
+                            .unwrap()
+                            .clone()
+                    })
+                    .collect::<Vec<_>>(),
+                0,
+            );
+        }
 
         let end_time = Instant::now();
         let duration = end_time.duration_since(start_time);
