@@ -113,7 +113,7 @@ impl Default for FirehoseOperatorSignature {
 
 impl FirehoseOperatorSignature {
     /// Returns a reference to the input parameter named `name`, if it exists.
-    pub fn get_input_parameter(
+    pub fn get_input(
         &self,
         name: &str,
     ) -> Option<&ParameterSpec> {
@@ -121,7 +121,7 @@ impl FirehoseOperatorSignature {
     }
 
     /// Returns a reference to the output parameter named `name`, if it exists.
-    pub fn get_output_parameter(
+    pub fn get_output(
         &self,
         name: &str,
     ) -> Option<&ParameterSpec> {
@@ -441,6 +441,17 @@ mod tests {
             .with_description("This is a test operator")
             .with_input(ParameterSpec::new::<i32>("count"))
             .with_output(ParameterSpec::new::<String>("result"));
+
+        assert_eq!(
+            signature.get_input("count"),
+            Some(&ParameterSpec::new::<i32>("count"))
+        );
+        assert_eq!(signature.get_input("none"), None);
+        assert_eq!(
+            signature.get_output("result"),
+            Some(&ParameterSpec::new::<String>("result"))
+        );
+        assert_eq!(signature.get_output("none"), None);
 
         assert_eq!(signature.operator_id, Some("foo::bar::baz".to_string()));
         assert_eq!(

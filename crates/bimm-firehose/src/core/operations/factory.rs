@@ -1,6 +1,6 @@
 use crate::core::operations::operator::FirehoseOperator;
 use crate::core::operations::signature::FirehoseOperatorSignature;
-use crate::core::schema::{BuildPlan, DataTypeDescription, FirehoseTableSchema};
+use crate::core::schema::{BuildPlan, FirehoseTableSchema};
 use anyhow::Context;
 use serde::de::DeserializeOwned;
 use std::fmt::Debug;
@@ -49,38 +49,6 @@ pub trait FirehoseOperatorInitContext {
 
     /// The operator signature for the operator being initialized.
     fn signature(&self) -> &FirehoseOperatorSignature;
-
-    /// Returns the input type for a scalar input parameter.
-    fn scalar_input_type(
-        &self,
-        param_name: &str,
-    ) -> Option<DataTypeDescription> {
-        let parameter = self.signature().get_input_parameter(param_name)?;
-        assert!(parameter.arity.is_scalar(), "Parameter must be scalar");
-
-        let col_name = self.build_plan().inputs.get(param_name)?;
-        self.table_schema()
-            .get_column(col_name)?
-            .data_type
-            .clone()
-            .into()
-    }
-
-    /// Returns the output type for a scalar output parameter.
-    fn scalar_output_type(
-        &self,
-        param_name: &str,
-    ) -> Option<DataTypeDescription> {
-        let parameter = self.signature().get_output_parameter(param_name)?;
-        assert!(parameter.arity.is_scalar(), "Parameter must be scalar");
-
-        let col_name = self.build_plan().outputs.get(param_name)?;
-        self.table_schema()
-            .get_column(col_name)?
-            .data_type
-            .clone()
-            .into()
-    }
 }
 
 /// A simple operator factory for types implementing `DeserializeOwned` and `FirehoseOperator`.
