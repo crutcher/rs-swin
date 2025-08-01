@@ -10,7 +10,7 @@ use itertools::Itertools;
 use rs_cinic_10_index::Cinic10Index;
 use std::sync::Arc;
 
-use bimm_firehose::core::operations::executor::{FirehoseBatchExecutor, SequentialBatchExecutor};
+use bimm_firehose::core::operations::executor::{FirehoseBatchExecutor, SequentialBatchExecutor, ThreadedBatchExecutor};
 use bimm_firehose::core::{FirehoseRowBatch, FirehoseRowReader, FirehoseRowWriter, ValueBox};
 use burn::prelude::Tensor;
 use std::time::Instant;
@@ -55,7 +55,12 @@ fn main() -> anyhow::Result<()> {
         Arc::new(schema)
     };
 
-    let executor = SequentialBatchExecutor::new(schema.clone(), env.clone())?;
+    let num_workers = 4;
+    let executor = ThreadedBatchExecutor::new(
+        num_workers,
+        schema.clone(),
+        env.clone()
+    )?;
 
     // Track the time it takes to process the dataset in batches.
     let mut durations = Vec::new();
