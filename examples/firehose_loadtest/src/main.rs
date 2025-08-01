@@ -22,10 +22,17 @@ struct Args {
     /// Number of workers to use for processing
     #[arg(short, long, default_value_t = 1)]
     workers: usize,
+
+    /// Batch size for processing
+    #[arg(short, long, default_value_t = 512)]
+    batch_size: usize,
 }
 
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
+
+    let batch_size = args.batch_size;
+    let workers = args.workers;
 
     let index: Cinic10Index = Default::default();
 
@@ -66,7 +73,7 @@ fn main() -> anyhow::Result<()> {
         Arc::new(schema)
     };
 
-    let executor: Arc<dyn FirehoseBatchExecutor> = if args.workers == 1 {
+    let executor: Arc<dyn FirehoseBatchExecutor> = if workers == 1 {
         Arc::new(
             bimm_firehose::core::operations::executor::SequentialBatchExecutor::new(
                 schema.clone(),
@@ -75,7 +82,7 @@ fn main() -> anyhow::Result<()> {
         )
     } else {
         Arc::new(ThreadedBatchExecutor::new(
-            args.workers,
+            workers,
             schema.clone(),
             env.clone(),
         )?)
@@ -85,7 +92,6 @@ fn main() -> anyhow::Result<()> {
     let mut durations = Vec::new();
 
     // Simulate processing the dataset in batches, without threading.
-    let batch_size = 512;
     for chunk in (0..index.test.len()).chunks(batch_size).into_iter() {
         let start_time = Instant::now();
 
