@@ -114,7 +114,7 @@ fn main() -> anyhow::Result<()> {
             let item = &index.test.items[idx];
 
             let row = batch.new_row();
-            row.set("seed", ValueBox::serializing(idx as u64)?);
+            row.set("seed", ValueBox::serializing::<u64>(idx as u64)?);
             row.set(
                 "path",
                 ValueBox::serializing(item.path.to_string_lossy().to_string())?,

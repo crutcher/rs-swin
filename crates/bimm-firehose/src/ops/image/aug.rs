@@ -17,7 +17,7 @@ define_firehose_operator!(
     SimpleConfigOperatorFactory::<ImageAugmenter>::new(
         FirehoseOperatorSignature::from_operator_id(AUG_IMAGE)
             .with_description("Loads an image from disk.")
-            .with_input(ParameterSpec::new::<usize>("seed").with_description("Augmentation seed."),)
+            .with_input(ParameterSpec::new::<u64>("seed").with_description("Augmentation seed."),)
             .with_input(
                 ParameterSpec::new::<DynamicImage>("source").with_description("Source image."),
             )
