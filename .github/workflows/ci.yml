@@ -11,7 +11,7 @@ env:
 
 jobs:
   test:
-    name: tests
+    name: CI
     runs-on: ubuntu-latest
 
     steps:
