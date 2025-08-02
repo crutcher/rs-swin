@@ -4,8 +4,8 @@ engine = "Ptrace"
 
 workspace = true
 exclude = [
-  "examples/swin_tiny",
-  "examples/firehose_loadtest"
+  "swin_tiny",
+  "firehose_loadtest"
 ]
 
 coveralls="nHrsJRySHlIGNh3SsPt7yXCIvKC2Esi8e"
