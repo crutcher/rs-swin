@@ -23,6 +23,11 @@ dependencies = [
     "test",
 ]
 
+[tasks.cov]
+install_crate = "cargo-tarpaulin"
+command = "cargo"
+args = ["tarpaulin"]
+
 [tasks.bench]
 toolchain = "nightly"
 command = "cargo"

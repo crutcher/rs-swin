@@ -35,5 +35,5 @@ jobs:
 
       - name: Generate code coverage
         run: |
-          cargo tarpaulin --verbose
+          cargo tarpaulin --verbose --coveralls=${{ secrets.COVERALLS_REPO_TOKEN }}
 
