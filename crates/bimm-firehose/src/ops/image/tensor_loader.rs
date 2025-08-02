@@ -244,7 +244,7 @@ pub fn image_to_f32_tensor<B: Backend>(
     let tensor: Tensor<B, 3, Int> = Tensor::from_data_dtype(
         TensorData::from_bytes(data, shape, DType::U8),
         device,
-        DType::U8,
+        DType::I8,
     );
 
     tensor.float() / 255.0
