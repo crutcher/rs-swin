@@ -229,7 +229,7 @@ impl<B: Backend> ImgToTensor<B> {
 pub fn image_to_f32_tensor<B: Backend>(
     image: &DynamicImage,
     device: &B::Device,
-) -> Tensor<B, 3, Int> {
+) -> Tensor<B, 3> {
     let height = image.height() as usize;
     let width = image.width() as usize;
     let colors = image.color().channel_count() as usize;
@@ -241,11 +241,13 @@ pub fn image_to_f32_tensor<B: Backend>(
         .map(|p| pixel_depth_to_u8(p.clone()))
         .collect();
 
-    Tensor::from_data_dtype(
+    let tensor: Tensor<B, 3, Int> = Tensor::from_data_dtype(
         TensorData::from_bytes(data, shape, DType::I8),
         device,
         DType::I8,
-    )
+    );
+
+    tensor.float()
 }
 
 impl<B: Backend> FirehoseOperator for ImgToTensor<B> {
