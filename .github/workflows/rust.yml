@@ -19,6 +19,8 @@ jobs:
       options: --security-opt seccomp=unconfined
 
     steps:
+      - run: rustup toolchain install stable --profile minimal
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
