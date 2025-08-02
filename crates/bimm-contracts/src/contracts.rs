@@ -516,8 +516,6 @@ Shape Error:: 65 !~ (z)^3 :: No integer solution.
         assert_eq!(u_h, h);
         assert_eq!(u_w, w);
         assert_eq!(u_z, z);
-
-        todo!()
     }
 
     #[should_panic(expected = "Shape rank 3 != pattern dim count 1")]
