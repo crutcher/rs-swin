@@ -23,12 +23,8 @@ dependencies = [
     "test",
 ]
 
-[tasks.presub]
-dependencies = [
-  "coverage",
-]
-
-[tasks.coverage]
+[tasks.cov]
+install_crate = "cargo-tarpaulin"
 command = "cargo"
 args = ["tarpaulin"]
 
