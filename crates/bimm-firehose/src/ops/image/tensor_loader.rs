@@ -246,7 +246,7 @@ pub fn image_to_f32_tensor<B: Backend>(
         Tensor::from_data(TensorData::from_bytes(data, shape, DType::U8), device);
 
     // Normalize to [0.0, 1.0] range
-    tensor.float().cast(DType::F32) / 255.0
+    tensor.float() / 255.0
 }
 
 impl<B: Backend> FirehoseOperator for ImgToTensor<B> {
