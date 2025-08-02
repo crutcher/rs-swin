@@ -2,7 +2,7 @@
 name = "bimm"
 engine = "Ptrace"
 
-workspacea = true
+workspace = true
 exclude = [
   "examples/swin_tiny",
   "examples/firehose_loadtest"
