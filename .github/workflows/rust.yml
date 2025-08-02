@@ -33,11 +33,5 @@ jobs:
 
       - name: Generate code coverage
         run: |
-          cargo tarpaulin --verbose --out xml
-
-      - name: Upload to codecov.io
-        uses: codecov/codecov-action@v2
-        with:
-          token: ${{secrets.COVERALLS_REPO_TOKEN}}
-          fail_ci_if_error: true
+          cargo tarpaulin --verbose
 
