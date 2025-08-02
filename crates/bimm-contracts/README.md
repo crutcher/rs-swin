@@ -18,7 +18,7 @@
 
 ## Benchmarks
 
-[benchmarks](src/benchmarks.rs) are provided to measure the performance of the contract checks.
+[benchmarks](benches/contracts.rs) are provided to measure the performance of the contract checks.
 ```
 test benchmarks::bench_assert_shape           ... bench:         159.44 ns/iter (+/- 4.23)
 test benchmarks::bench_assert_shape_every_nth ... bench:           4.36 ns/iter (+/- 0.03)

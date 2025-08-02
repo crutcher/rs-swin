@@ -1,5 +1,5 @@
-use crate::{DimExpr, DimMatcher, ShapeContract, run_every_nth};
-use test::Bencher;
+use bimm_contracts::{DimExpr, DimMatcher, ShapeContract, run_every_nth};
+use criterion::{Criterion, criterion_group, criterion_main};
 
 static PATTERN: ShapeContract = ShapeContract::new(&[
     DimMatcher::any(),
@@ -18,8 +18,7 @@ static PADDING: usize = 4;
 static CHANNELS: usize = 5;
 static COLOR: usize = 4;
 
-#[bench]
-fn bench_unpack_shape(b: &mut Bencher) {
+fn bench_unpack_shape(c: &mut Criterion) {
     let shape = [
         12,
         BATCH,
@@ -33,18 +32,19 @@ fn bench_unpack_shape(b: &mut Bencher) {
     ];
     let env = [("p", PADDING), ("c", CHANNELS)];
 
-    b.iter(|| {
-        let [b, h, w, c] = PATTERN.unpack_shape(&shape, &["b", "h", "w", "z"], &env);
+    c.bench_function("unpack_shape", |b| {
+        b.iter(|| {
+            let [b, h, w, c] = PATTERN.unpack_shape(&shape, &["b", "h", "w", "z"], &env);
 
-        assert_eq!(b, BATCH);
-        assert_eq!(h, HEIGHT);
-        assert_eq!(w, WIDTH);
-        assert_eq!(c, COLOR);
+            assert_eq!(b, BATCH);
+            assert_eq!(h, HEIGHT);
+            assert_eq!(w, WIDTH);
+            assert_eq!(c, COLOR);
+        })
     });
 }
 
-#[bench]
-fn bench_assert_shape(b: &mut Bencher) {
+fn bench_assert_shape(c: &mut Criterion) {
     let shape = [
         12,
         BATCH,
@@ -58,13 +58,14 @@ fn bench_assert_shape(b: &mut Bencher) {
     ];
     let env = [("p", PADDING), ("c", CHANNELS)];
 
-    b.iter(|| {
-        PATTERN.assert_shape(&shape, &env);
+    c.bench_function("assert_shape", |b| {
+        b.iter(|| {
+            PATTERN.assert_shape(&shape, &env);
+        })
     });
 }
 
-#[bench]
-fn bench_assert_shape_every_nth(b: &mut Bencher) {
+fn bench_assert_shape_every_nth(c: &mut Criterion) {
     let shape = [
         12,
         BATCH,
@@ -78,7 +79,21 @@ fn bench_assert_shape_every_nth(b: &mut Bencher) {
     ];
     let env = [("p", PADDING), ("c", CHANNELS)];
 
-    b.iter(|| {
-        run_every_nth!(PATTERN.assert_shape(&shape, &env));
+    let mut group = c.benchmark_group("assert_shape_every_nth");
+    group.warm_up_time(std::time::Duration::from_nanos(1));
+
+    group.bench_function("assert_shape_every_nth", |b| {
+        b.iter(|| {
+            run_every_nth!(PATTERN.assert_shape(&shape, &env));
+        })
     });
+    group.finish();
 }
+
+criterion_group!(
+    benches,
+    bench_unpack_shape,
+    bench_assert_shape,
+    bench_assert_shape_every_nth
+);
+criterion_main!(benches);
