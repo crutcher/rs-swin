@@ -1,12 +1,12 @@
 [test_config]
 name = "bimm"
-engine = "Llvm"
+engine = "Ptrace"
 
 workspacea = true
 
 coveralls="nHrsJRySHlIGNh3SsPt7yXCIvKC2Esi8e"
 
-timeout = 120
+timeout = "10m"
 fail-under = 80
 
 run-types = ["Tests"]
