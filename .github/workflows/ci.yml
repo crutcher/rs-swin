@@ -47,3 +47,13 @@ jobs:
       - name: Build and Test
         run: |
           cargo tarpaulin --coveralls=${{ secrets.COVERALLS_REPO_TOKEN }}
+
+      - name: Criterion
+        run: |
+          cargo install cargo-criterion
+          cargo criterion 
+          
+      - uses: actions/upload-artifact@v4
+        with:
+          name: criterion-benchmark-reports
+          path: target/criterion/reports
