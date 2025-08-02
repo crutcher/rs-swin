@@ -1,0 +1,13 @@
+[test_config]
+name = "bimm"
+engine = "Llvm"
+
+workspacea = true
+
+coveralls="nHrsJRySHlIGNh3SsPt7yXCIvKC2Esi8e"
+
+timeout = 120
+fail-under = 80
+
+run-types = ["Tests"]
+
