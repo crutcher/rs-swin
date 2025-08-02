@@ -3,6 +3,10 @@ name = "bimm"
 engine = "Ptrace"
 
 workspacea = true
+exclude = [
+  "examples/swin_tiny",
+  "examples/firehose_loadtest"
+]
 
 coveralls="nHrsJRySHlIGNh3SsPt7yXCIvKC2Esi8e"
 
