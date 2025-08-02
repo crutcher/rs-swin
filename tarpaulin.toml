@@ -1,6 +1,7 @@
 [test_config]
 name = "bimm"
-engine = "Ptrace"
+# engine = "Ptrace"
+engine = "Llvm"
 
 workspace = true
 exclude = [

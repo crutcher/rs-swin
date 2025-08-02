@@ -86,6 +86,7 @@ fn main() -> anyhow::Result<()> {
     };
 
     let executor: Arc<dyn FirehoseBatchExecutor> = if workers == 1 {
+        #[allow(clippy::arc_with_non_send_sync)]
         Arc::new(
             bimm_firehose::core::operations::executor::SequentialBatchExecutor::new(
                 schema.clone(),
@@ -93,6 +94,7 @@ fn main() -> anyhow::Result<()> {
             )?,
         )
     } else {
+        #[allow(clippy::arc_with_non_send_sync)]
         Arc::new(ThreadedBatchExecutor::new(
             workers,
             schema.clone(),

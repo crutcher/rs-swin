@@ -23,9 +23,6 @@ pub mod math;
 /// Shape Argument for passing shapes in a type-safe manner.
 pub mod shape_argument;
 
-#[cfg(all(feature = "nightly", test))]
-mod benchmarks;
-
 pub use bindings::StackEnvironment;
 pub use contracts::{DimMatcher, ShapeContract};
 pub use expressions::DimExpr;

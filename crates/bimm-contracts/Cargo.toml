@@ -16,6 +16,11 @@ bimm-contracts-macros = { workspace = true, optional = true }
 
 [dev-dependencies]
 burn = { workspace = true, features = ["ndarray"] }
+criterion = { workspace = true }
+
+[[bench]]
+name = "contracts"
+harness = false
 
 [features]
 default = ["macros"]

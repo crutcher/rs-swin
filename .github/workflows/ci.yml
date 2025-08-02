@@ -14,11 +14,18 @@ jobs:
     name: tests
     runs-on: ubuntu-latest
 
-    container:
-      image: xd009642/tarpaulin:develop-nightly
-      options: --security-opt seccomp=unconfined
-
     steps:
+      - name: Cache Cargo binaries and dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
       - run: rustup toolchain install stable --profile minimal
 
       - name: Checkout repository
@@ -27,13 +34,16 @@ jobs:
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
 
-      - name: Build
-        run: cargo build --verbose
-
-      - name: Run tests
-        run: cargo test --verbose
-
-      - name: Generate code coverage
+      - name: Install Tools
         run: |
-          cargo tarpaulin --verbose --coveralls=${{ secrets.COVERALLS_REPO_TOKEN }}
+          cargo install cargo-tarpaulin
 
+      - name: Check Format
+        run: cargo fmt --check
+
+      - name: Clippy Lint
+        run: cargo clippy --no-deps
+
+      - name: Build and Test
+        run: |
+          cargo tarpaulin --coveralls=${{ secrets.COVERALLS_REPO_TOKEN }}
