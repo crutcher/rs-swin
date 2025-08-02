@@ -14,10 +14,6 @@ jobs:
     name: tests
     runs-on: ubuntu-latest
 
-    container:
-      image: xd009642/tarpaulin:develop-nightly
-      options: --security-opt seccomp=unconfined
-
     steps:
       - run: rustup toolchain install stable --profile minimal
 
@@ -27,13 +23,16 @@ jobs:
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
 
+      - name: Install Tools
+        run: |
+          cargo install cargo-tarpaulin
+
       - name: Check Format
         run: cargo fmt --check
 
       - name: Clippy Lint
-        run: cargo clippy --check
+        run: cargo clippy
 
       - name: Build and Test
         run: |
-          cargo tarpaulin --verbose --coveralls=${{ secrets.COVERALLS_REPO_TOKEN }}
-
+          cargo tarpaulin --coveralls=${{ secrets.COVERALLS_REPO_TOKEN }}
