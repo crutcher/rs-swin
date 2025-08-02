@@ -1,9 +1,7 @@
-name: Rust
+name: Benchmarks
 
 on:
   push:
-    branches: [ "main" ]
-  pull_request:
     branches: [ "main" ]
 
 env:
@@ -35,16 +33,12 @@ jobs:
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
 
-      - name: Install Tools
+      - name: Criterion
         run: |
-          cargo install cargo-tarpaulin
+          cargo install cargo-criterion
+          cargo criterion 
 
-      - name: Check Format
-        run: cargo fmt --check
-
-      - name: Clippy Lint
-        run: cargo clippy --no-deps
-
-      - name: Build and Test
-        run: |
-          cargo tarpaulin --coveralls=${{ secrets.COVERALLS_REPO_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: criterion-benchmark-reports
+          path: target/criterion/reports
