@@ -9,7 +9,7 @@ env:
 
 jobs:
   test:
-    name: tests
+    name: Criterion
     runs-on: ubuntu-latest
 
     steps:
