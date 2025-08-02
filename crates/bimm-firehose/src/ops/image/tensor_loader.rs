@@ -242,7 +242,7 @@ pub fn image_to_f32_tensor<B: Backend>(
         .collect();
 
     let tensor: Tensor<B, 3, Int> = Tensor::from_data_dtype(
-        TensorData::from_bytes(data, shape, DType::U8),
+        TensorData::from_bytes(data, shape, DType::I8),
         device,
         DType::I8,
     );
