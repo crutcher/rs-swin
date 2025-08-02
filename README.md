@@ -1,5 +1,7 @@
 # Burn Image Models
 
+[![Coverage Status](https://coveralls.io/repos/github/crutcher/bimm/badge.svg)](https://coveralls.io/github/crutcher/bimm)
+
 ## Overview
 
 This is a Rust crate for image models, inspired by the Python `timm` package.
