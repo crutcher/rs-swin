@@ -246,7 +246,28 @@ pub fn image_to_f32_tensor<B: Backend>(
         Tensor::from_data(TensorData::from_bytes(data, shape, DType::U8), device);
 
     // Normalize to [0.0, 1.0] range
-    tensor.float() / 255.0
+    tensor.float().cast(DType::F32) / 255.0
+}
+
+pub fn image_to_int_tensor<B: Backend>(
+    image: &DynamicImage,
+    device: &B::Device,
+) -> Tensor<B, 3, Int> {
+    let height = image.height() as usize;
+    let width = image.width() as usize;
+    let colors = image.color().channel_count() as usize;
+    let shape = vec![height, width, colors];
+
+    let pixvec = image_to_pixvec(image);
+    let data: Vec<u8> = pixvec
+        .iter()
+        .map(|p| pixel_depth_to_u8(p.clone()))
+        .collect();
+
+    let tensor: Tensor<B, 3, Int> =
+        Tensor::from_data(TensorData::from_bytes(data, shape, DType::U8), device);
+
+    tensor
 }
 
 impl<B: Backend> FirehoseOperator for ImgToTensor<B> {
@@ -258,7 +279,7 @@ impl<B: Backend> FirehoseOperator for ImgToTensor<B> {
 
         match self.config.dtype {
             TargetDType::F32 => {
-                let tensor: Tensor<B, 3> = image_to_f32_tensor(image, &self.device);
+                let tensor = image_to_int_tensor::<B>(image, &self.device);
 
                 txn.set("tensor", ValueBox::boxing(tensor));
             }
