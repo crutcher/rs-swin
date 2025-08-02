@@ -7,8 +7,8 @@ use crate::core::{FirehoseRowReader, FirehoseRowWriter, ValueBox};
 use crate::define_firehose_operator_id;
 use anyhow::Context;
 use burn::data::dataset::vision::PixelDepth;
-use burn::prelude::{Backend, Tensor};
-use burn::tensor::{TensorData, f16};
+use burn::prelude::{Backend, Tensor, Int};
+use burn::tensor::{TensorData, f16, DType};
 use image::{ColorType, DynamicImage};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -236,16 +236,18 @@ pub fn image_to_f32_tensor<B: Backend>(
     let shape = vec![height, width, colors];
 
     let pixvec = image_to_pixvec(image);
-    let data: Vec<f32> = pixvec
+    let data: Vec<u8> = pixvec
         .iter()
-        .map(|p| pixel_depth_to_f32(p.clone()))
+        .map(|p| pixel_depth_to_u8(p.clone()))
         .collect();
 
-    Tensor::from_data_dtype(
-        TensorData::new(data, shape),
+    let tensor: Tensor<B, 3, Int> = Tensor::from_data_dtype(
+        TensorData::from_bytes(data, shape, DType::U8),
         device,
-        burn::tensor::DType::F32,
-    )
+        DType::U8,
+    );
+
+    tensor.float() / 255.0
 }
 
 impl<B: Backend> FirehoseOperator for ImgToTensor<B> {
