@@ -23,6 +23,15 @@ dependencies = [
     "test",
 ]
 
+[tasks.presub]
+dependencies = [
+  "coverage",
+]
+
+[tasks.coverage]
+command = "cargo"
+args = ["tarpaulin"]
+
 [tasks.bench]
 toolchain = "nightly"
 command = "cargo"

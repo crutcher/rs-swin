@@ -8,8 +8,6 @@ exclude = [
   "firehose_loadtest"
 ]
 
-coveralls="nHrsJRySHlIGNh3SsPt7yXCIvKC2Esi8e"
-
 timeout = "10m"
 fail-under = 80
 
