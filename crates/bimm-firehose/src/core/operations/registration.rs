@@ -31,17 +31,6 @@ impl Debug for FirehoseOperatorFactoryRegistration {
 }
 
 impl FirehoseOperatorFactoryRegistration {
-    /// Creates a new registration.
-    pub const fn new(
-        operator_id: &'static str,
-        supplier: fn() -> Arc<dyn FirehoseOperatorFactory>,
-    ) -> Self {
-        Self {
-            operator_id,
-            supplier,
-        }
-    }
-
     /// Returns the builder.
     pub fn get_builder(&self) -> Arc<dyn FirehoseOperatorFactory> {
         let builder = (self.supplier)();
@@ -90,7 +79,30 @@ mod tests {
         pub z: bool,
     }
 
-    impl FirehoseOperator for ExampleOp {}
+    impl FirehoseOperator for ExampleOp {
+        fn apply_to_row(
+            &self,
+            _row: &mut crate::core::rows::FirehoseRowTransaction,
+        ) -> anyhow::Result<()> {
+            todo!()
+        }
+    }
+
+    #[should_panic(expected = "Builder operator ID does not match registration ID")]
+    #[test]
+    fn test_get_builder_mismatched_id() {
+        let reg = FirehoseOperatorFactoryRegistration {
+            operator_id: EXAMPLE_OPERATOR,
+            supplier: || {
+                Arc::new(SimpleConfigOperatorFactory::<ExampleOp>::new(
+                    FirehoseOperatorSignature::new().with_operator_id("mismatched_id"),
+                ))
+            },
+        };
+
+        // This should panic because the operator ID does not match the registration ID.
+        reg.get_builder();
+    }
 
     #[test]
     fn test_list_default_registrations() {

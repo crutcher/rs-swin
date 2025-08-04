@@ -40,7 +40,7 @@ pub fn try_boxable<T: 'static>() -> anyhow::Result<()> {
     if forbidden_types.contains(&type_id) {
         let type_name = std::any::type_name::<T>();
         bail!(
-            "Type `{type_name}` cannot be stored in ValueBox::Boxed; \
+            "Type `{type_name}` must be serialized, not boxed; \
              use a ValueBox::Value instead."
         );
     }
@@ -196,6 +196,14 @@ mod tests {
         assert!(try_boxable::<bool>().is_err());
 
         assert!(try_boxable::<MyStruct>().is_ok());
+    }
+
+    #[should_panic(
+        expected = "Type `i32` must be serialized, not boxed; use a ValueBox::Value instead."
+    )]
+    #[test]
+    fn test_check_boxable() {
+        check_boxable::<i32>();
     }
 
     #[test]

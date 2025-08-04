@@ -42,8 +42,6 @@ pub trait FirehoseOperator: 'static + Send + Sync + Debug {
 
     /// Apply the operator to a single row in the provided context.
     ///
-    /// Implementations which override `apply_batch` should leave this as unimplemented.
-    ///
     /// # Returns
     ///
     /// An `anyhow::Result<()>` indicating success or containing an error if the operation fails.
@@ -51,10 +49,7 @@ pub trait FirehoseOperator: 'static + Send + Sync + Debug {
     fn apply_to_row(
         &self,
         txn: &mut FirehoseRowTransaction,
-    ) -> anyhow::Result<()> {
-        let _ignored = txn;
-        unimplemented!()
-    }
+    ) -> anyhow::Result<()>;
 }
 
 /// Represents a schema + instantiated column operator for a particular build plan.

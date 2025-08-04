@@ -55,11 +55,6 @@ pub struct BuildPlan {
 }
 
 impl BuildPlan {
-    /// Returns a pretty-printed JSON string representation of the build plan.
-    pub fn pretty_json_string(&self) -> String {
-        serde_json::to_string_pretty(self).unwrap_or_else(|_| "Invalid build plan".to_string())
-    }
-
     /// Creates a new `ColumnBuildPlan` with the given operator spec.
     pub fn for_operator<S>(id: S) -> Self
     where
@@ -183,7 +178,12 @@ impl BuildPlan {
         parameter_map
             .get(parameter_name)
             .map(|column_name| column_name.as_str())
-            .ok_or_else(|| anyhow!("'{parameter_name}' is not a {parameter_type} not parameter of build plan\n:{:?}", self.pretty_json_string()))
+            .ok_or_else(|| {
+                anyhow!(
+                    "'{parameter_name}' is not a {parameter_type} parameter\n:{:?}",
+                    self
+                )
+            })
     }
 
     /// Translates an input parameter name to its corresponding column name.
@@ -467,55 +467,6 @@ impl FirehoseTableSchema {
         Self::check_graph(&self.columns, &self.build_plans)
     }
 
-    /// Computes the build order for a target set of columns, given the extant columns.
-    ///
-    /// This function determines which build plans are needed to produce the target columns, based on the extant columns.
-    ///
-    /// ## Arguments
-    ///
-    /// - `extant_columns`: A vector of column names that already exist in the table.
-    /// - `target_columns`: A vector of column names that we want to build.
-    ///
-    /// ## Returns
-    ///
-    /// An `anyhow::Result<Vec<BuildPlan>>` containing the ordered build plans needed to produce the target columns.
-    pub fn target_build_order(
-        &self,
-        extant_columns: &[&str],
-        target_columns: &[&str],
-    ) -> anyhow::Result<Vec<BuildPlan>> {
-        let (_, plans) = self.build_order()?;
-
-        let mut needed: HashSet<String> = HashSet::new();
-        for cname in target_columns {
-            if !extant_columns.contains(cname) {
-                needed.insert(cname.to_string());
-            }
-        }
-
-        let mut order: Vec<BuildPlan> = Vec::new();
-
-        for plan in plans.iter().rev() {
-            if plan
-                .outputs
-                .iter()
-                .any(|(_, cname)| needed.contains(cname.as_str()))
-            {
-                order.push(plan.clone());
-
-                for (_, cname) in plan.inputs.iter() {
-                    if !extant_columns.contains(&cname.as_str()) {
-                        needed.insert(cname.clone());
-                    }
-                }
-            }
-        }
-
-        order.reverse();
-
-        Ok(order)
-    }
-
     /// Creates a new `DataTableDescription` with the given columns.
     #[must_use]
     pub fn from_columns(columns: &[ColumnSchema]) -> Self {
@@ -652,7 +603,9 @@ impl FirehoseTableSchema {
         self.add_build_plan(plan)
     }
 
-    /// Renames a column in the table description.
+    /// Renames a column; and all references.
+    ///
+    /// Updates build plans to reflect the new column name.
     pub fn rename_column(
         &mut self,
         old_name: &str,
@@ -734,41 +687,6 @@ impl FirehoseTableSchema {
             Some(idx) => Ok(idx),
             None => bail!("Column '{name}' not found in schema"),
         }
-    }
-
-    /// Selects the indices of the columns with the given names.
-    ///
-    /// ## Arguments
-    ///
-    /// - `names`: An array of column names to select.
-    ///
-    /// ## Returns
-    ///
-    /// An `anyhow::Result<[usize; K]>` containing an array of indices corresponding to the column names.
-    ///
-    /// ## Example
-    ///
-    /// ```rust.norun
-    /// use bimm_firehose::core::{TableSchema, ColumnSchema};
-    /// let table = TableSchema::from_columns(&[
-    ///     ColumnSchema::new::<i32>("foo"),
-    ///     ColumnSchema::new::<String>("bar"),
-    ///     ColumnSchema::new::<Option<usize>>("baz"),
-    /// ]);
-    ///
-    /// let [foo, baz] = table.select_indices(&["foo", "baz"]).unwrap();
-    /// assert_eq!(foo, 0);
-    /// assert_eq!(baz, 2);
-    /// ```
-    pub fn select_indices<const K: usize>(
-        &self,
-        names: &[&str; K],
-    ) -> anyhow::Result<[usize; K]> {
-        let mut indices = [0; K];
-        for (i, name) in names.iter().enumerate() {
-            indices[i] = self.check_column_index(name)?
-        }
-        Ok(indices)
     }
 }
 

@@ -876,4 +876,54 @@ mod tests {
 
         Ok(())
     }
+
+    #[should_panic(expected = "take() is not supported in FirehoseRowTransaction")]
+    #[test]
+    fn test_row_transaction_take() {
+        let mut schema = FirehoseTableSchema::from_columns(&[
+            ColumnSchema::new::<i32>("foo"),
+            ColumnSchema::new::<String>("bar"),
+        ]);
+
+        let build_plan = BuildPlan::for_operator("foo/bar")
+            .with_inputs(&[("source", "foo")])
+            .with_outputs(&[("result", "xyz")]);
+        schema
+            .add_build_plan_and_outputs(
+                build_plan.clone(),
+                &[(
+                    "result".to_string(),
+                    DataTypeDescription::new::<String>(),
+                    None,
+                )],
+            )
+            .unwrap();
+        let schema = Arc::new(schema);
+
+        let mut batch = FirehoseRowBatch::new(schema.clone());
+        let row = batch.new_row();
+        row.set("foo", ValueBox::serializing(42).unwrap());
+        row.set("bar", ValueBox::serializing("Hello").unwrap());
+
+        let signature = Arc::new(
+            FirehoseOperatorSignature::new()
+                .with_input(
+                    ParameterSpec::new::<String>("source")
+                        .with_description("Source parameter for the operator"),
+                )
+                .with_output(
+                    ParameterSpec::new::<String>("result")
+                        .with_description("Result parameter for the operator"),
+                ),
+        );
+
+        let mut txn = FirehoseBatchTransaction::new(
+            &mut batch,
+            Arc::new(build_plan.clone()),
+            signature.clone(),
+        );
+
+        let mut row_txn = txn.mut_row_transaction(0);
+        row_txn.take("foo");
+    }
 }
