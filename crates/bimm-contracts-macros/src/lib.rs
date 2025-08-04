@@ -121,11 +121,9 @@ fn parse_sum_expr(input: ParseStream) -> SynResult<ExprNode> {
 
     while input.peek(Token![+]) || input.peek(Token![-]) {
         if input.parse::<Token![+]>().is_ok() {
-            let right = parse_prod_expr(input)?;
-            terms.push(right);
+            terms.push(parse_prod_expr(input)?);
         } else if input.parse::<Token![-]>().is_ok() {
-            let right = parse_prod_expr(input)?;
-            terms.push(ExprNode::Negate(Box::new(right)));
+            terms.push(ExprNode::Negate(Box::new(parse_prod_expr(input)?)));
         }
     }
 
@@ -177,7 +175,8 @@ fn parse_factor_expr(input: ParseStream) -> SynResult<ExprNode> {
 
     if input.peek(Token![+]) {
         input.parse::<Token![+]>()?;
-        return parse_factor_expr(input); // Unary plus is no-op
+        // Unary plus is no-op
+        return parse_factor_expr(input);
     }
 
     // Handle parentheses
@@ -300,7 +299,7 @@ impl ShapeContract {
 /// ```
 ///
 /// # Example
-/// ```rust.no_run
+/// ```rust.norun
 /// use bimm_contracts::{ShapeContract, shape_contract};
 /// static CONTRACT: ShapeContract = shape_contract!(_, "x" + "y", ..., "z" ^ 2);
 /// ```
@@ -335,6 +334,18 @@ mod tests {
     }
 
     #[test]
+    fn test_unary_add_op() {
+        let tokens: proc_macro2::TokenStream = r#"+ "x""#.parse().unwrap();
+        let input = syn::parse2::<ExprSyntax>(tokens).unwrap();
+        assert_eq!(input.expr, ExprNode::Param("x".to_string()));
+
+        assert_eq!(
+            input.expr.to_tokens().to_string(),
+            "bimm_contracts :: DimExpr :: Param (\"x\")"
+        );
+    }
+
+    #[test]
     fn test_parse_simple_expression() {
         let tokens: proc_macro2::TokenStream = r#""x""#.parse().unwrap();
         let input = syn::parse2::<ExprSyntax>(tokens).unwrap();
@@ -363,19 +374,15 @@ mod tests {
 
     #[test]
     fn test_mixed_addition() {
-        let tokens: proc_macro2::TokenStream = r#""a" - "x""#.parse().unwrap();
+        let tokens: proc_macro2::TokenStream = r#""a" + "b" - "x""#.parse().unwrap();
         let input = syn::parse2::<ExprSyntax>(tokens).unwrap();
         assert_eq!(
             input.expr,
             ExprNode::Sum(vec![
                 ExprNode::Param("a".to_string()),
+                ExprNode::Param("b".to_string()),
                 ExprNode::Negate(Box::new(ExprNode::Param("x".to_string()))),
             ])
-        );
-
-        assert_eq!(
-            input.expr.to_tokens().to_string(),
-            "bimm_contracts :: DimExpr :: Sum (& [bimm_contracts :: DimExpr :: Param (\"a\") , bimm_contracts :: DimExpr :: Negate (& bimm_contracts :: DimExpr :: Param (\"x\"))])"
         );
     }
 

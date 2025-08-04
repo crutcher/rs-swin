@@ -391,6 +391,8 @@ mod tests {
         assert!(config.enable_qkv_bias());
         assert_eq!(config.attn_drop(), 0.0);
         assert_eq!(config.proj_drop(), 0.0);
+        assert_eq!(config.window_height(), 4);
+        assert_eq!(config.window_width(), 4);
 
         let device = Default::default();
         let attn_mod = config.init::<NdArray>(&device);

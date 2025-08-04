@@ -6,16 +6,13 @@ repository.workspace = true
 license.workspace = true
 description = "proc-macros for bimm contracts"
 
-[dependencies]
-proc-macro2 = { workspace = true }
-syn = { workspace = true, features = ["full", "extra-traits"] }
-quote = { workspace = true, features = ["proc-macro"] }
-
 [lints]
 workspace = true
 
 [lib]
 proc-macro = true
 
-[features]
-nightly = []
+[dependencies]
+proc-macro2 = { workspace = true }
+syn = { workspace = true, features = ["full", "extra-traits"] }
+quote = { workspace = true, features = ["proc-macro"] }

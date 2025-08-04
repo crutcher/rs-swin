@@ -210,10 +210,17 @@ impl DropPath {
 #[cfg(test)]
 mod tests {
 
+    use super::*;
     use crate::layers::drop::path::{_drop_path_sample, DropPathConfig, DropPathMeta};
     use burn::backend::NdArray;
     use burn::prelude::Tensor;
     use burn::tensor::Distribution;
+
+    #[should_panic(expected = "Probability should be between 0 and 1, but got 2")]
+    #[test]
+    fn test_check_probability_panic() {
+        let _ = check_probability(2.0);
+    }
 
     #[test]
     fn test_drop_path() {
@@ -233,6 +240,23 @@ mod tests {
         let output = module.forward(input.clone());
 
         assert_eq!(input.dims(), output.dims());
+    }
+
+    #[test]
+    fn test_drop_path_wrapper() {
+        let device = Default::default();
+
+        let n = 3;
+        let shape = [n, 2, 4];
+
+        let x = Tensor::<NdArray, 3>::random(shape, Distribution::Uniform(0.0, 1.0), &device);
+
+        // No-op case: not training and drop_prob = 0.0
+        let training = false;
+        let drop_prob = 0.0;
+        let scale_by_keep = false;
+        let res = drop_path(x.clone(), drop_prob, training, scale_by_keep);
+        assert_eq!(res.dims(), x.dims());
     }
 
     #[test]

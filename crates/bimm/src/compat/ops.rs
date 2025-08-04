@@ -150,6 +150,22 @@ mod tests {
             .assert_eq(&TensorData::from([3.0, 2.0, 1.0, 0.0, -1.0]), false);
     }
 
+    #[should_panic(expected = "Step must be negative when start > end")]
+    #[test]
+    fn test_float_arange_panic_step_negative() {
+        let device = Default::default();
+        // This should panic because the step is not negative
+        let _ = float_arange::<NdArray>(3.0, -1.0, Some(1.0), &device);
+    }
+
+    #[should_panic(expected = "Step must be positive when start < end")]
+    #[test]
+    fn test_float_arange_panic_step_positive() {
+        let device = Default::default();
+        // This should panic because the step is not positive
+        let _ = float_arange::<NdArray>(-1.0, 3.0, Some(-1.0), &device);
+    }
+
     #[test]
     fn test_float_vec_linspace_int_step() {
         let device = Default::default();

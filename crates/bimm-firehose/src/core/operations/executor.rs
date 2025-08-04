@@ -191,9 +191,12 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
-    #[allow(dead_code)]
     const SE_IS_SEND: fn() = || {
         fn assert_send<T: Send>() {}
         assert_send::<Vec<Arc<OperationRunner>>>();
     };
+    #[test]
+    fn test_se_is_send() {
+        SE_IS_SEND();
+    }
 }

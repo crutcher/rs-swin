@@ -18,6 +18,10 @@ license = "MIT"
 double_must_use = "allow"
 doc_markdown = "warn"
 
+[profile.test]
+# Ensure proc-macros can find dependencies in RustRover tests.
+rpath = true
+
 [workspace.dependencies]
 bimm = { version = "0.2.0", path = "crates/bimm" }
 bimm-contracts = { version = "0.2.0", path = "crates/bimm-contracts" }
