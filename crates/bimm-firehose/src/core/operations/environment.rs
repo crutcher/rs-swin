@@ -6,6 +6,7 @@ use crate::core::operations::signature::FirehoseOperatorSignature;
 use crate::core::schema::{BuildPlan, DataTypeDescription, FirehoseTableSchema};
 use anyhow::{Context, bail};
 use std::collections::BTreeMap;
+use std::fmt::Debug;
 use std::sync::Arc;
 
 /// Build the default environment.
@@ -25,7 +26,7 @@ pub fn new_default_operator_environment() -> MapOpEnvironment {
 }
 
 /// `OpEnvironment` is a trait that provides access to a collection of operator bindings.
-pub trait OpEnvironment {
+pub trait OpEnvironment: Debug + Send + Sync {
     /// Returns a reference to the map of operator bindings.
     // TODO: This should be an iterator.
     fn operators(&self) -> &BTreeMap<String, Arc<dyn FirehoseOperatorFactory>>;
@@ -132,6 +133,7 @@ pub trait OpEnvironment {
 }
 
 /// `MapOpEnvironment` is a simple implementation of `OpEnvironment` that uses a `BTreeMap` to store operators.
+#[derive(Debug)]
 pub struct MapOpEnvironment {
     /// A map of operator IDs to their corresponding operator factories.
     operators: BTreeMap<String, Arc<dyn FirehoseOperatorFactory>>,
