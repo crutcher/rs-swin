@@ -111,7 +111,7 @@ impl OperationPlan {
     ///
     /// # Returns
     ///
-    /// A result containing an `OperationInitSignatureContext` if successful, or an error message if the operation fails.
+    /// An `anyhow::Result` of (`BuildPlan`, { column: `ColumnSchema`}).
     pub fn plan_for_signature(
         self,
         signature: &FirehoseOperatorSignature,
@@ -148,5 +148,57 @@ impl OperationPlan {
         env: &dyn OpEnvironment,
     ) -> anyhow::Result<BuildPlan> {
         env.apply_plan_to_schema(schema, self)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_operation_plan_creation() {
+        let plan = OperationPlan::for_operation_id("example_operator")
+            .with_input("input1", "col1")
+            .with_output("output1", "col2");
+
+        assert_eq!(plan.operator_id, "example_operator");
+        assert_eq!(plan.inputs.get("input1"), Some(&"col1".to_string()));
+        assert_eq!(plan.outputs.get("output1"), Some(&"col2".to_string()));
+    }
+
+    #[should_panic(expected = "Input parameter 'input1' already exists.")]
+    #[test]
+    fn test_duplicate_input_panic() {
+        let _ = OperationPlan::for_operation_id("example_operator")
+            .with_input("input1", "col1")
+            .with_input("input1", "col2"); // This should panic
+    }
+
+    #[should_panic(expected = "Output parameter 'output1' already exists.")]
+    #[test]
+    fn test_duplicate_output_panic() {
+        let _ = OperationPlan::for_operation_id("example_operator")
+            .with_output("output1", "col1")
+            .with_output("output1", "col2"); // This should panic
+    }
+
+    pub struct BadConfig;
+
+    impl Serialize for BadConfig {
+        fn serialize<S>(
+            &self,
+            _serializer: S,
+        ) -> Result<S::Ok, S::Error>
+        where
+            S: serde::Serializer,
+        {
+            Err(serde::ser::Error::custom("Serialization failed"))
+        }
+    }
+
+    #[should_panic(expected = "Failed to serialize config")]
+    #[test]
+    fn test_with_config_serialization_failure() {
+        let _ = OperationPlan::for_operation_id("example_operator").with_config(BadConfig {}); // This should panic because `()` cannot be serialized to JSON
     }
 }

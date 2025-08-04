@@ -5,7 +5,7 @@ use crate::core::operations::registration;
 use crate::core::operations::signature::FirehoseOperatorSignature;
 use crate::core::schema::{BuildPlan, DataTypeDescription, FirehoseTableSchema};
 use anyhow::{Context, bail};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 /// Build the default environment.
@@ -15,7 +15,7 @@ use std::sync::Arc;
 ///
 /// Each call `build_default_environment` will create a new mutable environment.
 pub fn new_default_operator_environment() -> MapOpEnvironment {
-    let mut env = MapOpEnvironment::new();
+    let mut env = MapOpEnvironment::default();
 
     for reg in registration::FirehoseOperatorFactoryRegistration::list_default_registrations() {
         env.add_binding(reg.get_builder()).unwrap();
@@ -213,85 +213,6 @@ impl MapOpEnvironment {
 impl OpEnvironment for MapOpEnvironment {
     fn operators(&self) -> &BTreeMap<String, Arc<dyn FirehoseOperatorFactory>> {
         // TODO: This should be an iterator.
-        &self.operators
-    }
-}
-
-/// `UnionEnvironment` combines multiple `OpEnvironment` instances into a single environment.
-pub struct UnionEnvironment {
-    /// A vector of Arc-wrapped `OpEnvironment` instances.
-    environments: Vec<Arc<dyn OpEnvironment>>,
-
-    /// A map of operator IDs to their corresponding operator factories.
-    // TODO: This should be an iterator; so that this field doesn't need to be constructed.
-    operators: BTreeMap<String, Arc<dyn FirehoseOperatorFactory>>,
-}
-
-impl Default for UnionEnvironment {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl UnionEnvironment {
-    /// Creates a new `UnionEnvironment` with no environments.
-    pub fn new() -> Self {
-        Self {
-            environments: Vec::new(),
-            operators: BTreeMap::new(),
-        }
-    }
-
-    /// Creates a `UnionEnvironment` from a list of `OpEnvironment` instances.
-    ///
-    /// # Arguments
-    ///
-    /// * `environments` - A slice of Arc-wrapped `OpEnvironment` instances.
-    ///
-    /// # Panics
-    ///
-    /// If any operator names are duplicated across the environments.
-    pub fn from_list(environments: &[Arc<dyn OpEnvironment>]) -> Self {
-        let mut env = Self::new();
-        for e in environments {
-            env.add_environment(e.clone());
-        }
-        env
-    }
-
-    /// Adds a new `OpEnvironment` to the `UnionEnvironment`.
-    ///
-    /// # Arguments
-    ///
-    /// * `env` - An Arc-wrapped `OpEnvironment` instance to add.
-    ///
-    /// # Panics
-    ///
-    /// If the new environment contains operators that already exist in any of the previously added environments.
-    pub fn add_environment(
-        &mut self,
-        env: Arc<dyn OpEnvironment>,
-    ) {
-        // Ensure no duplicates
-        let new_keys: HashSet<&str> = env.operators().keys().map(|s| s.as_str()).collect();
-
-        for existing_env in &self.environments {
-            let existing_keys = existing_env.operators().keys();
-
-            for key in existing_keys {
-                if new_keys.contains(key.as_str()) {
-                    panic!("Duplicate operator '{key}' found in UnionEnvironment.");
-                }
-            }
-        }
-
-        self.operators.extend(env.operators().clone());
-        self.environments.push(env);
-    }
-}
-
-impl OpEnvironment for UnionEnvironment {
-    fn operators(&self) -> &BTreeMap<String, Arc<dyn FirehoseOperatorFactory>> {
         &self.operators
     }
 }

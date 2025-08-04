@@ -3,25 +3,6 @@ use anyhow::{Context, bail};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-/// Defines the arity (requirement level) of a parameter
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ParameterArity {
-    /// The parameter is required and must be provided.
-    #[default]
-    Required,
-
-    /// The parameter is optional and may be omitted.
-    Optional,
-}
-
-impl ParameterArity {
-    /// Returns `true` if the parameter is scalar-valued.
-    pub fn is_scalar(&self) -> bool {
-        // TODO: support list/vector types.
-        true
-    }
-}
-
 /// Defines a single parameter specification
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ParameterSpec {
@@ -35,9 +16,6 @@ pub struct ParameterSpec {
 
     /// The data type of the parameter.
     pub data_type: DataTypeDescription,
-
-    /// The arity of the parameter, indicating whether it is required or optional.
-    pub arity: ParameterArity,
 }
 
 impl ParameterSpec {
@@ -58,7 +36,6 @@ impl ParameterSpec {
             name: name.to_string(),
             description: None,
             data_type: DataTypeDescription::new::<T>(),
-            arity: ParameterArity::Required,
         }
     }
 
@@ -71,20 +48,6 @@ impl ParameterSpec {
             name: self.name,
             description: Some(description.into()),
             data_type: self.data_type,
-            arity: self.arity,
-        }
-    }
-
-    /// Extends the parameter specification with a data type.
-    pub fn with_arity(
-        self,
-        arity: ParameterArity,
-    ) -> Self {
-        Self {
-            name: self.name,
-            description: self.description,
-            data_type: self.data_type,
-            arity,
         }
     }
 }
@@ -353,12 +316,9 @@ impl FirehoseOperatorSignature {
         provided: &BTreeMap<String, DataTypeDescription>,
     ) -> anyhow::Result<()> {
         // Check for required parameters
-        let required_params: Vec<_> = specs
-            .iter()
-            .filter(|spec| spec.arity == ParameterArity::Required)
-            .collect();
+        let required_params = specs;
 
-        for spec in &required_params {
+        for spec in required_params {
             if !provided.contains_key(&spec.name) {
                 bail!(
                     "Missing required {} parameter '{}' of type {:?}",
@@ -422,10 +382,6 @@ mod tests {
         let spec: ParameterSpec = ParameterSpec::new::<i32>("count");
         assert_eq!(spec.name, "count");
         assert_eq!(spec.data_type.type_name, "i32");
-        assert_eq!(spec.arity, ParameterArity::Required);
-
-        let spec = spec.with_arity(ParameterArity::Optional);
-        assert_eq!(spec.arity, ParameterArity::Optional);
     }
 
     #[test]

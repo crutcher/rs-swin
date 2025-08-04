@@ -111,6 +111,7 @@ mod tests {
     use crate::core::operations::factory::SimpleConfigOperatorFactory;
     use crate::core::operations::operator::FirehoseOperator;
     use crate::core::operations::signature::{FirehoseOperatorSignature, ParameterSpec};
+    use crate::core::rows::FirehoseRowTransaction;
     use crate::define_firehose_operator_id;
     use serde::{Deserialize, Serialize};
 
@@ -121,7 +122,14 @@ mod tests {
         pub value: i32,
     }
 
-    impl FirehoseOperator for TestOperator {}
+    impl FirehoseOperator for TestOperator {
+        fn apply_to_row(
+            &self,
+            _row: &mut FirehoseRowTransaction,
+        ) -> anyhow::Result<()> {
+            todo!()
+        }
+    }
 
     #[test]
     fn test_simple_config_operator_factory() {
@@ -129,6 +137,17 @@ mod tests {
             .with_input(ParameterSpec::new::<i32>("input"))
             .with_output(ParameterSpec::new::<i32>("output"));
 
+        let _factory = SimpleConfigOperatorFactory::<TestOperator>::new(signature);
+    }
+
+    #[should_panic(expected = "OperatorSpec must have an operator_id")]
+    #[test]
+    fn test_simple_config_operator_factory_without_id() {
+        let signature = FirehoseOperatorSignature::default()
+            .with_input(ParameterSpec::new::<i32>("input"))
+            .with_output(ParameterSpec::new::<i32>("output"));
+
+        // This should panic because the operator_id is not set.
         let _factory = SimpleConfigOperatorFactory::<TestOperator>::new(signature);
     }
 }

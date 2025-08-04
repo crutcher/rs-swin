@@ -58,13 +58,13 @@ macro_rules! define_firehose_operator_id {
 macro_rules! register_firehose_operator_factory {
     ($name:ident, $constructor:expr) => {
         inventory::submit! {
-            $crate::core::operations::registration::FirehoseOperatorFactoryRegistration::new(
-                $name,
-                || {
+            $crate::core::operations::registration::FirehoseOperatorFactoryRegistration {
+                operator_id: $name,
+                supplier: || {
                     let v = ($constructor);
                     Arc::from(v) as Arc<dyn $crate::core::operations::factory::FirehoseOperatorFactory>
                 },
-            )
+            }
         }
     };
 }
@@ -75,9 +75,7 @@ mod tests {
     use crate::core::operations::factory::SimpleConfigOperatorFactory;
     use crate::core::operations::operator::OperationRunner;
     use crate::core::operations::operator::{FirehoseOperator, OperatorSchedulingMetadata};
-    use crate::core::operations::signature::{
-        FirehoseOperatorSignature, ParameterArity, ParameterSpec,
-    };
+    use crate::core::operations::signature::{FirehoseOperatorSignature, ParameterSpec};
 
     use crate::core::ValueBox;
     use crate::core::rows::{
@@ -263,7 +261,7 @@ mod tests {
     fn test_operator_spec_validation() {
         let spec = FirehoseOperatorSignature::new()
             .with_input(ParameterSpec::new::<i32>("input1"))
-            .with_input(ParameterSpec::new::<String>("input2").with_arity(ParameterArity::Optional))
+            .with_input(ParameterSpec::new::<String>("input2"))
             .with_output(ParameterSpec::new::<f64>("output"));
 
         let mut input_types = BTreeMap::new();
