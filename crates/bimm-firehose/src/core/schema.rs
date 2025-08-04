@@ -320,7 +320,7 @@ impl Index<&str> for FirehoseTableSchema {
             Some(column) => column,
             None => panic!(
                 "Column {name:?} not found in schema:\n{}",
-                self.pretty_json_string()
+                serde_json::to_string_pretty(&self).unwrap()
             ),
         }
     }
@@ -336,7 +336,7 @@ impl IndexMut<&str> for FirehoseTableSchema {
             Some(idx) => &mut self.columns[idx],
             None => panic!(
                 "Column {name:?} not found in schema:\n{}",
-                self.pretty_json_string()
+                serde_json::to_string_pretty(&self).unwrap()
             ),
         }
     }
@@ -369,11 +369,6 @@ impl FirehoseTableSchema {
     ) -> Option<&mut ColumnSchema> {
         self.column_index(name)
             .and_then(|idx| self.columns.get_mut(idx))
-    }
-
-    /// Returns a pretty-printed JSON string representation of the schema.
-    pub fn pretty_json_string(&self) -> String {
-        serde_json::to_string_pretty(self).unwrap_or_else(|_| "Invalid schema".to_string())
     }
 
     /// Checks the build graph for the table schema.
@@ -696,11 +691,14 @@ mod tests {
     use indoc::indoc;
 
     /// Ensures that `FirehoseTableSchema` is `Send`.
-    #[allow(dead_code)]
     const FIREHOSE_TABLE_SCHEMA_IS_SEND: fn() = || {
         fn assert_send<T: Send>() {}
         assert_send::<FirehoseTableSchema>();
     };
+    #[test]
+    fn test_firehose_table_schema_is_send() {
+        FIREHOSE_TABLE_SCHEMA_IS_SEND();
+    }
 
     #[test]
     fn test_data_type_description() {

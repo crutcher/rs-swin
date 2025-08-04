@@ -698,10 +698,9 @@ mod tests {
     }
 
     #[test]
-    fn test_smoke_test() {
-        smoke_test_impl::<NdArray>();
-    }
-    fn smoke_test_impl<B: Backend>() {
+    fn test_smoke_test_ape() {
+        type B = NdArray;
+
         let device = Default::default();
 
         let b = 2;
@@ -743,6 +742,88 @@ mod tests {
             d_embed,
             layer_configs,
         )
+        .with_window_size(window_size)
+        .init(&device);
+
+        let distribution = Distribution::Normal(0.0, 0.02);
+        let input = Tensor::<B, 4>::random([b, d_input, h, w], distribution, &device);
+
+        let output = model.forward(input.clone());
+        assert_eq!(output.dims(), [b, num_classes]);
+
+        output.to_data().assert_eq(
+            &{
+                let patched = model.apply_patching(input.clone());
+                assert_eq!(
+                    patched.dims(),
+                    [b, h * w / (patch_size * patch_size), d_embed]
+                );
+
+                let stacked = model.apply_stack(patched);
+                assert_eq!(
+                    stacked.dims(),
+                    [b, last_h * last_w, model.grid_output_features]
+                );
+
+                let aggregated = model.aggregate_grid(stacked);
+                assert_eq!(aggregated.dims(), [b, model.grid_output_features]);
+
+                let classed = model.apply_head(aggregated);
+                assert_eq!(classed.dims(), [b, num_classes]);
+
+                classed
+            }
+            .to_data(),
+            true,
+        );
+    }
+
+    #[test]
+    fn test_smoke_test_no_ape() {
+        type B = NdArray;
+
+        let device = Default::default();
+
+        let b = 2;
+        let d_input = 3;
+
+        let layer_configs = vec![
+            LayerConfig {
+                depth: 2,
+                num_heads: 3,
+            },
+            LayerConfig {
+                depth: 2,
+                num_heads: 6,
+            },
+        ];
+
+        let patch_size = 4;
+        let window_size = 3;
+
+        let last_wh = 2;
+        let last_ww = 2;
+        let last_h = last_wh * window_size;
+        let last_w = last_ww * window_size;
+
+        let merge_steps = (layer_configs.len() - 1) as u32;
+        let expansion_scale = 2_usize.pow(merge_steps);
+        let h = last_h * expansion_scale * patch_size;
+        let w = last_w * expansion_scale * patch_size;
+
+        let num_classes = 12;
+
+        let d_embed = (d_input * patch_size * patch_size) / 2;
+
+        let model = SwinTransformerV2Config::new(
+            [h, w],
+            patch_size,
+            d_input,
+            num_classes,
+            d_embed,
+            layer_configs,
+        )
+        .with_enable_ape(false)
         .with_window_size(window_size)
         .init(&device);
 

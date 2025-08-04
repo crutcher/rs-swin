@@ -606,11 +606,14 @@ mod tests {
     use std::sync::Arc;
 
     /// Ensures that `ValueRow` is `Send`, allowing it to be safely shared across threads.
-    #[allow(dead_code)]
     const VALUE_ROW_IS_SEND: fn() = || {
         fn assert_send<T: Send>() {}
         assert_send::<FirehoseRow>();
     };
+    #[test]
+    fn test_value_row_is_send() {
+        VALUE_ROW_IS_SEND();
+    }
 
     #[test]
     fn test_row_creation() {
