@@ -180,7 +180,7 @@ impl FirehoseOperator for ImageLoader {
 mod tests {
     use super::*;
 
-    use crate::core::operations::environment::new_default_operator_environment;
+    use crate::ops::init_default_operator_environment;
 
     use crate::core::operations::executor::{FirehoseBatchExecutor, SequentialBatchExecutor};
     use crate::core::schema::{ColumnSchema, FirehoseTableSchema};
@@ -211,7 +211,7 @@ mod tests {
             .save(&image_path)
             .expect("Failed to save test image");
 
-        let env = Arc::new(new_default_operator_environment());
+        let env = Arc::new(init_default_operator_environment());
 
         let schema = {
             let mut schema =

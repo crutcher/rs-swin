@@ -144,8 +144,9 @@ mod tests {
             )
             .unwrap();
 
-        let env = Arc::new(MapOpEnvironment::from_bindings(&[add_operator_op_binding()]).unwrap())
-            as Arc<dyn OpEnvironment>;
+        let env =
+            Arc::new(MapOpEnvironment::from_operators(vec![add_operator_op_binding()]).unwrap())
+                as Arc<dyn OpEnvironment>;
 
         let _builder = OperationRunner::new_for_plan(
             Arc::new(schema.clone()),
@@ -173,7 +174,7 @@ mod tests {
             )
             .unwrap();
 
-        let env = MapOpEnvironment::from_bindings(&[add_operator_op_binding()]).unwrap();
+        let env = MapOpEnvironment::from_operators(vec![add_operator_op_binding()]).unwrap();
 
         let _builder = OperationRunner::new_for_plan(
             Arc::new(schema.clone()),
@@ -201,7 +202,7 @@ mod tests {
             )
             .unwrap();
 
-        let env = MapOpEnvironment::from_bindings(&[add_operator_op_binding()]).unwrap();
+        let env = MapOpEnvironment::from_operators(vec![add_operator_op_binding()]).unwrap();
 
         let runner = OperationRunner::new_for_plan(
             Arc::new(schema.clone()),

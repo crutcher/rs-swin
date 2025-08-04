@@ -1,10 +1,7 @@
-use bimm_firehose::core::operations::environment::new_default_operator_environment;
 use bimm_firehose::core::schema::{ColumnSchema, FirehoseTableSchema};
 use bimm_firehose::ops::image::ImageShape;
 use bimm_firehose::ops::image::loader::{ColorType, ImageLoader, ResizeSpec};
-use bimm_firehose::ops::image::tensor_loader::{
-    ImgToTensorConfig, TargetDType, img_to_tensor_op_binding,
-};
+use bimm_firehose::ops::image::tensor_loader::{ImgToTensorConfig, TargetDType};
 use burn::backend::Cuda;
 use itertools::Itertools;
 use rs_cinic_10_index::Cinic10Index;
@@ -13,6 +10,7 @@ use std::sync::Arc;
 use bimm_firehose::core::operations::executor::{FirehoseBatchExecutor, ThreadedBatchExecutor};
 use bimm_firehose::core::{FirehoseRowBatch, FirehoseRowReader, FirehoseRowWriter, ValueBox};
 use bimm_firehose::ops::image::aug::{FlipSpec, ImageAugmenter};
+use bimm_firehose::ops::init_burn_device_operator_environment;
 use burn::prelude::Tensor;
 use clap::Parser;
 use std::time::Instant;
@@ -45,13 +43,7 @@ fn main() -> anyhow::Result<()> {
 
     let device = Default::default();
 
-    // Define a firehose environment, extended with a tensor load op.
-    let env = {
-        let mut env = new_default_operator_environment();
-        env.add_binding(img_to_tensor_op_binding::<B>(&device))?;
-
-        Arc::new(env)
-    };
+    let env = Arc::new(init_burn_device_operator_environment::<B>(&device));
 
     // Define a processing schema, from `path` -> `image` -> `tensor`.
     let schema = {

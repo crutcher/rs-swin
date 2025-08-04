@@ -20,20 +20,17 @@ mod tests {
     use super::*;
 
     use crate::ops::image::loader::{ImageLoader, ResizeSpec};
-    use crate::ops::image::tensor_loader::{
-        ImgToTensorConfig, TargetDType, image_to_f32_tensor, img_to_tensor_op_binding,
-    };
+    use crate::ops::image::tensor_loader::{ImgToTensorConfig, TargetDType, image_to_f32_tensor};
     use crate::ops::image::test_util::assert_image_close;
     use crate::ops::image::{ImageShape, test_util};
     use burn::backend::NdArray;
     use burn::prelude::{Shape, Tensor};
 
-    use crate::core::operations::environment::new_default_operator_environment;
-
     use crate::core::ValueBox;
     use crate::core::operations::executor::{FirehoseBatchExecutor, SequentialBatchExecutor};
     use crate::core::rows::{FirehoseRowReader, FirehoseRowWriter};
     use crate::core::schema::ColumnSchema;
+    use crate::ops::init_burn_device_operator_environment;
     use image::imageops::FilterType;
     use image::{ColorType, DynamicImage};
     use indoc::indoc;
@@ -53,9 +50,7 @@ mod tests {
 
         let device = Default::default();
 
-        let mut env = new_default_operator_environment();
-        env.add_binding(img_to_tensor_op_binding::<B>(&device))?;
-        let env = Arc::new(env);
+        let env = Arc::new(init_burn_device_operator_environment::<B>(&device));
 
         let schema = {
             let mut schema =
