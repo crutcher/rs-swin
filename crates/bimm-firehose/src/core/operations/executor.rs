@@ -191,12 +191,12 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
-    const SE_IS_SEND: fn() = || {
+    const OPERATION_RUNNER_IS_SEND: fn() = || {
         fn assert_send<T: Send>() {}
         assert_send::<Vec<Arc<OperationRunner>>>();
     };
     #[test]
-    fn test_se_is_send() {
-        SE_IS_SEND();
+    fn test_operation_runner_is_send() {
+        OPERATION_RUNNER_IS_SEND();
     }
 }
