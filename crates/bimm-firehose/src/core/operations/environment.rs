@@ -1,29 +1,12 @@
 use crate::core::operations::factory::{FirehoseOperatorFactory, FirehoseOperatorInitContext};
 use crate::core::operations::operator::FirehoseOperator;
 use crate::core::operations::planner::OperationPlan;
-use crate::core::operations::registration;
 use crate::core::operations::signature::FirehoseOperatorSignature;
 use crate::core::schema::{BuildPlan, DataTypeDescription, FirehoseTableSchema};
 use anyhow::{Context, bail};
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::sync::Arc;
-
-/// Build the default environment.
-///
-/// This constructs a `MapOpEnvironment` and adds all operator builders
-/// registered with `bimm_firehose::register_default_operator_builder!`.
-///
-/// Each call `build_default_environment` will create a new mutable environment.
-pub fn new_default_operator_environment() -> MapOpEnvironment {
-    let mut env = MapOpEnvironment::default();
-
-    for reg in registration::FirehoseOperatorFactoryRegistration::list_default_registrations() {
-        env.add_binding(reg.get_builder()).unwrap();
-    }
-
-    env
-}
 
 /// `OpEnvironment` is a trait that provides access to a collection of operator bindings.
 pub trait OpEnvironment: Debug + Send + Sync {
@@ -157,14 +140,16 @@ impl MapOpEnvironment {
     ///
     /// # Arguments
     ///
-    /// * `bindings` - A slice of Arc-wrapped operator bindings to initialize the environment with.
+    /// * `factories` - factories to add.
     ///
     /// # Returns
     ///
     /// An `anyhow::Result<Self>` containing the initialized environment.
-    pub fn from_bindings(bindings: &[Arc<dyn FirehoseOperatorFactory>]) -> anyhow::Result<Self> {
+    pub fn from_operators(
+        factories: Vec<Arc<dyn FirehoseOperatorFactory>>
+    ) -> anyhow::Result<Self> {
         let mut this = Self::new();
-        this.add_bindings(bindings)?;
+        this.add_all_operators(factories)?;
         Ok(this)
     }
 
@@ -172,20 +157,20 @@ impl MapOpEnvironment {
     ///
     /// # Arguments
     ///
-    /// * `op` - An Arc-wrapped operator binding to add to the environment.
+    /// * `factory` - factory to add.
     ///
     /// # Returns
     ///
     /// An `anyhow::Result<()>` indicating success or containing an error if the binding already exists.
-    pub fn add_binding(
+    pub fn add_operator(
         &mut self,
-        binding: Arc<dyn FirehoseOperatorFactory>,
+        factory: Arc<dyn FirehoseOperatorFactory>,
     ) -> anyhow::Result<()> {
-        let id = binding.operator_id();
+        let id = factory.operator_id();
         if self.operators.contains_key(id) {
             bail!("Operator with ID '{id}' already exists in MapOpEnvironment.");
         }
-        self.operators.insert(id.clone(), binding);
+        self.operators.insert(id.clone(), factory);
         Ok(())
     }
 
@@ -193,20 +178,17 @@ impl MapOpEnvironment {
     ///
     /// # Arguments
     ///
-    /// * `bindings` - An iterable collection of Arc-wrapped operator bindings to add to the environment.
+    /// * `factories` - factories to add.
     ///
     /// # Returns
     ///
     /// An `anyhow::Result<()>` indicating success or containing an error if any binding fails to be added.
-    pub fn add_bindings<'a, B>(
+    pub fn add_all_operators(
         &mut self,
-        bindings: B,
-    ) -> anyhow::Result<()>
-    where
-        B: IntoIterator<Item = &'a Arc<dyn FirehoseOperatorFactory>>,
-    {
-        for binding in bindings.into_iter() {
-            self.add_binding(binding.clone())?;
+        factories: Vec<Arc<dyn FirehoseOperatorFactory>>,
+    ) -> anyhow::Result<()> {
+        for binding in factories.into_iter() {
+            self.add_operator(binding.clone())?;
         }
         Ok(())
     }
