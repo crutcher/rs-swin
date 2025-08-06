@@ -15,7 +15,7 @@ use bimm_firehose::core::{
 use bimm_firehose::ops::image::ImageShape;
 use bimm_firehose::ops::image::aug::{ColorType, FlipSpec, ImageAugmenter};
 use bimm_firehose::ops::image::loader::{ImageLoader, ResizeSpec};
-use bimm_firehose::ops::image::tensor_loader::ImageToTensorData;
+use bimm_firehose::ops::image::tensor_loader::{ImageToTensorData, stack_tensor_data_column};
 use bimm_firehose::ops::init_default_operator_environment;
 use burn::backend::{Autodiff, Cuda};
 use burn::config::Config;
@@ -26,7 +26,7 @@ use burn::lr_scheduler::cosine::CosineAnnealingLrSchedulerConfig;
 use burn::module::Module;
 use burn::nn::loss::CrossEntropyLossConfig;
 use burn::optim::AdamWConfig;
-use burn::prelude::{Backend, Int, Tensor, TensorData};
+use burn::prelude::{Backend, Int, Tensor};
 use burn::record::CompactRecorder;
 use burn::tensor::backend::AutodiffBackend;
 use burn::train::metric::store::{Aggregate, Direction, Split};
@@ -370,7 +370,6 @@ impl<B: Backend> ValidStep<(Tensor<B, 4>, Tensor<B, 1, Int>), ClassificationOutp
 pub struct CinicDataset {
     pub items: Vec<DatasetItem>,
 }
-
 impl Dataset<DatasetItem> for CinicDataset {
     fn get(
         &self,
@@ -383,6 +382,7 @@ impl Dataset<DatasetItem> for CinicDataset {
         self.items.len()
     }
 }
+
 fn init_batch_from_dataset_items(
     inputs: &Vec<DatasetItem>,
     batch: &mut FirehoseRowBatch,
@@ -392,15 +392,16 @@ fn init_batch_from_dataset_items(
         let row = batch.new_row();
         row.set(
             PATH_COLUMN,
-            ValueBox::serializing::<String>(item.path.to_string_lossy().into())?,
+            ValueBox::serializing(item.path.to_string_lossy().to_string())?,
         );
         row.set(
             CLASS_COLUMN,
-            ValueBox::serializing::<i32>(item.class.ordinal() as i32)?,
+            ValueBox::serializing(item.class.ordinal() as i32)?,
         );
-
-        let seed = local_rng.random::<u64>();
-        row.set(SEED_COLUMN, ValueBox::serializing::<u64>(seed)?);
+        row.set(
+            SEED_COLUMN,
+            ValueBox::serializing(local_rng.random::<u64>())?,
+        );
     }
 
     Ok(())
@@ -444,57 +445,27 @@ impl<B: Backend> BatcherOutputAdapter<B, (Tensor<B, 4>, Tensor<B, 1, Int>)> for 
         batch: &FirehoseRowBatch,
         device: &B::Device,
     ) -> anyhow::Result<(Tensor<B, 4>, Tensor<B, 1, Int>)> {
-        let images = row_batch_to_image_batch(batch, device);
-        let targets = row_batch_to_target_batch(batch, device);
-        Ok((images, targets))
+        let image_batch = Tensor::<B, 4>::from_data(
+            stack_tensor_data_column(batch, DATA_COLUMN)
+                .expect("Failed to stack tensor data column"),
+            device,
+        )
+        // Change from [B, H, W, C] to [B, C, H, W]
+        .permute([0, 3, 1, 2])
+        // Fixed normalization for Cinic-10 dataset
+        .sub_scalar(0.4)
+        // Fixed normalization for Cinic-10 dataset
+        .div_scalar(0.2);
+
+        let target_batch = Tensor::from_data(
+            batch
+                .iter()
+                .map(|row| row.get(CLASS_COLUMN).unwrap().parse_as::<i32>().unwrap())
+                .collect::<Vec<_>>()
+                .as_slice(),
+            device,
+        );
+
+        Ok((image_batch, target_batch))
     }
-}
-fn row_batch_to_image_batch<B: Backend>(
-    batch: &FirehoseRowBatch,
-    device: &B::Device,
-) -> Tensor<B, 4> {
-    let item_shape = batch[0]
-        .get(DATA_COLUMN)
-        .expect("No 'data' column in batch")
-        .as_ref::<TensorData>()
-        .expect("Failed to get tensor data from row")
-        .shape
-        .clone();
-    let stack_shape = [batch.len(), item_shape[0], item_shape[1], item_shape[2]];
-
-    let data_vec = batch
-        .iter()
-        .map(|row| {
-            row.get(DATA_COLUMN)
-                .expect("No 'data' column in batch")
-                .as_ref::<TensorData>()
-                .expect("Failed to get tensor data from row")
-                .as_slice::<f32>()
-                .map_err(|_| "Failed to get slice from tensor data")
-                .unwrap()
-        })
-        .collect::<Vec<_>>();
-
-    let total_len = data_vec.iter().map(|&d| d.len()).sum::<usize>();
-    let mut stack_data = Vec::with_capacity(total_len);
-    data_vec.iter().for_each(|d| {
-        stack_data.extend_from_slice(d);
-    });
-
-    Tensor::<B, 4>::from_data(TensorData::new(stack_data, stack_shape), device)
-        .permute([0, 3, 1, 2]) // Change from [B, H, W, C] to [B, C, H, W]
-        .sub_scalar(0.4) // Fixed normalization for Cinic-10 dataset
-        .div_scalar(0.2) // Fixed normalization for Cinic-10 dataset
-}
-
-fn row_batch_to_target_batch<B: Backend>(
-    batch: &FirehoseRowBatch,
-    device: &B::Device,
-) -> Tensor<B, 1, Int> {
-    let ordinals = batch
-        .iter()
-        .map(|row| row.get(CLASS_COLUMN).unwrap().parse_as::<i32>().unwrap())
-        .collect::<Vec<_>>();
-
-    Tensor::from_data(ordinals.as_slice(), device)
 }

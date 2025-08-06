@@ -5,7 +5,7 @@ use crate::core::operations::operator::FirehoseOperator;
 use crate::core::operations::planner::OperationPlan;
 use crate::core::operations::signature::{FirehoseOperatorSignature, ParameterSpec};
 use crate::core::rows::FirehoseRowTransaction;
-use crate::core::{FirehoseRowReader, FirehoseRowWriter, ValueBox};
+use crate::core::{FirehoseRowBatch, FirehoseRowReader, FirehoseRowWriter, ValueBox};
 use crate::{define_firehose_operator, define_firehose_operator_id};
 use anyhow::Context;
 use burn::data::dataset::vision::PixelDepth;
@@ -34,6 +34,51 @@ define_firehose_operator!(
             ),
     )
 );
+
+/// Stacks the tensor data from a batch of rows into a single `TensorData`.
+///
+/// # Arguments
+///
+/// * `batch` - The batch of rows containing the tensor data.
+/// * `column_name` - The name of the column containing the tensor data.
+///
+/// # Returns
+///
+/// An `anyhow::Result<TensorData`.
+pub fn stack_tensor_data_column(
+    batch: &FirehoseRowBatch,
+    column_name: &str,
+) -> anyhow::Result<TensorData> {
+    let item_shape = batch[0]
+        .get(column_name)
+        .unwrap_or_else(|| panic!("No '{column_name}' column in batch"))
+        .as_ref::<TensorData>()
+        .expect("Failed to get tensor data from row")
+        .shape
+        .clone();
+    let stack_shape = [batch.len(), item_shape[0], item_shape[1], item_shape[2]];
+
+    let data_vec = batch
+        .iter()
+        .map(|row| {
+            row.get(column_name)
+                .unwrap_or_else(|| panic!("No '{column_name}' column in batch"))
+                .as_ref::<TensorData>()
+                .expect("Failed to get tensor data from row")
+                .as_slice::<f32>()
+                .map_err(|_| "Failed to get slice from tensor data")
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
+
+    let total_len = data_vec.iter().map(|&d| d.len()).sum::<usize>();
+    let mut stack_data = Vec::with_capacity(total_len);
+    data_vec.iter().for_each(|d| {
+        stack_data.extend_from_slice(d);
+    });
+
+    Ok(TensorData::new(stack_data, stack_shape))
+}
 
 /// The `ImageToTensorData` operator.
 #[derive(Debug, Clone, Deserialize, Serialize)]
