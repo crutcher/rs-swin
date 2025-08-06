@@ -20,7 +20,7 @@ use bimm_firehose::ops::init_default_operator_environment;
 use burn::backend::{Autodiff, Cuda};
 use burn::config::Config;
 use burn::data::dataloader::{DataLoaderBuilder, Dataset};
-use burn::data::dataset::transform::ShuffledDataset;
+use burn::data::dataset::transform::SamplerDataset;
 use burn::grad_clipping::GradientClippingConfig;
 use burn::lr_scheduler::cosine::CosineAnnealingLrSchedulerConfig;
 use burn::module::Module;
@@ -79,7 +79,7 @@ fn main() -> anyhow::Result<()> {
     )
     .with_window_size(window_size)
     .with_attn_drop_rate(0.1)
-    .with_drop_rate(0.2);
+    .with_drop_rate(0.1);
 
     let training_config = TrainingConfig::new(
         ModelConfig { swin: config },
@@ -87,11 +87,11 @@ fn main() -> anyhow::Result<()> {
             .with_weight_decay(0.05)
             .with_grad_clipping(Some(GradientClippingConfig::Norm(5.0))),
     )
-    .with_learning_rate(1.0e-4)
-    .with_min_learning_rate(1.0e-7)
-    .with_num_epochs(40)
-    .with_num_workers(Some(2))
-    .with_batch_size(500);
+    .with_batch_size(500)
+    .with_learning_rate(1.0e-3)
+    .with_min_learning_rate(1.0e-5)
+    .with_num_epochs(60)
+    .with_num_workers(Some(1));
 
     let device = Default::default();
 
@@ -106,6 +106,10 @@ pub struct TrainingConfig {
 
     /// The optimizer config.
     pub optimizer: AdamWConfig,
+
+    /// Ratio of oversampling the training dataset.
+    #[config(default = "2.5")]
+    pub oversample_ratio: f64,
 
     /// Number of epochs to train the model.
     #[config(default = 10)]
@@ -178,12 +182,11 @@ pub fn train<B: AutodiffBackend>(
     };
 
     let train_dataloader = {
-        let ds = ShuffledDataset::with_seed(
-            CinicDataset {
-                items: cinic10_index.train.items.clone(),
-            },
-            42,
-        );
+        let ds = CinicDataset {
+            items: cinic10_index.train.items.clone(),
+        };
+        let num_samples = (config.oversample_ratio * (ds.len() as f64)).ceil() as usize;
+        let ds = SamplerDataset::without_replacement(ds, num_samples);
 
         let schema = Arc::new({
             let mut schema = common_schema.clone();
@@ -210,9 +213,7 @@ pub fn train<B: AutodiffBackend>(
             Arc::new(OutputAdapter::<B>::default()),
         );
 
-        let mut builder = DataLoaderBuilder::new(batcher)
-            .batch_size(config.batch_size)
-            .shuffle(42);
+        let mut builder = DataLoaderBuilder::new(batcher).batch_size(config.batch_size);
         if let Some(num_workers) = config.num_workers {
             builder = builder.num_workers(num_workers);
         }
