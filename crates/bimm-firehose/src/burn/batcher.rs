@@ -14,7 +14,7 @@ where
     fn apply(
         &self,
         inputs: Vec<I>,
-    ) -> FirehoseRowBatch;
+    ) -> anyhow::Result<FirehoseRowBatch>;
 }
 
 /// Output Adapter for `HackyBatcher`.
@@ -28,7 +28,7 @@ where
         &self,
         batch: &FirehoseRowBatch,
         device: &B::Device,
-    ) -> O;
+    ) -> anyhow::Result<O>;
 }
 
 /// Firehose Row Burn Batcher.
@@ -66,6 +66,30 @@ where
             output_adapter,
         }
     }
+
+    /// Executes a batch of items and returns the result.
+    ///
+    /// # Arguments
+    ///
+    /// * `items` - A vector of items to be processed.
+    /// * `device` - The device on which the output will be processed.
+    ///
+    /// # Returns
+    ///
+    /// An `anyhow::Result` containing the output of type `O`.
+    fn batch_result(
+        &self,
+        items: Vec<I>,
+        device: &B::Device,
+    ) -> anyhow::Result<O> {
+        let mut batch = self.input_adapter.apply(items)?;
+
+        self.executor
+            .execute_batch(&mut batch)
+            .with_context(|| "Failed to execute batch".to_string())?;
+
+        self.output_adapter.apply(&batch, device)
+    }
 }
 
 impl<B, I, O> Batcher<B, I, O> for FirehoseExecutorBatcher<B, I, O>
@@ -79,13 +103,7 @@ where
         items: Vec<I>,
         device: &B::Device,
     ) -> O {
-        let mut batch = self.input_adapter.apply(items);
-
-        self.executor
-            .execute_batch(&mut batch)
-            .with_context(|| "Failed to execute batch".to_string())
-            .unwrap();
-
-        self.output_adapter.apply(&batch, device)
+        self.batch_result(items, device)
+            .expect("Failed to execute batch")
     }
 }

@@ -45,7 +45,14 @@ use rs_cinic_10_index::index::{DatasetItem, ObjectClass};
 use std::sync::Arc;
 use strum::EnumCount;
 
-fn main() {
+const PATH_COLUMN: &str = "path";
+const SEED_COLUMN: &str = "seed";
+const CLASS_COLUMN: &str = "class";
+const IMAGE_COLUMN: &str = "image";
+const AUG_COLUMN: &str = "aug";
+const DATA_COLUMN: &str = "data";
+
+fn main() -> anyhow::Result<()> {
     type B = Autodiff<Cuda>;
 
     let h = 32;
@@ -88,7 +95,7 @@ fn main() {
 
     let device = Default::default();
 
-    train::<B>("/tmp/swin_tiny_cinic10", training_config, &device);
+    train::<B>("/tmp/swin_tiny_cinic10", training_config, &device)
 }
 
 /// Config for training the model.
@@ -137,7 +144,7 @@ pub fn train<B: AutodiffBackend>(
     artifact_dir: &str,
     config: TrainingConfig,
     device: &B::Device,
-) {
+) -> anyhow::Result<()> {
     create_artifact_dir(artifact_dir);
 
     config
@@ -152,8 +159,8 @@ pub fn train<B: AutodiffBackend>(
 
     let common_schema = {
         let mut schema = FirehoseTableSchema::from_columns(&[
-            ColumnSchema::new::<String>("path").with_description("path to the image"),
-            ColumnSchema::new::<i32>("class").with_description("image class"),
+            ColumnSchema::new::<String>(PATH_COLUMN).with_description("path to the image"),
+            ColumnSchema::new::<i32>(CLASS_COLUMN).with_description("image class"),
         ]);
 
         // Load the image from the path, resize it to 32x32 pixels, and convert it to RGB8.
@@ -163,53 +170,41 @@ pub fn train<B: AutodiffBackend>(
                 height: 32,
             }))
             .with_recolor(ColorType::Rgb8)
-            .to_plan("path", "image")
-            .apply_to_schema(&mut schema, firehose_env.as_ref())
-            .unwrap();
+            .to_plan(PATH_COLUMN, IMAGE_COLUMN)
+            .apply_to_schema(&mut schema, firehose_env.as_ref())?;
         schema
     };
 
     let train_dataloader = {
-        // Duplicate the source data to generate 2 augmentation samples per image.
-        let ds = ComposedDataset::new(vec![
-            CinicDataset {
+        let ds = ShuffledDataset::with_seed(
+            ComposedDataset::new(vec![CinicDataset {
                 items: cinic10_index.train.items.clone(),
-            },
-            CinicDataset {
-                items: cinic10_index.test.items.clone(),
-            },
-            CinicDataset {
-                items: cinic10_index.train.items.clone(),
-            },
-            CinicDataset {
-                items: cinic10_index.test.items.clone(),
-            },
-        ]);
-        let ds = ShuffledDataset::with_seed(ds, 42);
+            }]),
+            42,
+        );
 
         let schema = Arc::new({
             let mut schema = common_schema.clone();
 
             ImageAugmenter::new()
                 .with_flip(FlipSpec::new().with_horizontal(0.5))
-                .to_plan("seed", "image", "aug")
-                .apply_to_schema(&mut schema, firehose_env.as_ref())
-                .unwrap();
+                .to_plan(SEED_COLUMN, IMAGE_COLUMN, AUG_COLUMN)
+                .apply_to_schema(&mut schema, firehose_env.as_ref())?;
 
             // Convert the image to a tensor of shape (3, 32, 32) with float32 dtype.
             ImageToTensorData::new()
-                .to_plan("aug", "data")
-                .apply_to_schema(&mut schema, firehose_env.as_ref())
-                .unwrap();
+                .to_plan(AUG_COLUMN, DATA_COLUMN)
+                .apply_to_schema(&mut schema, firehose_env.as_ref())?;
 
             schema
         });
 
         let batcher = FirehoseExecutorBatcher::new(
-            Arc::new(SequentialBatchExecutor::new(schema.clone(), firehose_env.clone()).unwrap()),
-            Arc::new(InputAdapter {
-                schema: schema.clone(),
-            }),
+            Arc::new(SequentialBatchExecutor::new(
+                schema.clone(),
+                firehose_env.clone(),
+            )?),
+            Arc::new(InputAdapter::new(schema.clone())),
             Arc::new(OutputAdapter::<B>::default()),
         );
 
@@ -232,18 +227,18 @@ pub fn train<B: AutodiffBackend>(
 
             // Convert the image to a tensor of shape (3, 32, 32) with float32 dtype.
             ImageToTensorData::new()
-                .to_plan("image", "data")
-                .apply_to_schema(&mut schema, firehose_env.as_ref())
-                .unwrap();
+                .to_plan(IMAGE_COLUMN, DATA_COLUMN)
+                .apply_to_schema(&mut schema, firehose_env.as_ref())?;
 
             schema
         });
 
         let batcher = FirehoseExecutorBatcher::new(
-            Arc::new(SequentialBatchExecutor::new(schema.clone(), firehose_env.clone()).unwrap()),
-            Arc::new(InputAdapter {
-                schema: schema.clone(),
-            }),
+            Arc::new(SequentialBatchExecutor::new(
+                schema.clone(),
+                firehose_env.clone(),
+            )?),
+            Arc::new(InputAdapter::new(schema.clone())),
             // Use the InnerBackend for validation.
             Arc::new(OutputAdapter::<B::InnerBackend>::default()),
         );
@@ -263,7 +258,7 @@ pub fn train<B: AutodiffBackend>(
     )
     .with_min_lr(config.min_learning_rate)
     .init()
-    .unwrap();
+    .map_err(|e| anyhow::anyhow!("Failed to initialize learning rate scheduler: {}", e))?;
 
     let learner = LearnerBuilder::new(artifact_dir)
         .metric_train_numeric(LossMetric::new())
@@ -303,6 +298,8 @@ pub fn train<B: AutodiffBackend>(
     model_trained
         .save_file(format!("{artifact_dir}/model"), &CompactRecorder::new())
         .expect("Trained model should be saved successfully");
+
+    Ok(())
 }
 
 #[derive(Config, Debug)]
@@ -387,35 +384,42 @@ impl Dataset<DatasetItem> for CinicDataset {
 fn init_batch_from_dataset_items(
     inputs: &Vec<DatasetItem>,
     batch: &mut FirehoseRowBatch,
-) {
+) -> anyhow::Result<()> {
     let mut local_rng = rng();
     for item in inputs {
         let row = batch.new_row();
         row.set(
-            "path",
-            ValueBox::serializing::<String>(item.path.to_string_lossy().into()).unwrap(),
+            PATH_COLUMN,
+            ValueBox::serializing::<String>(item.path.to_string_lossy().into())?,
         );
         row.set(
-            "class",
-            ValueBox::serializing::<i32>(item.class.ordinal() as i32).unwrap(),
+            CLASS_COLUMN,
+            ValueBox::serializing::<i32>(item.class.ordinal() as i32)?,
         );
 
         let seed = local_rng.random::<u64>();
-        row.set("seed", ValueBox::serializing::<u64>(seed).unwrap());
+        row.set(SEED_COLUMN, ValueBox::serializing::<u64>(seed)?);
     }
+
+    Ok(())
 }
 
 struct InputAdapter {
     schema: Arc<FirehoseTableSchema>,
 }
+impl InputAdapter {
+    pub fn new(schema: Arc<FirehoseTableSchema>) -> Self {
+        Self { schema }
+    }
+}
 impl BatcherInputAdapter<DatasetItem> for InputAdapter {
     fn apply(
         &self,
         inputs: Vec<DatasetItem>,
-    ) -> FirehoseRowBatch {
+    ) -> anyhow::Result<FirehoseRowBatch> {
         let mut batch = FirehoseRowBatch::new(self.schema.clone());
-        init_batch_from_dataset_items(&inputs, &mut batch);
-        batch
+        init_batch_from_dataset_items(&inputs, &mut batch)?;
+        Ok(batch)
     }
 }
 
@@ -437,10 +441,10 @@ impl<B: Backend> BatcherOutputAdapter<B, (Tensor<B, 4>, Tensor<B, 1, Int>)> for 
         &self,
         batch: &FirehoseRowBatch,
         device: &B::Device,
-    ) -> (Tensor<B, 4>, Tensor<B, 1, Int>) {
+    ) -> anyhow::Result<(Tensor<B, 4>, Tensor<B, 1, Int>)> {
         let images = row_batch_to_image_batch(batch, device);
         let targets = row_batch_to_target_batch(batch, device);
-        (images, targets)
+        Ok((images, targets))
     }
 }
 fn row_batch_to_image_batch<B: Backend>(
@@ -448,8 +452,8 @@ fn row_batch_to_image_batch<B: Backend>(
     device: &B::Device,
 ) -> Tensor<B, 4> {
     let item_shape = batch[0]
-        .get("data")
-        .unwrap()
+        .get(DATA_COLUMN)
+        .expect("No 'data' column in batch")
         .as_ref::<TensorData>()
         .expect("Failed to get tensor data from row")
         .shape
@@ -459,8 +463,8 @@ fn row_batch_to_image_batch<B: Backend>(
     let data_vec = batch
         .iter()
         .map(|row| {
-            row.get("data")
-                .unwrap()
+            row.get(DATA_COLUMN)
+                .expect("No 'data' column in batch")
                 .as_ref::<TensorData>()
                 .expect("Failed to get tensor data from row")
                 .as_slice::<f32>()
@@ -487,7 +491,7 @@ fn row_batch_to_target_batch<B: Backend>(
 ) -> Tensor<B, 1, Int> {
     let ordinals = batch
         .iter()
-        .map(|row| row.get("class").unwrap().deserializing::<i32>().unwrap())
+        .map(|row| row.get(CLASS_COLUMN).unwrap().parse_as::<i32>().unwrap())
         .collect::<Vec<_>>();
 
     Tensor::from_data(ordinals.as_slice(), device)

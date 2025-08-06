@@ -115,8 +115,8 @@ mod tests {
             &self,
             txn: &mut FirehoseRowTransaction,
         ) -> anyhow::Result<()> {
-            let x = txn.get("x").unwrap().deserializing::<i32>()?;
-            let y = txn.get("y").unwrap().deserializing::<i32>()?;
+            let x = txn.get("x").unwrap().parse_as::<i32>()?;
+            let y = txn.get("y").unwrap().parse_as::<i32>()?;
 
             let result: i32 = x + y + self.bias;
 
@@ -252,8 +252,8 @@ mod tests {
 
         runner.apply_to_batch(&mut batch).unwrap();
 
-        assert_eq!(batch[0].get("c").unwrap().deserializing::<i32>()?, 40);
-        assert_eq!(batch[1].get("c").unwrap().deserializing::<i32>()?, 7);
+        assert_eq!(batch[0].get("c").unwrap().parse_as::<i32>()?, 40);
+        assert_eq!(batch[1].get("c").unwrap().parse_as::<i32>()?, 7);
 
         Ok(())
     }

@@ -151,7 +151,7 @@ impl FirehoseOperator for ImageAugmenter {
         &self,
         txn: &mut FirehoseRowTransaction,
     ) -> anyhow::Result<()> {
-        let seed: u64 = txn.get("seed").unwrap().deserializing()?;
+        let seed: u64 = txn.get("seed").unwrap().parse_as()?;
         let mut rng = StdRng::seed_from_u64(seed);
 
         let source: &DynamicImage = txn.get("source").unwrap().as_ref()?;

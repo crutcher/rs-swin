@@ -668,16 +668,9 @@ mod tests {
         row2.set("bar", ValueBox::serializing("Hello").unwrap());
 
         // Index<usize>
+        assert_eq!(batch[0].get("foo").unwrap().parse_as::<i32>().unwrap(), 42);
         assert_eq!(
-            batch[0].get("foo").unwrap().deserializing::<i32>().unwrap(),
-            42
-        );
-        assert_eq!(
-            batch[1]
-                .get("bar")
-                .unwrap()
-                .deserializing::<String>()
-                .unwrap(),
+            batch[1].get("bar").unwrap().parse_as::<String>().unwrap(),
             "Hello"
         );
     }
@@ -765,7 +758,7 @@ mod tests {
 
         row.set("foo", ValueBox::serializing(42)?);
         assert!(row.has_column_value("foo"));
-        assert_eq!(row.get("foo").unwrap().deserializing::<f32>()?, 42_f32);
+        assert_eq!(row.get("foo").unwrap().parse_as::<f32>()?, 42_f32);
 
         let my_struct = MyStruct { value: 100 };
         row.set("bar", ValueBox::boxing(my_struct.clone()));
@@ -867,7 +860,7 @@ mod tests {
 
         let row_txn = txn.mut_row_transaction(0);
         assert_eq!(row_txn.schema(), &schema);
-        assert_eq!(row_txn.get("source").unwrap().deserializing::<i32>()?, 42);
+        assert_eq!(row_txn.get("source").unwrap().parse_as::<i32>()?, 42);
 
         assert!(row_txn.has_column_value("source"));
         assert!(!row_txn.has_column_value("foo"));
@@ -875,7 +868,7 @@ mod tests {
         let vals = row_txn.iter().collect::<Vec<_>>();
         assert_eq!(vals.len(), 1);
         assert_eq!(vals[0].0, "source");
-        assert_eq!(vals[0].1.unwrap().deserializing::<i32>()?, 42);
+        assert_eq!(vals[0].1.unwrap().parse_as::<i32>()?, 42);
 
         Ok(())
     }

@@ -133,7 +133,7 @@ impl ValueBox {
     ///
     /// An `anyhow::Result<T>` where `T` is the deserialized type;
     /// if deserialization fails, it returns an error with context.
-    pub fn deserializing<T>(&self) -> anyhow::Result<T>
+    pub fn parse_as<T>(&self) -> anyhow::Result<T>
     where
         T: DeserializeOwned + 'static,
     {
@@ -213,7 +213,7 @@ mod tests {
         assert!(vb.is_value());
         assert!(!vb.is_boxed());
 
-        assert_eq!(vb.deserializing::<Vec<String>>()?, vec!["foo", "bar"]);
+        assert_eq!(vb.parse_as::<Vec<String>>()?, vec!["foo", "bar"]);
 
         assert_eq!(format!("{vb:?}"), format!("{{[\"foo\",\"bar\"]}}"));
 
@@ -226,10 +226,10 @@ mod tests {
         assert!(vb.is_value());
         assert!(!vb.is_boxed());
 
-        assert_eq!(vb.deserializing::<String>()?, "abc");
+        assert_eq!(vb.parse_as::<String>()?, "abc");
 
         assert_eq!(
-            vb.deserializing::<i32>().unwrap_err().to_string(),
+            vb.parse_as::<i32>().unwrap_err().to_string(),
             "ValueBox::deserialize_value::<i32>() failed on: \"abc\""
         );
 
@@ -260,7 +260,7 @@ mod tests {
         assert!(!vb.is_value());
         assert!(vb.is_boxed());
 
-        vb.deserializing::<String>().unwrap();
+        vb.parse_as::<String>().unwrap();
     }
 
     #[test]
@@ -269,9 +269,9 @@ mod tests {
         assert!(vb.is_value());
         assert!(!vb.is_boxed());
 
-        assert_eq!(vb.deserializing::<i32>()?, 42_i32);
-        assert_eq!(vb.deserializing::<i64>()?, 42_i64);
-        assert_eq!(vb.deserializing::<usize>()?, 42_usize);
+        assert_eq!(vb.parse_as::<i32>()?, 42_i32);
+        assert_eq!(vb.parse_as::<i64>()?, 42_i64);
+        assert_eq!(vb.parse_as::<usize>()?, 42_usize);
 
         assert_eq!(vb.unwrap_value().as_i64().unwrap(), 42_i64);
 
@@ -284,9 +284,9 @@ mod tests {
         assert!(vb.is_value());
         assert!(!vb.is_boxed());
 
-        assert_eq!(vb.deserializing::<Vec<i32>>()?, vec![42_i32, 0_i32]);
-        assert_eq!(vb.deserializing::<Vec<i64>>()?, vec![42_i64, 0_i64]);
-        assert_eq!(vb.deserializing::<Vec<usize>>()?, vec![42_usize, 0_usize]);
+        assert_eq!(vb.parse_as::<Vec<i32>>()?, vec![42_i32, 0_i32]);
+        assert_eq!(vb.parse_as::<Vec<i64>>()?, vec![42_i64, 0_i64]);
+        assert_eq!(vb.parse_as::<Vec<usize>>()?, vec![42_usize, 0_usize]);
 
         Ok(())
     }
