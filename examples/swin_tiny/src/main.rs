@@ -16,7 +16,7 @@ use bimm_firehose::ops::image::ImageShape;
 use bimm_firehose::ops::image::aug::{ColorType, FlipSpec, ImageAugmenter};
 use bimm_firehose::ops::image::loader::{ImageLoader, ResizeSpec};
 use bimm_firehose::ops::image::tensor_loader::ImageToTensorData;
-use bimm_firehose::ops::init_burn_device_operator_environment;
+use bimm_firehose::ops::init_default_operator_environment;
 use burn::backend::{Autodiff, Cuda};
 use burn::config::Config;
 use burn::data::dataloader::{DataLoaderBuilder, Dataset};
@@ -45,21 +45,264 @@ use rs_cinic_10_index::index::{DatasetItem, ObjectClass};
 use std::sync::Arc;
 use strum::EnumCount;
 
-pub struct CinicDataset {
-    pub items: Vec<DatasetItem>,
+fn main() {
+    type B = Autodiff<Cuda>;
+
+    let h = 32;
+    let w = 32;
+    let channels = 3;
+
+    let img_res = [h, w];
+    let patch_size = 2;
+    let window_size = 4;
+    let embed_dim = 2 * channels * patch_size * patch_size;
+    let num_classes = ObjectClass::COUNT;
+
+    let config = SwinTransformerV2Config::new(
+        img_res,
+        patch_size,
+        channels,
+        num_classes,
+        embed_dim,
+        vec![
+            LayerConfig::new(8, 6),
+            LayerConfig::new(8, 8),
+            LayerConfig::new(6, 12),
+        ],
+    )
+    .with_window_size(window_size)
+    .with_attn_drop_rate(0.1)
+    .with_drop_rate(0.2);
+
+    let training_config = TrainingConfig::new(
+        ModelConfig { swin: config },
+        AdamWConfig::new()
+            .with_weight_decay(0.05)
+            .with_grad_clipping(Some(GradientClippingConfig::Norm(5.0))),
+    )
+    .with_learning_rate(1.0e-3)
+    .with_min_learning_rate(1.0e-5)
+    .with_num_epochs(40)
+    .with_num_workers(Some(8))
+    .with_batch_size(500);
+
+    let device = Default::default();
+
+    train::<B>("/tmp/swin_tiny_cinic10", training_config, &device);
 }
 
-impl Dataset<DatasetItem> for CinicDataset {
-    fn get(
-        &self,
-        index: usize,
-    ) -> Option<DatasetItem> {
-        Some(self.items[index].clone())
-    }
+/// Config for training the model.
+#[derive(Config)]
+pub struct TrainingConfig {
+    /// The inner model config.
+    pub model: ModelConfig,
 
-    fn len(&self) -> usize {
-        self.items.len()
-    }
+    /// The optimizer config.
+    pub optimizer: AdamWConfig,
+
+    /// Number of epochs to train the model.
+    #[config(default = 10)]
+    pub num_epochs: usize,
+
+    /// Batch size for training and validation.
+    #[config(default = 64)]
+    pub batch_size: usize,
+
+    /// Number of workers for data loading.
+    #[config(default = "Option::None")]
+    pub num_workers: Option<usize>,
+
+    /// Random seed for reproducibility.
+    #[config(default = 42)]
+    pub seed: u64,
+
+    /// Learning rate for the optimizer.
+    #[config(default = 1.0e-5)]
+    pub learning_rate: f64,
+
+    /// Learning rate for the optimizer.
+    #[config(default = 1.0e-7)]
+    pub min_learning_rate: f64,
+}
+
+/// Create the artifact directory for saving training artifacts.
+fn create_artifact_dir(artifact_dir: &str) {
+    // Remove existing artifacts before to get an accurate learner summary
+    std::fs::remove_dir_all(artifact_dir).ok();
+    std::fs::create_dir_all(artifact_dir).ok();
+}
+
+/// Train the model with the given configuration and devices.
+pub fn train<B: AutodiffBackend>(
+    artifact_dir: &str,
+    config: TrainingConfig,
+    device: &B::Device,
+) {
+    create_artifact_dir(artifact_dir);
+
+    config
+        .save(format!("{artifact_dir}/config.json"))
+        .expect("Config should be saved successfully");
+
+    B::seed(config.seed);
+
+    let cinic10_index: Cinic10Index = Default::default();
+
+    let firehose_env = Arc::new(init_default_operator_environment());
+
+    let common_schema = {
+        let mut schema = FirehoseTableSchema::from_columns(&[
+            ColumnSchema::new::<String>("path").with_description("path to the image"),
+            ColumnSchema::new::<i32>("class").with_description("image class"),
+        ]);
+
+        // Load the image from the path, resize it to 32x32 pixels, and convert it to RGB8.
+        ImageLoader::default()
+            .with_resize(ResizeSpec::new(ImageShape {
+                width: 32,
+                height: 32,
+            }))
+            .with_recolor(ColorType::Rgb8)
+            .to_plan("path", "image")
+            .apply_to_schema(&mut schema, firehose_env.as_ref())
+            .unwrap();
+        schema
+    };
+
+    let train_dataloader = {
+        // Duplicate the source data to generate 2 augmentation samples per image.
+        let ds = ComposedDataset::new(vec![
+            CinicDataset {
+                items: cinic10_index.train.items.clone(),
+            },
+            CinicDataset {
+                items: cinic10_index.test.items.clone(),
+            },
+            CinicDataset {
+                items: cinic10_index.train.items.clone(),
+            },
+            CinicDataset {
+                items: cinic10_index.test.items.clone(),
+            },
+        ]);
+        let ds = ShuffledDataset::with_seed(ds, 42);
+
+        let schema = Arc::new({
+            let mut schema = common_schema.clone();
+
+            ImageAugmenter::new()
+                .with_flip(FlipSpec::new().with_horizontal(0.5))
+                .to_plan("seed", "image", "aug")
+                .apply_to_schema(&mut schema, firehose_env.as_ref())
+                .unwrap();
+
+            // Convert the image to a tensor of shape (3, 32, 32) with float32 dtype.
+            ImageToTensorData::new()
+                .to_plan("aug", "data")
+                .apply_to_schema(&mut schema, firehose_env.as_ref())
+                .unwrap();
+
+            schema
+        });
+
+        let batcher = FirehoseExecutorBatcher::new(
+            Arc::new(SequentialBatchExecutor::new(schema.clone(), firehose_env.clone()).unwrap()),
+            Arc::new(InputAdapter {
+                schema: schema.clone(),
+            }),
+            Arc::new(OutputAdapter::<B>::default()),
+        );
+
+        let mut builder = DataLoaderBuilder::new(batcher)
+            .batch_size(config.batch_size)
+            .shuffle(42);
+        if let Some(num_workers) = config.num_workers {
+            builder = builder.num_workers(num_workers);
+        }
+        builder.build(ds)
+    };
+
+    let validation_dataloader = {
+        let ds = CinicDataset {
+            items: cinic10_index.valid.items.clone(),
+        };
+
+        let schema = Arc::new({
+            let mut schema = common_schema.clone();
+
+            // Convert the image to a tensor of shape (3, 32, 32) with float32 dtype.
+            ImageToTensorData::new()
+                .to_plan("image", "data")
+                .apply_to_schema(&mut schema, firehose_env.as_ref())
+                .unwrap();
+
+            schema
+        });
+
+        let batcher = FirehoseExecutorBatcher::new(
+            Arc::new(SequentialBatchExecutor::new(schema.clone(), firehose_env.clone()).unwrap()),
+            Arc::new(InputAdapter {
+                schema: schema.clone(),
+            }),
+            // Use the InnerBackend for validation.
+            Arc::new(OutputAdapter::<B::InnerBackend>::default()),
+        );
+
+        let mut builder = DataLoaderBuilder::new(batcher).batch_size(config.batch_size);
+        if let Some(num_workers) = config.num_workers {
+            builder = builder.num_workers(num_workers);
+        }
+        builder.build(ds)
+    };
+
+    let num_batches = train_dataloader.num_items() / config.batch_size;
+
+    let lr_scheduler = CosineAnnealingLrSchedulerConfig::new(
+        config.learning_rate,
+        num_batches * config.num_epochs,
+    )
+    .with_min_lr(config.min_learning_rate)
+    .init()
+    .unwrap();
+
+    let learner = LearnerBuilder::new(artifact_dir)
+        .metric_train_numeric(LossMetric::new())
+        .metric_valid_numeric(LossMetric::new())
+        .metric_train_numeric(AccuracyMetric::new())
+        .metric_valid_numeric(AccuracyMetric::new())
+        .metric_train_numeric(TopKAccuracyMetric::new(2))
+        .metric_valid_numeric(TopKAccuracyMetric::new(2))
+        .metric_train(CudaMetric::new())
+        .metric_valid(CudaMetric::new())
+        .metric_train_numeric(CpuUse::new())
+        .metric_valid_numeric(CpuUse::new())
+        .metric_train_numeric(CpuMemory::new())
+        .metric_valid_numeric(CpuMemory::new())
+        .metric_train_numeric(CpuTemperature::new())
+        .metric_valid_numeric(CpuTemperature::new())
+        .metric_train_numeric(LearningRateMetric::new())
+        .with_file_checkpointer(CompactRecorder::new())
+        .early_stopping(MetricEarlyStoppingStrategy::new(
+            &LossMetric::<B>::new(),
+            Aggregate::Mean,
+            Direction::Lowest,
+            Split::Valid,
+            StoppingCondition::NoImprovementSince { n_epochs: 6 },
+        ))
+        .devices(vec![device.clone()])
+        .num_epochs(config.num_epochs)
+        .summary()
+        .build(
+            config.model.init::<B>(device),
+            config.optimizer.init(),
+            lr_scheduler,
+        );
+
+    let model_trained = learner.fit(train_dataloader, validation_dataloader);
+
+    model_trained
+        .save_file(format!("{artifact_dir}/model"), &CompactRecorder::new())
+        .expect("Trained model should be saved successfully");
 }
 
 #[derive(Config, Debug)]
@@ -125,6 +368,22 @@ impl<B: Backend> ValidStep<(Tensor<B, 4>, Tensor<B, 1, Int>), ClassificationOutp
     }
 }
 
+pub struct CinicDataset {
+    pub items: Vec<DatasetItem>,
+}
+
+impl Dataset<DatasetItem> for CinicDataset {
+    fn get(
+        &self,
+        index: usize,
+    ) -> Option<DatasetItem> {
+        Some(self.items[index].clone())
+    }
+
+    fn len(&self) -> usize {
+        self.items.len()
+    }
+}
 fn init_batch_from_dataset_items(
     inputs: &Vec<DatasetItem>,
     batch: &mut FirehoseRowBatch,
@@ -232,264 +491,4 @@ fn row_batch_to_target_batch<B: Backend>(
         .collect::<Vec<_>>();
 
     Tensor::from_data(ordinals.as_slice(), device)
-}
-
-/// Config for training the model.
-#[derive(Config)]
-pub struct TrainingConfig {
-    /// The inner model config.
-    pub model: ModelConfig,
-
-    /// The optimizer config.
-    pub optimizer: AdamWConfig,
-
-    /// Number of epochs to train the model.
-    #[config(default = 10)]
-    pub num_epochs: usize,
-
-    /// Batch size for training and validation.
-    #[config(default = 64)]
-    pub batch_size: usize,
-
-    /// Number of workers for data loading.
-    #[config(default = "Option::None")]
-    pub num_workers: Option<usize>,
-
-    /// Random seed for reproducibility.
-    #[config(default = 42)]
-    pub seed: u64,
-
-    /// Learning rate for the optimizer.
-    #[config(default = 1.0e-5)]
-    pub learning_rate: f64,
-
-    /// Learning rate for the optimizer.
-    #[config(default = 1.0e-7)]
-    pub min_learning_rate: f64,
-}
-
-/// Create the artifact directory for saving training artifacts.
-fn create_artifact_dir(artifact_dir: &str) {
-    // Remove existing artifacts before to get an accurate learner summary
-    std::fs::remove_dir_all(artifact_dir).ok();
-    std::fs::create_dir_all(artifact_dir).ok();
-}
-
-/// Train the model with the given configuration and devices.
-pub fn train<B: AutodiffBackend>(
-    artifact_dir: &str,
-    config: TrainingConfig,
-    device: &B::Device,
-) {
-    create_artifact_dir(artifact_dir);
-
-    config
-        .save(format!("{artifact_dir}/config.json"))
-        .expect("Config should be saved successfully");
-
-    B::seed(config.seed);
-
-    let index: Cinic10Index = Default::default();
-
-    let env = Arc::new(init_burn_device_operator_environment::<B>(device));
-
-    let common_schema = {
-        let mut schema = FirehoseTableSchema::from_columns(&[
-            ColumnSchema::new::<String>("path").with_description("path to the image"),
-            ColumnSchema::new::<i32>("class").with_description("image class"),
-        ]);
-
-        // Load the image from the path, resize it to 32x32 pixels, and convert it to RGB8.
-        ImageLoader::default()
-            .with_resize(ResizeSpec::new(ImageShape {
-                width: 32,
-                height: 32,
-            }))
-            .with_recolor(ColorType::Rgb8)
-            .to_plan("path", "image")
-            .apply_to_schema(&mut schema, env.as_ref())
-            .unwrap();
-        schema
-    };
-
-    let train_dataloader = {
-        // Duplicate the source data to generate 2 augmentation samples per image.
-        let ds = ComposedDataset::new(vec![
-            CinicDataset {
-                items: index.train.items.clone(),
-            },
-            CinicDataset {
-                items: index.test.items.clone(),
-            },
-            CinicDataset {
-                items: index.train.items.clone(),
-            },
-            CinicDataset {
-                items: index.test.items.clone(),
-            },
-        ]);
-        let ds = ShuffledDataset::with_seed(ds, 42);
-
-        let schema = Arc::new({
-            let mut schema = common_schema.clone();
-
-            ImageAugmenter::new()
-                .with_flip(FlipSpec::new().with_horizontal(0.5))
-                .to_plan("seed", "image", "aug")
-                .apply_to_schema(&mut schema, env.as_ref())
-                .unwrap();
-
-            // Convert the image to a tensor of shape (3, 32, 32) with float32 dtype.
-            ImageToTensorData::new()
-                .to_plan("aug", "data")
-                .apply_to_schema(&mut schema, env.as_ref())
-                .unwrap();
-
-            schema
-        });
-
-        let batcher = FirehoseExecutorBatcher::new(
-            Arc::new(SequentialBatchExecutor::new(schema.clone(), env.clone()).unwrap()),
-            Arc::new(InputAdapter {
-                schema: schema.clone(),
-            }),
-            Arc::new(OutputAdapter::<B>::default()),
-        );
-
-        let mut builder = DataLoaderBuilder::new(batcher)
-            .batch_size(config.batch_size)
-            .shuffle(42);
-        if let Some(num_workers) = config.num_workers {
-            builder = builder.num_workers(num_workers);
-        }
-        builder.build(ds)
-    };
-
-    let validation_dataloader = {
-        let ds = CinicDataset {
-            items: index.valid.items.clone(),
-        };
-
-        let schema = Arc::new({
-            let mut schema = common_schema.clone();
-
-            // Convert the image to a tensor of shape (3, 32, 32) with float32 dtype.
-            ImageToTensorData::new()
-                .to_plan("image", "data")
-                .apply_to_schema(&mut schema, env.as_ref())
-                .unwrap();
-
-            schema
-        });
-
-        let batcher = FirehoseExecutorBatcher::new(
-            Arc::new(SequentialBatchExecutor::new(schema.clone(), env.clone()).unwrap()),
-            Arc::new(InputAdapter {
-                schema: schema.clone(),
-            }),
-            // Use the InnerBackend for validation.
-            Arc::new(OutputAdapter::<B::InnerBackend>::default()),
-        );
-
-        let mut builder = DataLoaderBuilder::new(batcher).batch_size(config.batch_size);
-        if let Some(num_workers) = config.num_workers {
-            builder = builder.num_workers(num_workers);
-        }
-        builder.build(ds)
-    };
-
-    let num_batches = train_dataloader.num_items() / config.batch_size;
-
-    let lr_scheduler = CosineAnnealingLrSchedulerConfig::new(
-        config.learning_rate,
-        num_batches * config.num_epochs,
-    )
-    .with_min_lr(config.min_learning_rate)
-    .init()
-    .unwrap();
-
-    let learner = LearnerBuilder::new(artifact_dir)
-        .metric_train_numeric(LossMetric::new())
-        .metric_valid_numeric(LossMetric::new())
-        .metric_train_numeric(AccuracyMetric::new())
-        .metric_valid_numeric(AccuracyMetric::new())
-        .metric_train_numeric(TopKAccuracyMetric::new(2))
-        .metric_valid_numeric(TopKAccuracyMetric::new(2))
-        .metric_train(CudaMetric::new())
-        .metric_valid(CudaMetric::new())
-        .metric_train_numeric(CpuUse::new())
-        .metric_valid_numeric(CpuUse::new())
-        .metric_train_numeric(CpuMemory::new())
-        .metric_valid_numeric(CpuMemory::new())
-        .metric_train_numeric(CpuTemperature::new())
-        .metric_valid_numeric(CpuTemperature::new())
-        .metric_train_numeric(LearningRateMetric::new())
-        .with_file_checkpointer(CompactRecorder::new())
-        .early_stopping(MetricEarlyStoppingStrategy::new(
-            &LossMetric::<B>::new(),
-            Aggregate::Mean,
-            Direction::Lowest,
-            Split::Valid,
-            StoppingCondition::NoImprovementSince { n_epochs: 6 },
-        ))
-        .devices(vec![device.clone()])
-        .num_epochs(config.num_epochs)
-        .summary()
-        .build(
-            config.model.init::<B>(device),
-            config.optimizer.init(),
-            lr_scheduler,
-        );
-
-    let model_trained = learner.fit(train_dataloader, validation_dataloader);
-
-    model_trained
-        .save_file(format!("{artifact_dir}/model"), &CompactRecorder::new())
-        .expect("Trained model should be saved successfully");
-}
-
-fn main() {
-    type B = Autodiff<Cuda>;
-
-    let h = 32;
-    let w = 32;
-    let channels = 3;
-
-    let img_res = [h, w];
-    let patch_size = 2;
-    let window_size = 4;
-    let embed_dim = 2 * channels * patch_size * patch_size;
-    let num_classes = ObjectClass::COUNT;
-
-    let config = SwinTransformerV2Config::new(
-        img_res,
-        patch_size,
-        channels,
-        num_classes,
-        embed_dim,
-        vec![
-            LayerConfig::new(8, 6),
-            LayerConfig::new(8, 8),
-            LayerConfig::new(6, 12),
-        ],
-    )
-    .with_window_size(window_size)
-    .with_attn_drop_rate(0.1)
-    .with_drop_rate(0.2);
-
-    let training_config = TrainingConfig::new(
-        ModelConfig { swin: config },
-        AdamWConfig::new()
-            .with_weight_decay(0.05)
-            .with_grad_clipping(Some(GradientClippingConfig::Norm(5.0))),
-    )
-    .with_learning_rate(1.0e-3)
-    .with_min_learning_rate(1.0e-5)
-    .with_num_epochs(40)
-    .with_num_workers(Some(8))
-    .with_batch_size(500);
-
-    let device = Default::default();
-
-    train::<B>("/tmp/swin_tiny_cinic10", training_config, &device);
 }
