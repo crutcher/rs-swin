@@ -1,10 +1,12 @@
-use crate::core::operations::factory::{FirehoseOperatorFactory, FirehoseOperatorInitContext};
+use crate::core::operations::factory::{
+    FirehoseOperatorFactory, FirehoseOperatorInitContext, SimpleConfigOperatorFactory,
+};
 use crate::core::operations::operator::FirehoseOperator;
 use crate::core::operations::planner::OperationPlan;
 use crate::core::operations::signature::{FirehoseOperatorSignature, ParameterSpec};
 use crate::core::rows::FirehoseRowTransaction;
 use crate::core::{FirehoseRowReader, FirehoseRowWriter, ValueBox};
-use crate::define_firehose_operator_id;
+use crate::{define_firehose_operator, define_firehose_operator_id};
 use anyhow::Context;
 use burn::data::dataset::vision::PixelDepth;
 use burn::prelude::{Backend, Tensor};
@@ -16,7 +18,95 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
+define_firehose_operator!(
+    IMAGE_TO_TENSOR_DATA,
+    SimpleConfigOperatorFactory::<ImageToTensorData>::new(
+        FirehoseOperatorSignature::new()
+            .with_operator_id(IMAGE_TO_TENSOR_DATA)
+            .with_description("Converts an image to TensorData.")
+            .with_input(
+                ParameterSpec::new::<DynamicImage>("image")
+                    .with_description("Image to convert to a tensor."),
+            )
+            .with_output(
+                ParameterSpec::new::<TensorData>("data")
+                    .with_description("TensorData representation of the image."),
+            ),
+    )
+);
+
+/// The `ImageToTensorData` operator.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ImageToTensorData {}
+
+impl Default for ImageToTensorData {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ImageToTensorData {
+    /// Creates a new `ImgToTensorConfig`.
+    pub fn new() -> Self {
+        ImageToTensorData {}
+    }
+
+    /// Converts this configuration to an `OperationPlanner` for the `ImgToTensor` operator.
+    ///
+    /// # Arguments
+    ///
+    /// * `image_column` - The name of the input column containing the image.
+    /// * `data_column` - The name of the output column for the tensor data.
+    pub fn to_plan(
+        self,
+        image_column: &str,
+        data_column: &str,
+    ) -> OperationPlan {
+        OperationPlan::for_operation_id(IMAGE_TO_TENSOR_DATA)
+            .with_input("image", image_column)
+            .with_output("data", data_column)
+            .with_config(self)
+    }
+}
+
+impl FirehoseOperator for ImageToTensorData {
+    fn apply_to_row(
+        &self,
+        txn: &mut FirehoseRowTransaction,
+    ) -> anyhow::Result<()> {
+        let image: &DynamicImage = txn.get("image").unwrap().as_ref()?;
+
+        let height = image.height() as usize;
+        let width = image.width() as usize;
+        let colors = image.color().channel_count() as usize;
+        let shape = vec![height, width, colors];
+
+        let pixvec = image_to_pixvec(image);
+        let data: Vec<f32> = pixvec
+            .iter()
+            .map(|p| pixel_depth_to_f32(p.clone()))
+            .collect();
+
+        let data = TensorData::new(data, shape);
+
+        txn.set("data", ValueBox::boxing(data));
+
+        Ok(())
+    }
+}
+
 define_firehose_operator_id!(IMAGE_TO_TENSOR);
+
+/// The layout of the dimensions in the tensor.
+#[derive(Default, Debug, Clone, Deserialize, Serialize)]
+pub enum ImageDimLayout {
+    /// Channel last layout (HWC).
+    HWC,
+
+    /// Channel first layout (CHW).
+    #[default]
+    CHW,
+}
 
 /// Converts an image to a vector of pixel depths.
 pub fn image_to_pixvec(image: &DynamicImage) -> Vec<PixelDepth> {
@@ -128,6 +218,9 @@ pub struct ImgToTensorConfig {
     #[serde(default)]
     pub dtype: TargetDType,
     // TODO: add dim-order enum: (HWC vs CHW)
+    /// The layout of the dimensions in the tensor.
+    #[serde(default)]
+    pub dim_layout: ImageDimLayout,
 }
 
 impl Default for ImgToTensorConfig {
@@ -141,6 +234,7 @@ impl ImgToTensorConfig {
     pub fn new() -> Self {
         ImgToTensorConfig {
             dtype: TargetDType::default(),
+            dim_layout: ImageDimLayout::default(),
         }
     }
 
@@ -149,9 +243,16 @@ impl ImgToTensorConfig {
         self,
         dtype: TargetDType,
     ) -> Self {
-        ImgToTensorConfig { dtype }
+        ImgToTensorConfig { dtype, ..self }
     }
 
+    /// Extends the configuration to specify the dimension layout.
+    pub fn with_dim_layout(
+        self,
+        dim_layout: ImageDimLayout,
+    ) -> Self {
+        ImgToTensorConfig { dim_layout, ..self }
+    }
     /// Converts this configuration to an `OperationPlanner` for the `ImgToTensor` operator.
     ///
     /// # Arguments
@@ -257,7 +358,17 @@ impl<B: Backend> FirehoseOperator for ImgToTensor<B> {
 
         match self.config.dtype {
             TargetDType::F32 => {
-                let tensor: Tensor<B, 3> = image_to_f32_tensor(image, &self.device);
+                let mut tensor: Tensor<B, 3> = image_to_f32_tensor(image, &self.device);
+
+                match self.config.dim_layout {
+                    ImageDimLayout::HWC => {
+                        // No change needed, already in HWC format
+                    }
+                    ImageDimLayout::CHW => {
+                        // Convert from HWC to CHW
+                        tensor = tensor.permute([2, 0, 1]);
+                    }
+                }
 
                 txn.set("tensor", ValueBox::boxing(tensor));
             }

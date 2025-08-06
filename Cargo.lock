@@ -5175,6 +5175,7 @@ name = "swin_tiny"
 version = "0.2.0"
 dependencies = [
  "bimm",
+ "bimm-firehose",
  "burn",
  "enum-ordinalize",
  "globwalk",

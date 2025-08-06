@@ -1,4 +1,4 @@
-use crate::core::operations::environment::OpEnvironment;
+use crate::core::operations::environment::FirehoseOperatorEnvironment;
 use crate::core::operations::signature::FirehoseOperatorSignature;
 use crate::core::schema::{BuildPlan, ColumnSchema, FirehoseTableSchema};
 use serde::{Deserialize, Serialize};
@@ -145,7 +145,7 @@ impl OperationPlan {
     pub fn apply_to_schema(
         self,
         schema: &mut FirehoseTableSchema,
-        env: &dyn OpEnvironment,
+        env: &dyn FirehoseOperatorEnvironment,
     ) -> anyhow::Result<BuildPlan> {
         env.apply_plan_to_schema(schema, self)
     }

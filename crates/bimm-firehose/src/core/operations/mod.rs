@@ -71,7 +71,7 @@ macro_rules! register_firehose_operator_factory {
 
 #[cfg(test)]
 mod tests {
-    use crate::core::operations::environment::{MapOpEnvironment, OpEnvironment};
+    use crate::core::operations::environment::{FirehoseOperatorEnvironment, MapOpEnvironment};
     use crate::core::operations::factory::SimpleConfigOperatorFactory;
     use crate::core::operations::operator::OperationRunner;
     use crate::core::operations::operator::{FirehoseOperator, OperatorSchedulingMetadata};
@@ -146,7 +146,7 @@ mod tests {
 
         let env =
             Arc::new(MapOpEnvironment::from_operators(vec![add_operator_op_binding()]).unwrap())
-                as Arc<dyn OpEnvironment>;
+                as Arc<dyn FirehoseOperatorEnvironment>;
 
         let _builder = OperationRunner::new_for_plan(
             Arc::new(schema.clone()),

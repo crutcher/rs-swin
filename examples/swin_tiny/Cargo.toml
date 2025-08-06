@@ -15,7 +15,8 @@ burn = { workspace = true, features = ["train", "autodiff", "cuda", "fusion", "v
 globwalk = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 
-bimm = { workspace = true } 
+bimm = { workspace = true }
+bimm-firehose = { workspace = true }
 rand = { workspace = true }
 
 rs-cinic-10-index = { version = "^0.2.0" }

@@ -1,4 +1,4 @@
-use crate::core::operations::environment::{BuildPlanContext, OpEnvironment};
+use crate::core::operations::environment::{BuildPlanContext, FirehoseOperatorEnvironment};
 use crate::core::operations::signature::FirehoseOperatorSignature;
 use crate::core::rows::{FirehoseBatchTransaction, FirehoseRowBatch, FirehoseRowTransaction};
 use crate::core::schema::{BuildPlan, FirehoseTableSchema};
@@ -102,7 +102,7 @@ impl OperationRunner {
     pub fn new_for_plan(
         table_schema: Arc<FirehoseTableSchema>,
         build_plan: Arc<BuildPlan>,
-        env: &dyn OpEnvironment,
+        env: &dyn FirehoseOperatorEnvironment,
     ) -> anyhow::Result<OperationRunner> {
         let table_schema = table_schema.clone();
         let build_plan = build_plan.clone();
@@ -152,5 +152,19 @@ impl OperationRunner {
         self.operator.apply_to_batch(&mut txn)?;
 
         txn.commit()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const OPERATION_RUNNER_IS_SEND: fn() = || {
+        fn assert_send<T: Send>() {}
+        assert_send::<OperationRunner>();
+    };
+    #[test]
+    fn test_operation_runner_is_send() {
+        OPERATION_RUNNER_IS_SEND();
     }
 }

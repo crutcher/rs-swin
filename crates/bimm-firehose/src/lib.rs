@@ -9,3 +9,6 @@ pub mod pipeline;
 
 /// Namespace of common operators.
 pub mod ops;
+
+/// Burn Integration Module.
+pub mod burn;

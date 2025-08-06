@@ -1,20 +1,32 @@
 #![recursion_limit = "256"]
-mod data;
+extern crate core;
 
-use crate::data::{CinicBatch, CinicBatcher, CinicDataset};
 use bimm::models::swin::v2::transformer::{
     LayerConfig, SwinTransformerV2, SwinTransformerV2Config,
 };
+use bimm_firehose::burn::batcher::{
+    BatcherInputAdapter, BatcherOutputAdapter, FirehoseExecutorBatcher,
+};
+use bimm_firehose::core::operations::executor::SequentialBatchExecutor;
+use bimm_firehose::core::schema::ColumnSchema;
+use bimm_firehose::core::{
+    FirehoseRowBatch, FirehoseRowReader, FirehoseRowWriter, FirehoseTableSchema, ValueBox,
+};
+use bimm_firehose::ops::image::ImageShape;
+use bimm_firehose::ops::image::aug::{ColorType, FlipSpec, ImageAugmenter};
+use bimm_firehose::ops::image::loader::{ImageLoader, ResizeSpec};
+use bimm_firehose::ops::image::tensor_loader::ImageToTensorData;
+use bimm_firehose::ops::init_burn_device_operator_environment;
 use burn::backend::{Autodiff, Cuda};
 use burn::config::Config;
-use burn::data::dataloader::DataLoaderBuilder;
+use burn::data::dataloader::{DataLoaderBuilder, Dataset};
 use burn::data::dataset::transform::{ComposedDataset, ShuffledDataset};
 use burn::grad_clipping::GradientClippingConfig;
 use burn::lr_scheduler::cosine::CosineAnnealingLrSchedulerConfig;
 use burn::module::Module;
 use burn::nn::loss::CrossEntropyLossConfig;
 use burn::optim::AdamWConfig;
-use burn::prelude::{Backend, Int, Tensor};
+use burn::prelude::{Backend, Int, Tensor, TensorData};
 use burn::record::CompactRecorder;
 use burn::tensor::backend::AutodiffBackend;
 use burn::train::metric::store::{Aggregate, Direction, Split};
@@ -26,9 +38,29 @@ use burn::train::{
     ClassificationOutput, LearnerBuilder, MetricEarlyStoppingStrategy, StoppingCondition,
 };
 use burn::train::{TrainOutput, TrainStep, ValidStep};
+use enum_ordinalize::Ordinalize;
+use rand::{Rng, rng};
 use rs_cinic_10_index::Cinic10Index;
-use rs_cinic_10_index::index::ObjectClass;
+use rs_cinic_10_index::index::{DatasetItem, ObjectClass};
+use std::sync::Arc;
 use strum::EnumCount;
+
+pub struct CinicDataset {
+    pub items: Vec<DatasetItem>,
+}
+
+impl Dataset<DatasetItem> for CinicDataset {
+    fn get(
+        &self,
+        index: usize,
+    ) -> Option<DatasetItem> {
+        Some(self.items[index].clone())
+    }
+
+    fn len(&self) -> usize {
+        self.items.len()
+    }
+}
 
 #[derive(Config, Debug)]
 pub struct ModelConfig {
@@ -60,7 +92,7 @@ impl<B: Backend> Model<B> {
         let output = self.swin.forward(images);
 
         let loss = CrossEntropyLossConfig::new()
-            .with_smoothing(Some(0.1))
+            // .with_smoothing(Some(0.1))
             .init(&output.device())
             .forward(output.clone(), targets.clone());
 
@@ -68,24 +100,138 @@ impl<B: Backend> Model<B> {
     }
 }
 
-impl<B: AutodiffBackend> TrainStep<CinicBatch<B>, ClassificationOutput<B>> for Model<B> {
+impl<B: AutodiffBackend> TrainStep<(Tensor<B, 4>, Tensor<B, 1, Int>), ClassificationOutput<B>>
+    for Model<B>
+{
     fn step(
         &self,
-        batch: CinicBatch<B>,
+        batch: (Tensor<B, 4>, Tensor<B, 1, Int>),
     ) -> TrainOutput<ClassificationOutput<B>> {
-        let item = self.forward_classification(batch.images, batch.targets);
-
+        let (images, targets) = batch;
+        let item = self.forward_classification(images, targets);
         TrainOutput::new(self, item.loss.backward(), item)
     }
 }
 
-impl<B: Backend> ValidStep<CinicBatch<B>, ClassificationOutput<B>> for Model<B> {
+impl<B: Backend> ValidStep<(Tensor<B, 4>, Tensor<B, 1, Int>), ClassificationOutput<B>>
+    for Model<B>
+{
     fn step(
         &self,
-        batch: CinicBatch<B>,
+        batch: (Tensor<B, 4>, Tensor<B, 1, Int>),
     ) -> ClassificationOutput<B> {
-        self.forward_classification(batch.images, batch.targets)
+        let (images, targets) = batch;
+        self.forward_classification(images, targets)
     }
+}
+
+fn init_batch_from_dataset_items(
+    inputs: &Vec<DatasetItem>,
+    batch: &mut FirehoseRowBatch,
+) {
+    let mut local_rng = rng();
+    for item in inputs {
+        let row = batch.new_row();
+        row.set(
+            "path",
+            ValueBox::serializing::<String>(item.path.to_string_lossy().into()).unwrap(),
+        );
+        row.set(
+            "class",
+            ValueBox::serializing::<i32>(item.class.ordinal() as i32).unwrap(),
+        );
+
+        let seed = local_rng.random::<u64>();
+        row.set("seed", ValueBox::serializing::<u64>(seed).unwrap());
+    }
+}
+
+struct InputAdapter {
+    schema: Arc<FirehoseTableSchema>,
+}
+impl BatcherInputAdapter<DatasetItem> for InputAdapter {
+    fn apply(
+        &self,
+        inputs: Vec<DatasetItem>,
+    ) -> FirehoseRowBatch {
+        let mut batch = FirehoseRowBatch::new(self.schema.clone());
+        init_batch_from_dataset_items(&inputs, &mut batch);
+        batch
+    }
+}
+
+struct OutputAdapter<B: Backend> {
+    phantom: std::marker::PhantomData<B>,
+}
+impl<B> Default for OutputAdapter<B>
+where
+    B: Backend,
+{
+    fn default() -> Self {
+        Self {
+            phantom: std::marker::PhantomData,
+        }
+    }
+}
+impl<B: Backend> BatcherOutputAdapter<B, (Tensor<B, 4>, Tensor<B, 1, Int>)> for OutputAdapter<B> {
+    fn apply(
+        &self,
+        batch: &FirehoseRowBatch,
+        device: &B::Device,
+    ) -> (Tensor<B, 4>, Tensor<B, 1, Int>) {
+        let images = row_batch_to_image_batch(batch, device);
+        let targets = row_batch_to_target_batch(batch, device);
+        (images, targets)
+    }
+}
+fn row_batch_to_image_batch<B: Backend>(
+    batch: &FirehoseRowBatch,
+    device: &B::Device,
+) -> Tensor<B, 4> {
+    let item_shape = batch[0]
+        .get("data")
+        .unwrap()
+        .as_ref::<TensorData>()
+        .expect("Failed to get tensor data from row")
+        .shape
+        .clone();
+    let stack_shape = [batch.len(), item_shape[0], item_shape[1], item_shape[2]];
+
+    let data_vec = batch
+        .iter()
+        .map(|row| {
+            row.get("data")
+                .unwrap()
+                .as_ref::<TensorData>()
+                .expect("Failed to get tensor data from row")
+                .as_slice::<f32>()
+                .map_err(|_| "Failed to get slice from tensor data")
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
+
+    let total_len = data_vec.iter().map(|&d| d.len()).sum::<usize>();
+    let mut stack_data = Vec::with_capacity(total_len);
+    data_vec.iter().for_each(|d| {
+        stack_data.extend_from_slice(d);
+    });
+
+    Tensor::<B, 4>::from_data(TensorData::new(stack_data, stack_shape), device)
+        .permute([0, 3, 1, 2]) // Change from [B, H, W, C] to [B, C, H, W]
+        .sub_scalar(0.4) // Fixed normalization for Cinic-10 dataset
+        .div_scalar(0.2) // Fixed normalization for Cinic-10 dataset
+}
+
+fn row_batch_to_target_batch<B: Backend>(
+    batch: &FirehoseRowBatch,
+    device: &B::Device,
+) -> Tensor<B, 1, Int> {
+    let ordinals = batch
+        .iter()
+        .map(|row| row.get("class").unwrap().deserializing::<i32>().unwrap())
+        .collect::<Vec<_>>();
+
+    Tensor::from_data(ordinals.as_slice(), device)
 }
 
 /// Config for training the model.
@@ -106,8 +252,8 @@ pub struct TrainingConfig {
     pub batch_size: usize,
 
     /// Number of workers for data loading.
-    #[config(default = 2)]
-    pub num_workers: usize,
+    #[config(default = "Option::None")]
+    pub num_workers: Option<usize>,
 
     /// Random seed for reproducibility.
     #[config(default = 42)]
@@ -116,6 +262,10 @@ pub struct TrainingConfig {
     /// Learning rate for the optimizer.
     #[config(default = 1.0e-5)]
     pub learning_rate: f64,
+
+    /// Learning rate for the optimizer.
+    #[config(default = 1.0e-7)]
+    pub min_learning_rate: f64,
 }
 
 /// Create the artifact directory for saving training artifacts.
@@ -129,7 +279,7 @@ fn create_artifact_dir(artifact_dir: &str) {
 pub fn train<B: AutodiffBackend>(
     artifact_dir: &str,
     config: TrainingConfig,
-    devices: Vec<B::Device>,
+    device: &B::Device,
 ) {
     create_artifact_dir(artifact_dir);
 
@@ -141,48 +291,120 @@ pub fn train<B: AutodiffBackend>(
 
     let index: Cinic10Index = Default::default();
 
-    let batcher = CinicBatcher::default();
+    let env = Arc::new(init_burn_device_operator_environment::<B>(device));
 
-    let dataloader_train = {
-        let ds = ShuffledDataset::with_seed(
-            ComposedDataset::new(vec![
-                CinicDataset {
-                    items: index.train.items.clone(),
-                },
-                CinicDataset {
-                    items: index.test.items.clone(),
-                },
-            ]),
-            42,
-        );
+    let common_schema = {
+        let mut schema = FirehoseTableSchema::from_columns(&[
+            ColumnSchema::new::<String>("path").with_description("path to the image"),
+            ColumnSchema::new::<i32>("class").with_description("image class"),
+        ]);
 
-        DataLoaderBuilder::new(batcher.clone())
-            .batch_size(config.batch_size)
-            .shuffle(42)
-            .num_workers(config.num_workers)
-            .build(ds)
+        // Load the image from the path, resize it to 32x32 pixels, and convert it to RGB8.
+        ImageLoader::default()
+            .with_resize(ResizeSpec::new(ImageShape {
+                width: 32,
+                height: 32,
+            }))
+            .with_recolor(ColorType::Rgb8)
+            .to_plan("path", "image")
+            .apply_to_schema(&mut schema, env.as_ref())
+            .unwrap();
+        schema
     };
 
-    let dataloader_valid = {
+    let train_dataloader = {
+        // Duplicate the source data to generate 2 augmentation samples per image.
+        let ds = ComposedDataset::new(vec![
+            CinicDataset {
+                items: index.train.items.clone(),
+            },
+            CinicDataset {
+                items: index.test.items.clone(),
+            },
+            CinicDataset {
+                items: index.train.items.clone(),
+            },
+            CinicDataset {
+                items: index.test.items.clone(),
+            },
+        ]);
+        let ds = ShuffledDataset::with_seed(ds, 42);
+
+        let schema = Arc::new({
+            let mut schema = common_schema.clone();
+
+            ImageAugmenter::new()
+                .with_flip(FlipSpec::new().with_horizontal(0.5))
+                .to_plan("seed", "image", "aug")
+                .apply_to_schema(&mut schema, env.as_ref())
+                .unwrap();
+
+            // Convert the image to a tensor of shape (3, 32, 32) with float32 dtype.
+            ImageToTensorData::new()
+                .to_plan("aug", "data")
+                .apply_to_schema(&mut schema, env.as_ref())
+                .unwrap();
+
+            schema
+        });
+
+        let batcher = FirehoseExecutorBatcher::new(
+            Arc::new(SequentialBatchExecutor::new(schema.clone(), env.clone()).unwrap()),
+            Arc::new(InputAdapter {
+                schema: schema.clone(),
+            }),
+            Arc::new(OutputAdapter::<B>::default()),
+        );
+
+        let mut builder = DataLoaderBuilder::new(batcher)
+            .batch_size(config.batch_size)
+            .shuffle(42);
+        if let Some(num_workers) = config.num_workers {
+            builder = builder.num_workers(num_workers);
+        }
+        builder.build(ds)
+    };
+
+    let validation_dataloader = {
         let ds = CinicDataset {
             items: index.valid.items.clone(),
         };
 
-        DataLoaderBuilder::new(batcher.clone())
-            .batch_size(config.batch_size)
-            .num_workers(config.num_workers)
-            .build(ds)
+        let schema = Arc::new({
+            let mut schema = common_schema.clone();
+
+            // Convert the image to a tensor of shape (3, 32, 32) with float32 dtype.
+            ImageToTensorData::new()
+                .to_plan("image", "data")
+                .apply_to_schema(&mut schema, env.as_ref())
+                .unwrap();
+
+            schema
+        });
+
+        let batcher = FirehoseExecutorBatcher::new(
+            Arc::new(SequentialBatchExecutor::new(schema.clone(), env.clone()).unwrap()),
+            Arc::new(InputAdapter {
+                schema: schema.clone(),
+            }),
+            // Use the InnerBackend for validation.
+            Arc::new(OutputAdapter::<B::InnerBackend>::default()),
+        );
+
+        let mut builder = DataLoaderBuilder::new(batcher).batch_size(config.batch_size);
+        if let Some(num_workers) = config.num_workers {
+            builder = builder.num_workers(num_workers);
+        }
+        builder.build(ds)
     };
 
-    let num_batches = dataloader_train.num_items() / config.batch_size;
-
-    let device = devices.first().expect("At least one device is required");
+    let num_batches = train_dataloader.num_items() / config.batch_size;
 
     let lr_scheduler = CosineAnnealingLrSchedulerConfig::new(
         config.learning_rate,
         num_batches * config.num_epochs,
     )
-    .with_min_lr(config.learning_rate * 0.01)
+    .with_min_lr(config.min_learning_rate)
     .init()
     .unwrap();
 
@@ -208,9 +430,9 @@ pub fn train<B: AutodiffBackend>(
             Aggregate::Mean,
             Direction::Lowest,
             Split::Valid,
-            StoppingCondition::NoImprovementSince { n_epochs: 3 },
+            StoppingCondition::NoImprovementSince { n_epochs: 6 },
         ))
-        .devices(devices.clone())
+        .devices(vec![device.clone()])
         .num_epochs(config.num_epochs)
         .summary()
         .build(
@@ -219,7 +441,7 @@ pub fn train<B: AutodiffBackend>(
             lr_scheduler,
         );
 
-    let model_trained = learner.fit(dataloader_train, dataloader_valid);
+    let model_trained = learner.fit(train_dataloader, validation_dataloader);
 
     model_trained
         .save_file(format!("{artifact_dir}/model"), &CompactRecorder::new())
@@ -259,17 +481,15 @@ fn main() {
         ModelConfig { swin: config },
         AdamWConfig::new()
             .with_weight_decay(0.05)
-            .with_grad_clipping(Some(GradientClippingConfig::Norm(0.25))),
+            .with_grad_clipping(Some(GradientClippingConfig::Norm(5.0))),
     )
     .with_learning_rate(1.0e-3)
+    .with_min_learning_rate(1.0e-5)
     .with_num_epochs(40)
-    .with_batch_size(512)
-    .with_num_workers(12);
+    .with_num_workers(Some(8))
+    .with_batch_size(500);
 
-    let devices = vec![Default::default()];
-    // This always crashes on the transition from train to valid step,
-    // and I've not debugged it yet.
-    // let devices = vec![CudaDevice{index:0}, CudaDevice{index:1}];
+    let device = Default::default();
 
-    train::<B>("/tmp/swin_tiny_cinic10", training_config, devices);
+    train::<B>("/tmp/swin_tiny_cinic10", training_config, &device);
 }

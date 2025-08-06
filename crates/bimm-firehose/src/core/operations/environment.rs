@@ -9,7 +9,7 @@ use std::fmt::Debug;
 use std::sync::Arc;
 
 /// `OpEnvironment` is a trait that provides access to a collection of operator bindings.
-pub trait OpEnvironment: Debug + Send + Sync {
+pub trait FirehoseOperatorEnvironment: Debug + Send + Sync {
     /// Returns a reference to the map of operator bindings.
     // TODO: This should be an iterator.
     fn operators(&self) -> &BTreeMap<String, Arc<dyn FirehoseOperatorFactory>>;
@@ -194,7 +194,7 @@ impl MapOpEnvironment {
     }
 }
 
-impl OpEnvironment for MapOpEnvironment {
+impl FirehoseOperatorEnvironment for MapOpEnvironment {
     fn operators(&self) -> &BTreeMap<String, Arc<dyn FirehoseOperatorFactory>> {
         // TODO: This should be an iterator.
         &self.operators

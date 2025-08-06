@@ -86,7 +86,7 @@ impl ValueBox {
     /// Creates a new `ValueBox::Boxed` by boxing an object that implements `Any` and `Send`.
     pub fn boxing<T>(obj: T) -> Self
     where
-        T: Any + Send + 'static,
+        T: Any + 'static + Send,
     {
         Self::from_box(Box::new(obj))
     }
@@ -94,7 +94,7 @@ impl ValueBox {
     /// Creates a new `ValueBox::Boxed` from a boxed object that implements `Any` and `Send`.
     pub fn from_box<T>(boxed: Box<T>) -> Self
     where
-        T: Any + Send + 'static,
+        T: Any + 'static + Send,
     {
         check_boxable::<T>();
         ValueBox::Boxed(boxed)
