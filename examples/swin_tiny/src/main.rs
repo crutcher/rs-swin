@@ -20,7 +20,7 @@ use bimm_firehose::ops::init_default_operator_environment;
 use burn::backend::{Autodiff, Cuda};
 use burn::config::Config;
 use burn::data::dataloader::{DataLoaderBuilder, Dataset};
-use burn::data::dataset::transform::SamplerDataset;
+use burn::data::dataset::transform::{SamplerDataset, ShuffledDataset};
 use burn::grad_clipping::GradientClippingConfig;
 use burn::lr_scheduler::cosine::CosineAnnealingLrSchedulerConfig;
 use burn::module::Module;
@@ -185,6 +185,7 @@ pub fn train<B: AutodiffBackend>(
         let ds = CinicDataset {
             items: cinic10_index.train.items.clone(),
         };
+        let ds = ShuffledDataset::with_seed(ds, config.seed);
         let num_samples = (config.oversample_ratio * (ds.len() as f64)).ceil() as usize;
         let ds = SamplerDataset::without_replacement(ds, num_samples);
 
