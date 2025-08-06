@@ -20,7 +20,7 @@ use bimm_firehose::ops::init_default_operator_environment;
 use burn::backend::{Autodiff, Cuda};
 use burn::config::Config;
 use burn::data::dataloader::{DataLoaderBuilder, Dataset};
-use burn::data::dataset::transform::{ComposedDataset, ShuffledDataset};
+use burn::data::dataset::transform::ShuffledDataset;
 use burn::grad_clipping::GradientClippingConfig;
 use burn::lr_scheduler::cosine::CosineAnnealingLrSchedulerConfig;
 use burn::module::Module;
@@ -161,6 +161,7 @@ pub fn train<B: AutodiffBackend>(
         let mut schema = FirehoseTableSchema::from_columns(&[
             ColumnSchema::new::<String>(PATH_COLUMN).with_description("path to the image"),
             ColumnSchema::new::<i32>(CLASS_COLUMN).with_description("image class"),
+            ColumnSchema::new::<u64>(SEED_COLUMN).with_description("instance rng seed"),
         ]);
 
         // Load the image from the path, resize it to 32x32 pixels, and convert it to RGB8.
@@ -172,14 +173,15 @@ pub fn train<B: AutodiffBackend>(
             .with_recolor(ColorType::Rgb8)
             .to_plan(PATH_COLUMN, IMAGE_COLUMN)
             .apply_to_schema(&mut schema, firehose_env.as_ref())?;
+
         schema
     };
 
     let train_dataloader = {
         let ds = ShuffledDataset::with_seed(
-            ComposedDataset::new(vec![CinicDataset {
+            CinicDataset {
                 items: cinic10_index.train.items.clone(),
-            }]),
+            },
             42,
         );
 
