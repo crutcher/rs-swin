@@ -19,9 +19,9 @@ bimm-firehose = { workspace = true }
 rand = { workspace = true }
 anyhow = { workspace = true }
 
-rs-cinic-10-index = { version = "^0.2.0" }
-strum = {  version = "^0.27.1" }
-enum-ordinalize = { version = "^4.3.0" }
+rs-cinic-10-index = { workspace = true }
+strum = { workspace = true }
+enum-ordinalize = { workspace = true }
 
 [features]
 nightly = []

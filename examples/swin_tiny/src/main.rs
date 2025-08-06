@@ -87,10 +87,10 @@ fn main() -> anyhow::Result<()> {
             .with_weight_decay(0.05)
             .with_grad_clipping(Some(GradientClippingConfig::Norm(5.0))),
     )
-    .with_learning_rate(1.0e-3)
-    .with_min_learning_rate(1.0e-5)
+    .with_learning_rate(1.0e-4)
+    .with_min_learning_rate(1.0e-7)
     .with_num_epochs(40)
-    .with_num_workers(Some(8))
+    .with_num_workers(Some(2))
     .with_batch_size(500);
 
     let device = Default::default();
