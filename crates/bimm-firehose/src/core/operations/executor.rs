@@ -1,16 +1,17 @@
-use crate::core::operations::environment::OpEnvironment;
+use crate::core::operations::environment::FirehoseOperatorEnvironment;
 use crate::core::operations::operator::OperationRunner;
 use crate::core::rows::FirehoseRowBatch;
 use crate::core::schema::FirehoseTableSchema;
+use std::fmt::Debug;
 use std::sync::Arc;
 
 /// Trait for executing a batch of operations on a `RowBatch`.
-pub trait FirehoseBatchExecutor {
+pub trait FirehoseBatchExecutor: Debug + Send + Sync {
     /// Returns the schema used by this executor.
     fn schema(&self) -> &Arc<FirehoseTableSchema>;
 
     /// Returns the operator environment used by this executor.
-    fn environment(&self) -> &Arc<dyn OpEnvironment>;
+    fn environment(&self) -> &Arc<dyn FirehoseOperatorEnvironment>;
 
     /// Runs the butch under the policy of the executor.
     fn execute_batch(
@@ -23,13 +24,13 @@ pub trait FirehoseBatchExecutor {
 ///
 /// Runs every `BuildPlan` in the batch schema;
 /// executes serially with no threading.
-#[derive(Clone)]
+#[derive(Debug)]
 pub struct SequentialBatchExecutor {
     /// The schema of the batch to execute.
     schema: Arc<FirehoseTableSchema>,
 
     /// The operator environment to use for executing the batch.
-    environment: Arc<dyn OpEnvironment>,
+    environment: Arc<dyn FirehoseOperatorEnvironment>,
 
     /// The operation runners for each plan in the schema.
     op_runners: Vec<Arc<OperationRunner>>,
@@ -39,7 +40,7 @@ impl SequentialBatchExecutor {
     /// Creates a new `DefaultBatchExecutor` with the given operator environment.
     pub fn new(
         schema: Arc<FirehoseTableSchema>,
-        environment: Arc<dyn OpEnvironment>,
+        environment: Arc<dyn FirehoseOperatorEnvironment>,
     ) -> anyhow::Result<Self> {
         let mut op_runners = Vec::new();
         let (_base, build_order) = schema.build_order()?;
@@ -65,7 +66,7 @@ impl FirehoseBatchExecutor for SequentialBatchExecutor {
         &self.schema
     }
 
-    fn environment(&self) -> &Arc<dyn OpEnvironment> {
+    fn environment(&self) -> &Arc<dyn FirehoseOperatorEnvironment> {
         &self.environment
     }
 
@@ -80,7 +81,12 @@ impl FirehoseBatchExecutor for SequentialBatchExecutor {
     }
 }
 
+/* Disabled because of the Send + Sync requirement on the
+   FirehoseOperatorEnvironment trait, which is not satisfied by the
+   current implementation of the environment.
+
 /// A threaded batch executor.
+#[derive(Debug)]
 pub struct ThreadedBatchExecutor {
     /// The number of worker threads to use for executing the batch.
     num_workers: usize,
@@ -92,7 +98,7 @@ pub struct ThreadedBatchExecutor {
     schema: Arc<FirehoseTableSchema>,
 
     /// The operator environment to use for executing the batch.
-    environment: Arc<dyn OpEnvironment>,
+    environment: Arc<dyn FirehoseOperatorEnvironment>,
 
     /// The operation runners for each plan in the schema.
     op_runners: Vec<Arc<OperationRunner>>,
@@ -109,7 +115,7 @@ impl ThreadedBatchExecutor {
     pub fn new(
         num_workers: usize,
         schema: Arc<FirehoseTableSchema>,
-        environment: Arc<dyn OpEnvironment>,
+        environment: Arc<dyn FirehoseOperatorEnvironment>,
     ) -> anyhow::Result<Self> {
         let mut op_runners = Vec::new();
         let (_base, build_order) = schema.build_order()?;
@@ -143,7 +149,7 @@ impl FirehoseBatchExecutor for ThreadedBatchExecutor {
         &self.schema
     }
 
-    fn environment(&self) -> &Arc<dyn OpEnvironment> {
+    fn environment(&self) -> &Arc<dyn FirehoseOperatorEnvironment> {
         &self.environment
     }
 
@@ -185,18 +191,18 @@ impl FirehoseBatchExecutor for ThreadedBatchExecutor {
         Ok(())
     }
 }
+ */
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
 
-    const OPERATION_RUNNER_IS_SEND: fn() = || {
+    const SE_IS_SEND: fn() = || {
         fn assert_send<T: Send>() {}
-        assert_send::<Vec<Arc<OperationRunner>>>();
+        assert_send::<SequentialBatchExecutor>();
     };
     #[test]
-    fn test_operation_runner_is_send() {
-        OPERATION_RUNNER_IS_SEND();
+    fn test_sequential_batch_executor_is_send() {
+        SE_IS_SEND();
     }
 }

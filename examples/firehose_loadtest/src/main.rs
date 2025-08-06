@@ -1,13 +1,13 @@
 use bimm_firehose::core::schema::{ColumnSchema, FirehoseTableSchema};
 use bimm_firehose::ops::image::ImageShape;
 use bimm_firehose::ops::image::loader::{ColorType, ImageLoader, ResizeSpec};
-use bimm_firehose::ops::image::tensor_loader::{ImgToTensorConfig, TargetDType};
+use bimm_firehose::ops::image::tensor_loader::{ImageDimLayout, ImgToTensorConfig, TargetDType};
 use burn::backend::Cuda;
 use itertools::Itertools;
 use rs_cinic_10_index::Cinic10Index;
 use std::sync::Arc;
 
-use bimm_firehose::core::operations::executor::{FirehoseBatchExecutor, ThreadedBatchExecutor};
+use bimm_firehose::core::operations::executor::FirehoseBatchExecutor;
 use bimm_firehose::core::{FirehoseRowBatch, FirehoseRowReader, FirehoseRowWriter, ValueBox};
 use bimm_firehose::ops::image::aug::{FlipSpec, ImageAugmenter};
 use bimm_firehose::ops::init_burn_device_operator_environment;
@@ -18,10 +18,6 @@ use std::time::Instant;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    /// Number of workers to use for processing
-    #[arg(short, long, default_value_t = 1)]
-    workers: usize,
-
     /// Batch size for processing
     #[arg(short, long, default_value_t = 512)]
     batch_size: usize,
@@ -35,7 +31,6 @@ fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
     let batch_size = args.batch_size;
-    let workers = args.workers;
 
     let index: Cinic10Index = Default::default();
 
@@ -71,28 +66,19 @@ fn main() -> anyhow::Result<()> {
         // Convert the image to a tensor of shape (32, 32, 3) with float32 dtype.
         ImgToTensorConfig::new()
             .with_dtype(TargetDType::F32)
+            .with_dim_layout(ImageDimLayout::HWC)
             .to_plan("aug", "tensor")
             .apply_to_schema(&mut schema, env.as_ref())?;
 
         Arc::new(schema)
     };
 
-    let executor: Arc<dyn FirehoseBatchExecutor> = if workers == 1 {
-        #[allow(clippy::arc_with_non_send_sync)]
-        Arc::new(
-            bimm_firehose::core::operations::executor::SequentialBatchExecutor::new(
-                schema.clone(),
-                env.clone(),
-            )?,
-        )
-    } else {
-        #[allow(clippy::arc_with_non_send_sync)]
-        Arc::new(ThreadedBatchExecutor::new(
-            workers,
+    let executor = Arc::new(
+        bimm_firehose::core::operations::executor::SequentialBatchExecutor::new(
             schema.clone(),
             env.clone(),
-        )?)
-    };
+        )?,
+    );
 
     // Track the time it takes to process the dataset in batches.
     let mut durations = Vec::new();

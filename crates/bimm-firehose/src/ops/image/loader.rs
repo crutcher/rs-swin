@@ -154,7 +154,7 @@ impl FirehoseOperator for ImageLoader {
         &self,
         txn: &mut FirehoseRowTransaction,
     ) -> anyhow::Result<()> {
-        let path = txn.get("path").unwrap().deserializing::<String>()?;
+        let path = txn.get("path").unwrap().parse_as::<String>()?;
 
         let mut image = image::open(path.clone())
             .with_context(|| format!("Failed to load image from path: {path}"))?;

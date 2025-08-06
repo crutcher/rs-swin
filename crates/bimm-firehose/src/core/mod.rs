@@ -20,7 +20,9 @@ mod tests {
     use super::*;
 
     use crate::ops::image::loader::{ImageLoader, ResizeSpec};
-    use crate::ops::image::tensor_loader::{ImgToTensorConfig, TargetDType, image_to_f32_tensor};
+    use crate::ops::image::tensor_loader::{
+        ImageDimLayout, ImgToTensorConfig, TargetDType, image_to_f32_tensor,
+    };
     use crate::ops::image::test_util::assert_image_close;
     use crate::ops::image::{ImageShape, test_util};
     use burn::backend::NdArray;
@@ -72,6 +74,7 @@ mod tests {
 
             ImgToTensorConfig::new()
                 .with_dtype(TargetDType::F32)
+                .with_dim_layout(ImageDimLayout::HWC)
                 .to_plan("image", "tensor")
                 .apply_to_schema(&mut schema, env.as_ref())?;
 
@@ -132,6 +135,7 @@ mod tests {
                       "operator_id": "bimm_firehose::ops::image::tensor_loader::IMAGE_TO_TENSOR",
                       "description": "Converts an image to a tensor.",
                       "config": {
+                        "dim_layout": "HWC",
                         "dtype": "F32"
                       },
                       "inputs": {

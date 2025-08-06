@@ -32,7 +32,6 @@ burn = { version = "^0.18.0" }
 # Burn coupled-dependencies
 serde = { version = "^1.0.219" }
 serde_json = { version = "^1.0.141" }
-globwalk = { version = "^0.9.1" }
 
 clap = { version = "^4.5.42"}
 
@@ -58,3 +57,8 @@ image-compare = { version = "^0.4.2" }
 indoc = { version = "^2.0.6" }
 num-traits = { version = "^0.2.19" }
 tempfile = { version = "^3.20.0" }
+
+rs-cinic-10-index = { version = "^0.2.0" }
+strum = {  version = "^0.27.2" }
+enum-ordinalize = { version = "^4.3.0" }
+

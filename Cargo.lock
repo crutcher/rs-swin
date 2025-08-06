@@ -617,7 +617,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_rusqlite",
- "strum 0.27.1",
+ "strum 0.27.2",
  "tempfile",
  "thiserror 2.0.12",
 ]
@@ -4636,17 +4636,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rs-cinic-10-burn"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac04410d7277796921316ffe35f4fab0db0c488c31922029307b288d6ed50b24"
-dependencies = [
- "anyhow",
- "burn",
- "rs-cinic-10-index",
-]
-
-[[package]]
 name = "rs-cinic-10-index"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4657,7 +4646,7 @@ dependencies = [
  "enum-ordinalize",
  "image",
  "serde",
- "strum 0.27.1",
+ "strum 0.27.2",
  "strum_macros 0.27.1",
 ]
 
@@ -5131,9 +5120,9 @@ dependencies = [
 
 [[package]]
 name = "strum"
-version = "0.27.1"
+version = "0.27.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f64def088c51c9510a8579e3c5d67c65349dcf755e5479ad3d010aa6454e2c32"
+checksum = "af23d6f6c1a224baef9d3f61e287d2761385a5b88fdab4eb4c6f11aeb54c4bcf"
 dependencies = [
  "strum_macros 0.27.1",
 ]
@@ -5174,15 +5163,15 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 name = "swin_tiny"
 version = "0.2.0"
 dependencies = [
+ "anyhow",
  "bimm",
+ "bimm-firehose",
  "burn",
  "enum-ordinalize",
- "globwalk",
  "rand 0.9.2",
- "rs-cinic-10-burn",
  "rs-cinic-10-index",
  "serde",
- "strum 0.27.1",
+ "strum 0.27.2",
 ]
 
 [[package]]
