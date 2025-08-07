@@ -154,7 +154,7 @@ impl FirehoseOperator for ImageLoader {
         &self,
         txn: &mut FirehoseRowTransaction,
     ) -> anyhow::Result<()> {
-        let path = txn.get("path").unwrap().parse_as::<String>()?;
+        let path = txn.maybe_get("path").unwrap().parse_as::<String>()?;
 
         let mut image = image::open(path.clone())
             .with_context(|| format!("Failed to load image from path: {path}"))?;
@@ -170,7 +170,7 @@ impl FirehoseOperator for ImageLoader {
             image = color_util::convert_to_colortype(image, color);
         }
 
-        txn.set("image", ValueBox::boxing(image));
+        txn.expect_set("image", ValueBox::boxing(image));
 
         Ok(())
     }
@@ -239,12 +239,12 @@ mod tests {
         let executor = SequentialBatchExecutor::new(schema.clone(), env.clone())?;
 
         let mut batch = FirehoseRowBatch::new_with_size(schema.clone(), 1);
-        batch[0].set("path", ValueBox::serializing(image_path)?);
+        batch[0].expect_set("path", ValueBox::serialized(image_path)?);
 
         executor.execute_batch(&mut batch)?;
 
         let loaded_image = batch[0]
-            .get("raw_image")
+            .maybe_get("raw_image")
             .unwrap()
             .as_ref::<DynamicImage>()?;
         assert_eq!(loaded_image.width(), 32);
@@ -253,7 +253,7 @@ mod tests {
         assert_image_close(loaded_image, &source_image, None);
 
         let gray_image = batch[0]
-            .get("resized_gray")
+            .maybe_get("resized_gray")
             .unwrap()
             .as_ref::<DynamicImage>()?;
         assert_eq!(gray_image.width(), 16);
