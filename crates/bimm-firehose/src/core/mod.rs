@@ -169,14 +169,14 @@ mod tests {
                 .save(&image_path)
                 .expect("Failed to save test image");
 
-            batch[0].set("path", ValueBox::serializing(image_path)?);
+            batch[0].expect_set("path", ValueBox::serialized(image_path)?);
         }
 
         executor.execute_batch(&mut batch)?;
 
         let row = &batch[0];
 
-        let row_image = row.get("image").unwrap().as_ref::<DynamicImage>()?;
+        let row_image = row.maybe_get("image").unwrap().as_ref::<DynamicImage>()?;
         assert_image_close(
             row_image,
             &source_image
@@ -186,7 +186,7 @@ mod tests {
             None,
         );
 
-        let row_tensor = row.get("tensor").unwrap().as_ref::<Tensor<B, 3>>()?;
+        let row_tensor = row.maybe_get("tensor").unwrap().as_ref::<Tensor<B, 3>>()?;
         assert_eq!(row_tensor.dtype(), burn::tensor::DType::F32);
         assert_eq!(row_tensor.shape(), Shape::new([24, 16, 1]));
         row_tensor.to_data().assert_eq(

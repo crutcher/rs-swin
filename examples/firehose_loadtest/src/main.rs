@@ -95,10 +95,10 @@ fn main() -> anyhow::Result<()> {
             let item = &index.test.items[idx];
 
             let row = batch.new_row();
-            row.set("seed", ValueBox::serializing::<u64>(idx as u64)?);
-            row.set(
+            row.expect_set("seed", ValueBox::serialized::<u64>(idx as u64)?);
+            row.expect_set(
                 "path",
-                ValueBox::serializing(item.path.to_string_lossy().to_string())?,
+                ValueBox::serialized(item.path.to_string_lossy().to_string())?,
             );
         }
 
@@ -111,7 +111,7 @@ fn main() -> anyhow::Result<()> {
                 batch
                     .iter()
                     .map(|row| {
-                        row.get("tensor")
+                        row.maybe_get("tensor")
                             .unwrap()
                             .as_ref::<Tensor<B, 3>>()
                             .unwrap()

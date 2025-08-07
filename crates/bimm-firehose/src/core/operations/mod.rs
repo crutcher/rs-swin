@@ -115,12 +115,12 @@ mod tests {
             &self,
             txn: &mut FirehoseRowTransaction,
         ) -> anyhow::Result<()> {
-            let x = txn.get("x").unwrap().parse_as::<i32>()?;
-            let y = txn.get("y").unwrap().parse_as::<i32>()?;
+            let x = txn.maybe_get("x").unwrap().parse_as::<i32>()?;
+            let y = txn.maybe_get("y").unwrap().parse_as::<i32>()?;
 
             let result: i32 = x + y + self.bias;
 
-            txn.set("result", ValueBox::serializing(result)?);
+            txn.expect_set("result", ValueBox::serialized(result)?);
 
             Ok(())
         }
@@ -245,15 +245,15 @@ mod tests {
         assert_eq!(runner.build_plan.operator_id, ADD);
 
         let mut batch = FirehoseRowBatch::new_with_size(Arc::new(schema.clone()), 2);
-        batch[0].set("a", ValueBox::serializing(10)?);
-        batch[0].set("b", ValueBox::serializing(20)?);
-        batch[1].set("a", ValueBox::serializing(-5)?);
-        batch[1].set("b", ValueBox::serializing(2)?);
+        batch[0].expect_set("a", ValueBox::serialized(10)?);
+        batch[0].expect_set("b", ValueBox::serialized(20)?);
+        batch[1].expect_set("a", ValueBox::serialized(-5)?);
+        batch[1].expect_set("b", ValueBox::serialized(2)?);
 
         runner.apply_to_batch(&mut batch).unwrap();
 
-        assert_eq!(batch[0].get("c").unwrap().parse_as::<i32>()?, 40);
-        assert_eq!(batch[1].get("c").unwrap().parse_as::<i32>()?, 7);
+        assert_eq!(batch[0].maybe_get("c").unwrap().parse_as::<i32>()?, 40);
+        assert_eq!(batch[1].maybe_get("c").unwrap().parse_as::<i32>()?, 7);
 
         Ok(())
     }

@@ -10,7 +10,7 @@ use bimm_firehose::burn::batcher::{
 use bimm_firehose::core::operations::executor::SequentialBatchExecutor;
 use bimm_firehose::core::schema::ColumnSchema;
 use bimm_firehose::core::{
-    FirehoseRowBatch, FirehoseRowReader, FirehoseRowWriter, FirehoseTableSchema, ValueBox,
+    FirehoseRowBatch, FirehoseRowReader, FirehoseRowWriter, FirehoseTableSchema,
 };
 use bimm_firehose::ops::image::ImageShape;
 use bimm_firehose::ops::image::aug::{ColorType, FlipSpec, ImageAugmenter};
@@ -392,18 +392,9 @@ fn init_batch_from_dataset_items(
     let mut local_rng = rng();
     for item in inputs {
         let row = batch.new_row();
-        row.set(
-            PATH_COLUMN,
-            ValueBox::serializing(item.path.to_string_lossy().to_string())?,
-        );
-        row.set(
-            CLASS_COLUMN,
-            ValueBox::serializing(item.class.ordinal() as i32)?,
-        );
-        row.set(
-            SEED_COLUMN,
-            ValueBox::serializing(local_rng.random::<u64>())?,
-        );
+        row.expect_set_serialized(PATH_COLUMN, item.path.to_string_lossy().to_string());
+        row.expect_set_serialized(CLASS_COLUMN, item.class.ordinal() as i32);
+        row.expect_set_serialized(SEED_COLUMN, local_rng.random::<u64>());
     }
 
     Ok(())
@@ -462,7 +453,7 @@ impl<B: Backend> BatcherOutputAdapter<B, (Tensor<B, 4>, Tensor<B, 1, Int>)> for 
         let target_batch = Tensor::from_data(
             batch
                 .iter()
-                .map(|row| row.get(CLASS_COLUMN).unwrap().parse_as::<i32>().unwrap())
+                .map(|row| row.expect_get_parsed::<u32>(CLASS_COLUMN))
                 .collect::<Vec<_>>()
                 .as_slice(),
             device,

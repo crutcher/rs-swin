@@ -1,6 +1,10 @@
 use crate::core::ValueBox;
 use crate::core::operations::signature::FirehoseOperatorSignature;
 use crate::core::schema::{BuildPlan, FirehoseTableSchema};
+use serde::Serialize;
+use serde::de::DeserializeOwned;
+use std::any::Any;
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::ops::{Index, IndexMut, RangeBounds};
 use std::sync::Arc;
@@ -119,10 +123,84 @@ pub trait FirehoseRowReader {
     ///
     /// An `Option<&ValueBox>` containing a reference to the value of the specified column,
     /// or `None` if the column does not exist or has no value.
-    fn get(
+    fn maybe_get(
         &self,
         column_name: &str,
     ) -> Option<&ValueBox>;
+
+    /// Gets the column, parsing it as a T.
+    ///
+    /// # Generic Parameters
+    ///
+    /// - `T`: the type to parse the column as.
+    ///
+    /// # Arguments
+    ///
+    /// - `column_name`: the name of the column.
+    ///
+    /// # Panics
+    ///
+    /// If the column isn't found or if the parsing fails.
+    fn expect_get_parsed<T>(
+        &self,
+        column_name: &str,
+    ) -> T
+    where
+        T: DeserializeOwned + 'static,
+    {
+        self.maybe_get(column_name)
+            .unwrap()
+            .parse_as::<T>()
+            .unwrap()
+    }
+}
+
+/// Helper trait for (key, `ValueBox`) source pairs.
+pub trait IntoColumns {
+    /// The iterator type returned by `into_columns`.
+    type Iter: Iterator<Item = (Self::Key, ValueBox)>;
+
+    /// The key type returned by `into_columns`.
+    type Key: AsRef<str>;
+
+    /// Convert into a column (key, value) iterator.
+    fn into_columns(self) -> Self::Iter;
+}
+
+impl<K> IntoColumns for Vec<(K, ValueBox)>
+where
+    K: AsRef<str>,
+{
+    type Iter = std::vec::IntoIter<(K, ValueBox)>;
+    type Key = K;
+
+    fn into_columns(self) -> Self::Iter {
+        self.into_iter()
+    }
+}
+
+impl<K, const N: usize> IntoColumns for [(K, ValueBox); N]
+where
+    K: AsRef<str>,
+{
+    type Iter = std::array::IntoIter<(K, ValueBox), N>;
+    type Key = K;
+
+    fn into_columns(self) -> Self::Iter {
+        self.into_iter()
+    }
+}
+
+impl<K> IntoColumns for HashMap<K, ValueBox>
+where
+    K: AsRef<str>,
+{
+    type Iter = std::collections::hash_map::IntoIter<K, ValueBox>;
+    type Key = K;
+
+    fn into_columns(self) -> Self::Iter {
+        self.into_iter()
+    }
 }
 
 /// A trait for writing rows to a Firehose table.
@@ -137,14 +215,63 @@ pub trait FirehoseRowWriter {
     /// # Panics
     ///
     /// Panics if the column name does not exist in the schema.
-    fn set(
+    fn expect_set(
         &mut self,
         column_name: &str,
         value: ValueBox,
     );
 
+    /// Sets a column, boxing the object.
+    fn expect_set_boxing<T>(
+        &mut self,
+        column_name: &str,
+        obj: T,
+    ) where
+        T: Any + 'static + Send,
+    {
+        self.expect_set(column_name, ValueBox::boxing(obj));
+    }
+
+    /// Sets a column, using the boxed value.
+    fn expect_set_from_box<T>(
+        &mut self,
+        column_name: &str,
+        obj: Box<T>,
+    ) where
+        T: Any + 'static + Send,
+    {
+        self.expect_set(column_name, ValueBox::from_box(obj));
+    }
+
+    /// Sets a column, serializing the object.
+    fn expect_set_serialized<T>(
+        &mut self,
+        column_name: &str,
+        obj: T,
+    ) where
+        T: Serialize + 'static,
+    {
+        self.expect_set(column_name, ValueBox::serialized(obj).unwrap());
+    }
+
+    /// Sets the columns provided.
+    ///
+    /// # Arguments
+    ///
+    /// - `columns`: the columns to set, provided as an `IntoColumns` type.
+    fn expect_set_columns<S>(
+        &mut self,
+        columns: S,
+    ) where
+        S: IntoColumns,
+    {
+        for (name, value) in columns.into_columns() {
+            self.expect_set(name.as_ref(), value);
+        }
+    }
+
     /// Take the value of the column, setting it to `None`, and returning it as an `Option<ValueBox>`.
-    fn take(
+    fn take_column(
         &mut self,
         column_name: &str,
     ) -> Option<ValueBox>;
@@ -169,7 +296,7 @@ impl FirehoseRowReader for FirehoseRow {
         self.slots[index].is_some()
     }
 
-    fn get(
+    fn maybe_get(
         &self,
         column_name: &str,
     ) -> Option<&ValueBox> {
@@ -179,7 +306,7 @@ impl FirehoseRowReader for FirehoseRow {
 }
 
 impl FirehoseRowWriter for FirehoseRow {
-    fn set(
+    fn expect_set(
         &mut self,
         column_name: &str,
         value: ValueBox,
@@ -188,7 +315,7 @@ impl FirehoseRowWriter for FirehoseRow {
         self.slots[index] = Some(value);
     }
 
-    fn take(
+    fn take_column(
         &mut self,
         column_name: &str,
     ) -> Option<ValueBox> {
@@ -498,8 +625,8 @@ impl<'a> FirehoseBatchTransaction<'a> {
         for (original, update) in self.original.iter_mut().zip(self.updates.iter_mut()) {
             for target_column in self.build_plan.outputs.values() {
                 // Transfer the ownership of the value from the update row to the original row.
-                if let Some(value) = update.take(target_column) {
-                    original.set(target_column, value);
+                if let Some(value) = update.take_column(target_column) {
+                    original.expect_set(target_column, value);
                 }
             }
         }
@@ -558,7 +685,7 @@ impl FirehoseRowReader for FirehoseRowTransaction<'_> {
             .build_plan
             .inputs
             .iter()
-            .map(|(pname, cname)| (pname.as_str(), self.original.get(cname)))
+            .map(|(pname, cname)| (pname.as_str(), self.original.maybe_get(cname)))
     }
 
     fn has_column_value(
@@ -571,26 +698,26 @@ impl FirehoseRowReader for FirehoseRowTransaction<'_> {
         }
     }
 
-    fn get(
+    fn maybe_get(
         &self,
         column_name: &str,
     ) -> Option<&ValueBox> {
         let column_name = self.parameter_mapper.assert_map_input_name(column_name);
-        self.original.get(column_name)
+        self.original.maybe_get(column_name)
     }
 }
 
 impl FirehoseRowWriter for FirehoseRowTransaction<'_> {
-    fn set(
+    fn expect_set(
         &mut self,
         column_name: &str,
         value: ValueBox,
     ) {
         let column_name = self.parameter_mapper.assert_map_output_name(column_name);
-        self.updates.set(column_name, value);
+        self.updates.expect_set(column_name, value);
     }
 
-    fn take(
+    fn take_column(
         &mut self,
         _column_name: &str,
     ) -> Option<ValueBox> {
@@ -662,15 +789,26 @@ mod tests {
         let mut batch = FirehoseRowBatch::new(schema.clone());
         batch.new_row();
         // IndexMut<usize>
-        batch[0].set("foo", ValueBox::serializing(42).unwrap());
+        batch[0].expect_set("foo", ValueBox::serialized(42).unwrap());
 
         let row2 = batch.new_row();
-        row2.set("bar", ValueBox::serializing("Hello").unwrap());
+        row2.expect_set("bar", ValueBox::serialized("Hello").unwrap());
 
         // Index<usize>
-        assert_eq!(batch[0].get("foo").unwrap().parse_as::<i32>().unwrap(), 42);
         assert_eq!(
-            batch[1].get("bar").unwrap().parse_as::<String>().unwrap(),
+            batch[0]
+                .maybe_get("foo")
+                .unwrap()
+                .parse_as::<i32>()
+                .unwrap(),
+            42
+        );
+        assert_eq!(
+            batch[1]
+                .maybe_get("bar")
+                .unwrap()
+                .parse_as::<String>()
+                .unwrap(),
             "Hello"
         );
     }
@@ -701,8 +839,8 @@ mod tests {
         let mut batch = FirehoseRowBatch::new(schema.clone());
         for i in 0..5 {
             let row = batch.new_row();
-            row.set("foo", ValueBox::serializing(i).unwrap());
-            row.set("bar", ValueBox::serializing(format!("Row {i}")).unwrap());
+            row.expect_set("foo", ValueBox::serialized(i).unwrap());
+            row.expect_set("bar", ValueBox::serialized(format!("Row {i}")).unwrap());
         }
 
         assert_eq!(batch.len(), 5);
@@ -721,15 +859,15 @@ mod tests {
         let mut batch1 = FirehoseRowBatch::new(schema.clone());
         for i in 0..3 {
             let row = batch1.new_row();
-            row.set("foo", ValueBox::serializing(i).unwrap());
-            row.set("bar", ValueBox::serializing(format!("Row {i}")).unwrap());
+            row.expect_set_serialized("foo", i);
+            row.expect_set_serialized("bar", format!("Row {i}"));
         }
 
         let mut batch2 = FirehoseRowBatch::new(schema.clone());
         for i in 3..5 {
             let row = batch2.new_row();
-            row.set("foo", ValueBox::serializing(i).unwrap());
-            row.set("bar", ValueBox::serializing(format!("Row {i}")).unwrap());
+            row.expect_set_serialized("foo", i);
+            row.expect_set_serialized("bar", format!("Row {i}"));
         }
 
         assert_eq!(batch1.len(), 3);
@@ -756,12 +894,12 @@ mod tests {
         assert!(!row.has_column_value("foo"));
         assert!(!row.has_column_value("bar"));
 
-        row.set("foo", ValueBox::serializing(42)?);
+        row.expect_set("foo", ValueBox::serialized(42)?);
         assert!(row.has_column_value("foo"));
-        assert_eq!(row.get("foo").unwrap().parse_as::<f32>()?, 42_f32);
+        assert_eq!(row.maybe_get("foo").unwrap().parse_as::<f32>()?, 42_f32);
 
         let my_struct = MyStruct { value: 100 };
-        row.set("bar", ValueBox::boxing(my_struct.clone()));
+        row.expect_set("bar", ValueBox::boxing(my_struct.clone()));
         assert!(row.has_column_value("bar"));
 
         assert_eq!(
@@ -787,6 +925,47 @@ mod tests {
     }
 
     #[test]
+    fn test_set_columns() -> anyhow::Result<()> {
+        let schema = Arc::new(FirehoseTableSchema::from_columns(&[
+            ColumnSchema::new::<i32>("foo"),
+            ColumnSchema::new::<String>("bar"),
+        ]));
+
+        {
+            // Array
+            let mut row = FirehoseRow::new(schema.clone());
+            row.expect_set_columns([
+                ("foo", ValueBox::serialized(42)?),
+                ("bar", ValueBox::serialized("Hello")?),
+            ]);
+            assert_eq!(row.expect_get_parsed::<i32>("foo"), 42);
+            assert_eq!(row.expect_get_parsed::<String>("bar"), "Hello");
+        }
+        {
+            // Vec
+            let mut row = FirehoseRow::new(schema.clone());
+            row.expect_set_columns(vec![
+                ("foo", ValueBox::serialized(42)?),
+                ("bar", ValueBox::serialized("Hello")?),
+            ]);
+            assert_eq!(row.expect_get_parsed::<i32>("foo"), 42);
+            assert_eq!(row.expect_get_parsed::<String>("bar"), "Hello");
+        }
+        {
+            // HashMap
+            let mut row = FirehoseRow::new(schema.clone());
+            row.expect_set_columns(HashMap::from([
+                ("foo", ValueBox::serialized(42)?),
+                ("bar", ValueBox::serialized("Hello")?),
+            ]));
+            assert_eq!(row.expect_get_parsed::<i32>("foo"), 42);
+            assert_eq!(row.expect_get_parsed::<String>("bar"), "Hello");
+        }
+
+        Ok(())
+    }
+
+    #[test]
     fn test_value_row_batch_debug() {
         let schema = Arc::new(FirehoseTableSchema::from_columns(&[
             ColumnSchema::new::<i32>("foo"),
@@ -795,10 +974,10 @@ mod tests {
 
         let mut batch = FirehoseRowBatch::new(schema.clone());
         let row = batch.new_row();
-        row.set("foo", ValueBox::serializing(42).unwrap());
+        row.expect_set("foo", ValueBox::serialized(42).unwrap());
 
         let row = batch.new_row();
-        row.set("bar", ValueBox::serializing("Hello").unwrap());
+        row.expect_set("bar", ValueBox::serialized("Hello").unwrap());
 
         assert_eq!(
             format!("{batch:#?}"),
@@ -832,8 +1011,8 @@ mod tests {
 
         let mut batch = FirehoseRowBatch::new(schema.clone());
         let row = batch.new_row();
-        row.set("foo", ValueBox::serializing(42)?);
-        row.set("bar", ValueBox::serializing("Hello")?);
+        row.expect_set("foo", ValueBox::serialized(42)?);
+        row.expect_set("bar", ValueBox::serialized("Hello")?);
 
         let signature = Arc::new(
             FirehoseOperatorSignature::new()
@@ -860,7 +1039,7 @@ mod tests {
 
         let row_txn = txn.mut_row_transaction(0);
         assert_eq!(row_txn.schema(), &schema);
-        assert_eq!(row_txn.get("source").unwrap().parse_as::<i32>()?, 42);
+        assert_eq!(row_txn.maybe_get("source").unwrap().parse_as::<i32>()?, 42);
 
         assert!(row_txn.has_column_value("source"));
         assert!(!row_txn.has_column_value("foo"));
@@ -898,8 +1077,8 @@ mod tests {
 
         let mut batch = FirehoseRowBatch::new(schema.clone());
         let row = batch.new_row();
-        row.set("foo", ValueBox::serializing(42).unwrap());
-        row.set("bar", ValueBox::serializing("Hello").unwrap());
+        row.expect_set("foo", ValueBox::serialized(42).unwrap());
+        row.expect_set("bar", ValueBox::serialized("Hello").unwrap());
 
         let signature = Arc::new(
             FirehoseOperatorSignature::new()
@@ -920,6 +1099,6 @@ mod tests {
         );
 
         let mut row_txn = txn.mut_row_transaction(0);
-        row_txn.take("foo");
+        row_txn.take_column("foo");
     }
 }

@@ -1,4 +1,5 @@
 use anyhow::{Context, bail};
+use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::any::{Any, TypeId};
 use std::fmt::Debug;
@@ -72,7 +73,10 @@ impl Debug for ValueBox {
 
 impl ValueBox {
     /// Creates a new `ValueBox::Value` by serializing an object.
-    pub fn serializing<T: serde::Serialize>(obj: T) -> anyhow::Result<Self> {
+    pub fn serialized<T>(obj: T) -> anyhow::Result<Self>
+    where
+        T: 'static + Serialize,
+    {
         serde_json::to_value(obj)
             .with_context(|| "Failed to serialize value")
             .map(ValueBox::Value)
@@ -222,7 +226,7 @@ mod tests {
 
     #[test]
     fn test_string_value() -> anyhow::Result<()> {
-        let vb = ValueBox::serializing("abc")?;
+        let vb = ValueBox::serialized("abc")?;
         assert!(vb.is_value());
         assert!(!vb.is_boxed());
 
@@ -241,7 +245,7 @@ mod tests {
     #[test]
     #[should_panic(expected = r"called on {")]
     fn test_unwrap_value_as_boxed() {
-        let vb = ValueBox::serializing("abc").unwrap();
+        let vb = ValueBox::serialized("abc").unwrap();
         assert!(vb.is_value());
         assert!(!vb.is_boxed());
 
@@ -265,7 +269,7 @@ mod tests {
 
     #[test]
     fn test_int_value() -> anyhow::Result<()> {
-        let vb = ValueBox::serializing(42_i32)?;
+        let vb = ValueBox::serialized(42_i32)?;
         assert!(vb.is_value());
         assert!(!vb.is_boxed());
 
@@ -280,7 +284,7 @@ mod tests {
 
     #[test]
     fn test_int_array() -> anyhow::Result<()> {
-        let vb = ValueBox::serializing(vec![42_i32, 0_i32])?;
+        let vb = ValueBox::serialized(vec![42_i32, 0_i32])?;
         assert!(vb.is_value());
         assert!(!vb.is_boxed());
 

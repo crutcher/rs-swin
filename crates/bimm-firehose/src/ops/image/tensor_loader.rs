@@ -49,8 +49,10 @@ pub fn stack_tensor_data_column(
     batch: &FirehoseRowBatch,
     column_name: &str,
 ) -> anyhow::Result<TensorData> {
+    assert!(!batch.is_empty());
+
     let item_shape = batch[0]
-        .get(column_name)
+        .maybe_get(column_name)
         .unwrap_or_else(|| panic!("No '{column_name}' column in batch"))
         .as_ref::<TensorData>()
         .expect("Failed to get tensor data from row")
@@ -61,7 +63,7 @@ pub fn stack_tensor_data_column(
     let data_vec = batch
         .iter()
         .map(|row| {
-            row.get(column_name)
+            row.maybe_get(column_name)
                 .unwrap_or_else(|| panic!("No '{column_name}' column in batch"))
                 .as_ref::<TensorData>()
                 .expect("Failed to get tensor data from row")
@@ -119,7 +121,7 @@ impl FirehoseOperator for ImageToTensorData {
         &self,
         txn: &mut FirehoseRowTransaction,
     ) -> anyhow::Result<()> {
-        let image: &DynamicImage = txn.get("image").unwrap().as_ref()?;
+        let image: &DynamicImage = txn.maybe_get("image").unwrap().as_ref()?;
 
         let height = image.height() as usize;
         let width = image.width() as usize;
@@ -134,7 +136,7 @@ impl FirehoseOperator for ImageToTensorData {
 
         let data = TensorData::new(data, shape);
 
-        txn.set("data", ValueBox::boxing(data));
+        txn.expect_set("data", ValueBox::boxing(data));
 
         Ok(())
     }
@@ -399,7 +401,7 @@ impl<B: Backend> FirehoseOperator for ImgToTensor<B> {
         &self,
         txn: &mut FirehoseRowTransaction,
     ) -> anyhow::Result<()> {
-        let image = txn.get("image").unwrap().as_ref::<DynamicImage>()?;
+        let image = txn.maybe_get("image").unwrap().as_ref::<DynamicImage>()?;
 
         match self.config.dtype {
             TargetDType::F32 => {
@@ -415,7 +417,7 @@ impl<B: Backend> FirehoseOperator for ImgToTensor<B> {
                     }
                 }
 
-                txn.set("tensor", ValueBox::boxing(tensor));
+                txn.expect_set("tensor", ValueBox::boxing(tensor));
             }
         }
 
