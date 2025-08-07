@@ -1,6 +1,6 @@
 # Burn Image Models
 
-[![Coverage Status](https://coveralls.io/repos/github/crutcher/bimm/badge.svg)](https://coveralls.io/github/crutcher/bimm)
+[![Coverage Status](https://coveralls.io/repos/github/crutcher/bimm/badge.svg?branch=main)](https://coveralls.io/github/crutcher/bimm?branch=main)
 
 ## Overview
 
@@ -19,6 +19,9 @@ table + operations framework for modular data pipeline construction.
 This is being done in the [bimm-firehose](crates/bimm-firehose) crate,
 which will be a general-purpose data loading and augmentation framework,
 but is not yet ready for use.
+
+A functional demo of `firehose` integration is available in the
+[swin_tiny](examples/swin_tiny/src/main.rs) example.
 
 ## Crates
 
