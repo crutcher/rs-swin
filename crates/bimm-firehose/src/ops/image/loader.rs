@@ -3,14 +3,13 @@ use crate::core::operations::operator::FirehoseOperator;
 use crate::core::operations::planner::OperationPlan;
 use crate::core::operations::signature::{FirehoseOperatorSignature, ParameterSpec};
 use crate::core::rows::FirehoseRowTransaction;
-use crate::core::{FirehoseRowReader, FirehoseRowWriter, ValueBox};
+use crate::core::{FirehoseRowReader, FirehoseRowWriter, FirehoseValue};
 use crate::define_firehose_operator;
-use crate::ops::image::{ImageShape, color_util};
+use crate::ops::image::{ImageShape, colortype_support};
 use anyhow::Context;
 pub use image::imageops::FilterType;
 pub use image::{ColorType, DynamicImage};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 
 define_firehose_operator!(
     LOAD_IMAGE,
@@ -71,8 +70,8 @@ pub struct ImageLoader {
     /// Upstream `image::ColorType` is not serializable in the latest release;
     /// but *is* in the base repo, and this will change.
     #[serde(
-        serialize_with = "color_util::option_colortype_serializer",
-        deserialize_with = "color_util::option_colortype_deserializer"
+        serialize_with = "colortype_support::serialization::option_colortype_serializer",
+        deserialize_with = "colortype_support::serialization::option_colortype_deserializer"
     )]
     #[serde(default)]
     pub recolor: Option<ColorType>,
@@ -167,10 +166,10 @@ impl FirehoseOperator for ImageLoader {
 
         if let Some(color) = &self.recolor {
             let color: ColorType = *color;
-            image = color_util::convert_to_colortype(image, color);
+            image = colortype_support::convert_to_colortype(image, color);
         }
 
-        txn.expect_set("image", ValueBox::boxing(image));
+        txn.expect_set("image", FirehoseValue::boxing(image));
 
         Ok(())
     }
@@ -184,7 +183,7 @@ mod tests {
 
     use crate::core::operations::executor::{FirehoseBatchExecutor, SequentialBatchExecutor};
     use crate::core::schema::{ColumnSchema, FirehoseTableSchema};
-    use crate::core::{FirehoseRowBatch, FirehoseRowReader, FirehoseRowWriter, ValueBox};
+    use crate::core::{FirehoseRowBatch, FirehoseRowReader, FirehoseRowWriter, FirehoseValue};
     use crate::ops::image::test_util::{assert_image_close, generate_gradient_pattern};
     use anyhow::Context;
     use image::DynamicImage;
@@ -239,7 +238,7 @@ mod tests {
         let executor = SequentialBatchExecutor::new(schema.clone(), env.clone())?;
 
         let mut batch = FirehoseRowBatch::new_with_size(schema.clone(), 1);
-        batch[0].expect_set("path", ValueBox::serialized(image_path)?);
+        batch[0].expect_set("path", FirehoseValue::serialized(image_path)?);
 
         executor.execute_batch(&mut batch)?;
 

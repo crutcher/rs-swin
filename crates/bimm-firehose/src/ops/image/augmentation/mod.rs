@@ -3,14 +3,16 @@ use crate::core::operations::operator::FirehoseOperator;
 use crate::core::operations::planner::OperationPlan;
 use crate::core::operations::signature::{FirehoseOperatorSignature, ParameterSpec};
 use crate::core::rows::FirehoseRowTransaction;
-use crate::core::{FirehoseRowReader, FirehoseRowWriter, ValueBox};
+use crate::core::{FirehoseRowReader, FirehoseRowWriter, FirehoseValue};
 use crate::define_firehose_operator;
 pub use image::imageops::FilterType;
 pub use image::{ColorType, DynamicImage};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+
+/// Image augmentation stages.
+pub mod stage;
 
 define_firehose_operator!(
     AUG_IMAGE,
@@ -173,7 +175,7 @@ impl FirehoseOperator for ImageAugmenter {
             }
         }
 
-        txn.expect_set("result", ValueBox::boxing(image));
+        txn.expect_set("result", FirehoseValue::boxing(image));
 
         Ok(())
     }

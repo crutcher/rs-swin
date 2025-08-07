@@ -12,10 +12,10 @@ use bimm_firehose::core::schema::ColumnSchema;
 use bimm_firehose::core::{
     FirehoseRowBatch, FirehoseRowReader, FirehoseRowWriter, FirehoseTableSchema,
 };
-use bimm_firehose::ops::image::ImageShape;
-use bimm_firehose::ops::image::aug::{ColorType, FlipSpec, ImageAugmenter};
+use bimm_firehose::ops::image::augmentation::{FlipSpec, ImageAugmenter};
+use bimm_firehose::ops::image::burn::{ImageToTensorData, stack_tensor_data_column};
 use bimm_firehose::ops::image::loader::{ImageLoader, ResizeSpec};
-use bimm_firehose::ops::image::tensor_loader::{ImageToTensorData, stack_tensor_data_column};
+use bimm_firehose::ops::image::{ColorType, ImageShape};
 use bimm_firehose::ops::init_default_operator_environment;
 use burn::backend::{Autodiff, Cuda};
 use burn::config::Config;

@@ -62,7 +62,8 @@ macro_rules! register_firehose_operator_factory {
                 operator_id: $name,
                 supplier: || {
                     let v = ($constructor);
-                    Arc::from(v) as Arc<dyn $crate::core::operations::factory::FirehoseOperatorFactory>
+                    std::sync::Arc::from(v) as
+                    std::sync::Arc<dyn $crate::core::operations::factory::FirehoseOperatorFactory>
                 },
             }
         }
@@ -77,7 +78,7 @@ mod tests {
     use crate::core::operations::operator::{FirehoseOperator, OperatorSchedulingMetadata};
     use crate::core::operations::signature::{FirehoseOperatorSignature, ParameterSpec};
 
-    use crate::core::ValueBox;
+    use crate::core::FirehoseValue;
     use crate::core::rows::{
         FirehoseRowBatch, FirehoseRowReader, FirehoseRowTransaction, FirehoseRowWriter,
     };
@@ -120,7 +121,7 @@ mod tests {
 
             let result: i32 = x + y + self.bias;
 
-            txn.expect_set("result", ValueBox::serialized(result)?);
+            txn.expect_set("result", FirehoseValue::serialized(result)?);
 
             Ok(())
         }
@@ -245,10 +246,10 @@ mod tests {
         assert_eq!(runner.build_plan.operator_id, ADD);
 
         let mut batch = FirehoseRowBatch::new_with_size(Arc::new(schema.clone()), 2);
-        batch[0].expect_set("a", ValueBox::serialized(10)?);
-        batch[0].expect_set("b", ValueBox::serialized(20)?);
-        batch[1].expect_set("a", ValueBox::serialized(-5)?);
-        batch[1].expect_set("b", ValueBox::serialized(2)?);
+        batch[0].expect_set("a", FirehoseValue::serialized(10)?);
+        batch[0].expect_set("b", FirehoseValue::serialized(20)?);
+        batch[1].expect_set("a", FirehoseValue::serialized(-5)?);
+        batch[1].expect_set("b", FirehoseValue::serialized(2)?);
 
         runner.apply_to_batch(&mut batch).unwrap();
 

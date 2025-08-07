@@ -1,15 +1,15 @@
 use serde::{Deserialize, Serialize};
 
 /// `image::ColorType` utils.
-pub mod color_util;
+pub mod colortype_support;
 /// Image loader operators.
 pub mod loader;
 
 /// Image augmentation operators.
-pub mod aug;
+pub mod augmentation;
 
 /// Image/Tensor conversion utilities.
-pub mod tensor_loader;
+pub mod burn;
 /// Image test utilities.
 pub mod test_util;
 
@@ -22,3 +22,5 @@ pub struct ImageShape {
     /// The height of the image in pixels.
     pub height: u32,
 }
+
+pub use image::ColorType;

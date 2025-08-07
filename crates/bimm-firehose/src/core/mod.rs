@@ -8,31 +8,33 @@ pub mod rows;
 pub mod schema;
 
 /// Defines `ValueBox`, a sum type for Json Values and boxed values.
-pub mod valuebox;
+pub mod values;
 
 // TODO: Work out what the `$crate::core::*` re-exports should be.
-pub use rows::{FirehoseRow, FirehoseRowBatch, FirehoseRowReader, FirehoseRowWriter};
+pub use rows::{
+    FirehoseBatchTransaction, FirehoseRow, FirehoseRowBatch, FirehoseRowReader,
+    FirehoseRowTransaction, FirehoseRowWriter,
+};
 pub use schema::FirehoseTableSchema;
-pub use valuebox::ValueBox;
+pub use values::FirehoseValue;
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    use crate::ops::image::burn::image_to_f32_tensor;
     use crate::ops::image::loader::{ImageLoader, ResizeSpec};
-    use crate::ops::image::tensor_loader::{
-        ImageDimLayout, ImgToTensorConfig, TargetDType, image_to_f32_tensor,
-    };
     use crate::ops::image::test_util::assert_image_close;
     use crate::ops::image::{ImageShape, test_util};
     use burn::backend::NdArray;
-    use burn::prelude::{Shape, Tensor};
+    use burn::prelude::TensorData;
 
-    use crate::core::ValueBox;
+    use crate::core::FirehoseValue;
     use crate::core::operations::executor::{FirehoseBatchExecutor, SequentialBatchExecutor};
     use crate::core::rows::{FirehoseRowReader, FirehoseRowWriter};
     use crate::core::schema::ColumnSchema;
-    use crate::ops::init_burn_device_operator_environment;
+    use crate::ops::image::burn::ImageToTensorData;
+    use crate::ops::init_default_operator_environment;
     use image::imageops::FilterType;
     use image::{ColorType, DynamicImage};
     use indoc::indoc;
@@ -52,7 +54,7 @@ mod tests {
 
         let device = Default::default();
 
-        let env = Arc::new(init_burn_device_operator_environment::<B>(&device));
+        let env = Arc::new(init_default_operator_environment());
 
         let schema = {
             let mut schema =
@@ -72,10 +74,8 @@ mod tests {
                 .to_plan("path", "image")
                 .apply_to_schema(&mut schema, env.as_ref())?;
 
-            ImgToTensorConfig::new()
-                .with_dtype(TargetDType::F32)
-                .with_dim_layout(ImageDimLayout::HWC)
-                .to_plan("image", "tensor")
+            ImageToTensorData::default()
+                .to_plan("image", "data")
                 .apply_to_schema(&mut schema, env.as_ref())?;
 
             Arc::new(schema)
@@ -103,10 +103,10 @@ mod tests {
                       }
                     },
                     {
-                      "name": "tensor",
-                      "description": "Tensor representation of the image.",
+                      "name": "data",
+                      "description": "TensorData representation of the image.",
                       "data_type": {
-                        "type_name": "burn_tensor::tensor::api::base::Tensor<burn_ndarray::backend::NdArray, 3>"
+                        "type_name": "burn_tensor::tensor::data::TensorData"
                       }
                     }
                   ],
@@ -132,17 +132,14 @@ mod tests {
                       }
                     },
                     {
-                      "operator_id": "bimm_firehose::ops::image::tensor_loader::IMAGE_TO_TENSOR",
-                      "description": "Converts an image to a tensor.",
-                      "config": {
-                        "dim_layout": "HWC",
-                        "dtype": "F32"
-                      },
+                      "operator_id": "bimm_firehose::ops::image::burn::IMAGE_TO_TENSOR_DATA",
+                      "description": "Converts an image to TensorData.",
+                      "config": {},
                       "inputs": {
                         "image": "image"
                       },
                       "outputs": {
-                        "tensor": "tensor"
+                        "data": "data"
                       }
                     }
                   ]
@@ -169,7 +166,7 @@ mod tests {
                 .save(&image_path)
                 .expect("Failed to save test image");
 
-            batch[0].expect_set("path", ValueBox::serialized(image_path)?);
+            batch[0].expect_set("path", FirehoseValue::serialized(image_path)?);
         }
 
         executor.execute_batch(&mut batch)?;
@@ -186,10 +183,8 @@ mod tests {
             None,
         );
 
-        let row_tensor = row.maybe_get("tensor").unwrap().as_ref::<Tensor<B, 3>>()?;
-        assert_eq!(row_tensor.dtype(), burn::tensor::DType::F32);
-        assert_eq!(row_tensor.shape(), Shape::new([24, 16, 1]));
-        row_tensor.to_data().assert_eq(
+        let row_data = row.maybe_get("data").unwrap().as_ref::<TensorData>()?;
+        row_data.assert_eq(
             &image_to_f32_tensor::<B>(row_image, &device).to_data(),
             true,
         );

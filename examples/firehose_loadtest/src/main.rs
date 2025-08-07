@@ -1,16 +1,17 @@
 use bimm_firehose::core::schema::{ColumnSchema, FirehoseTableSchema};
 use bimm_firehose::ops::image::ImageShape;
+use bimm_firehose::ops::image::burn::stack_tensor_data_column;
 use bimm_firehose::ops::image::loader::{ColorType, ImageLoader, ResizeSpec};
-use bimm_firehose::ops::image::tensor_loader::{ImageDimLayout, ImgToTensorConfig, TargetDType};
 use burn::backend::Cuda;
 use itertools::Itertools;
 use rs_cinic_10_index::Cinic10Index;
 use std::sync::Arc;
 
 use bimm_firehose::core::operations::executor::FirehoseBatchExecutor;
-use bimm_firehose::core::{FirehoseRowBatch, FirehoseRowReader, FirehoseRowWriter, ValueBox};
-use bimm_firehose::ops::image::aug::{FlipSpec, ImageAugmenter};
-use bimm_firehose::ops::init_burn_device_operator_environment;
+use bimm_firehose::core::{FirehoseRowBatch, FirehoseRowWriter};
+use bimm_firehose::ops::image::augmentation::{FlipSpec, ImageAugmenter};
+use bimm_firehose::ops::image::burn::ImageToTensorData;
+use bimm_firehose::ops::init_default_operator_environment;
 use burn::prelude::Tensor;
 use clap::Parser;
 use std::time::Instant;
@@ -38,7 +39,7 @@ fn main() -> anyhow::Result<()> {
 
     let device = Default::default();
 
-    let env = Arc::new(init_burn_device_operator_environment::<B>(&device));
+    let env = Arc::new(init_default_operator_environment());
 
     // Define a processing schema, from `path` -> `image` -> `tensor`.
     let schema = {
@@ -64,10 +65,8 @@ fn main() -> anyhow::Result<()> {
             .apply_to_schema(&mut schema, env.as_ref())?;
 
         // Convert the image to a tensor of shape (32, 32, 3) with float32 dtype.
-        ImgToTensorConfig::new()
-            .with_dtype(TargetDType::F32)
-            .with_dim_layout(ImageDimLayout::HWC)
-            .to_plan("aug", "tensor")
+        ImageToTensorData::new()
+            .to_plan("aug", "data")
             .apply_to_schema(&mut schema, env.as_ref())?;
 
         Arc::new(schema)
@@ -95,30 +94,18 @@ fn main() -> anyhow::Result<()> {
             let item = &index.test.items[idx];
 
             let row = batch.new_row();
-            row.expect_set("seed", ValueBox::serialized::<u64>(idx as u64)?);
-            row.expect_set(
-                "path",
-                ValueBox::serialized(item.path.to_string_lossy().to_string())?,
-            );
+            row.expect_set_serialized("seed", idx as u64);
+            row.expect_set_serialized("path", item.path.to_string_lossy().to_string());
         }
 
         // Run the batch.
         executor.execute_batch(&mut batch)?;
 
         if args.simulate_stack {
-            // Simulate the batch collation function.
-            let _stack: Tensor<B, 4> = Tensor::stack(
-                batch
-                    .iter()
-                    .map(|row| {
-                        row.maybe_get("tensor")
-                            .unwrap()
-                            .as_ref::<Tensor<B, 3>>()
-                            .unwrap()
-                            .clone()
-                    })
-                    .collect::<Vec<_>>(),
-                0,
+            let _image_batch = Tensor::<B, 4>::from_data(
+                stack_tensor_data_column(&batch, "data")
+                    .expect("Failed to stack tensor data column"),
+                &device,
             );
         }
 
