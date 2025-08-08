@@ -158,10 +158,10 @@ impl FirehoseOperator for ImageLoader {
         let mut image = image::open(path.clone())
             .with_context(|| format!("Failed to load image from path: {path}"))?;
 
-        if let Some(spec) = &self.resize {
-            if image.width() != spec.shape.width || image.height() != spec.shape.height {
-                image = image.resize_exact(spec.shape.width, spec.shape.height, spec.filter);
-            }
+        if let Some(spec) = &self.resize
+            && (image.width() != spec.shape.width || image.height() != spec.shape.height)
+        {
+            image = image.resize_exact(spec.shape.width, spec.shape.height, spec.filter);
         }
 
         if let Some(color) = &self.recolor {
