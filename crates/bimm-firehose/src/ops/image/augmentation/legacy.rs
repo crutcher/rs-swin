@@ -2,15 +2,12 @@ use crate::core::operations::factory::SimpleConfigOperatorFactory;
 use crate::core::operations::operator::FirehoseOperator;
 use crate::core::operations::planner::OperationPlan;
 use crate::core::operations::signature::{FirehoseOperatorSignature, ParameterSpec};
-use crate::core::rows::FirehoseRowTransaction;
-use crate::core::{FirehoseRowReader, FirehoseRowWriter, ValueBox};
+use crate::core::{FirehoseRowReader, FirehoseRowTransaction, FirehoseRowWriter, FirehoseValue};
 use crate::define_firehose_operator;
-pub use image::imageops::FilterType;
-pub use image::{ColorType, DynamicImage};
-use rand::rngs::StdRng;
+use image::DynamicImage;
+use rand::prelude::StdRng;
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 
 define_firehose_operator!(
     AUG_IMAGE,
@@ -28,6 +25,7 @@ define_firehose_operator!(
 );
 
 /// Represents the specifications for flipping an image.
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlipSpec {
     /// The probability of flipping the image horizontally.
@@ -173,7 +171,7 @@ impl FirehoseOperator for ImageAugmenter {
             }
         }
 
-        txn.expect_set("result", ValueBox::boxing(image));
+        txn.expect_set("result", FirehoseValue::boxing(image));
 
         Ok(())
     }

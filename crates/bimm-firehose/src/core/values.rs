@@ -5,7 +5,7 @@ use std::any::{Any, TypeId};
 use std::fmt::Debug;
 
 /// A wrapper type that can hold either a JSON value or a boxed value of any type.
-pub enum ValueBox {
+pub enum FirehoseValue {
     /// Holds a JSON value.
     Value(serde_json::Value),
 
@@ -59,19 +59,19 @@ pub fn check_boxable<T: 'static>() {
     }
 }
 
-impl Debug for ValueBox {
+impl Debug for FirehoseValue {
     fn fmt(
         &self,
         f: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
         match self {
-            ValueBox::Value(value) => write!(f, "{{{value}}}"),
-            ValueBox::Boxed(boxed) => write!(f, "[{boxed:?}]"),
+            FirehoseValue::Value(value) => write!(f, "{{{value}}}"),
+            FirehoseValue::Boxed(boxed) => write!(f, "[{boxed:?}]"),
         }
     }
 }
 
-impl ValueBox {
+impl FirehoseValue {
     /// Creates a new `ValueBox::Value` by serializing an object.
     pub fn serialized<T>(obj: T) -> anyhow::Result<Self>
     where
@@ -79,12 +79,12 @@ impl ValueBox {
     {
         serde_json::to_value(obj)
             .with_context(|| "Failed to serialize value")
-            .map(ValueBox::Value)
+            .map(FirehoseValue::Value)
     }
 
     /// Creates a new `ValueBox::Value` from a `serde_json::Value`.
     pub fn from_json_value(value: serde_json::Value) -> Self {
-        ValueBox::Value(value)
+        FirehoseValue::Value(value)
     }
 
     /// Creates a new `ValueBox::Boxed` by boxing an object that implements `Any` and `Send`.
@@ -101,22 +101,22 @@ impl ValueBox {
         T: Any + 'static + Send,
     {
         check_boxable::<T>();
-        ValueBox::Boxed(boxed)
+        FirehoseValue::Boxed(boxed)
     }
 
     /// Returns true if the `ValueBox` contains a JSON value.
     pub fn is_value(&self) -> bool {
-        matches!(self, ValueBox::Value(_))
+        matches!(self, FirehoseValue::Value(_))
     }
 
     /// Returns true if the `ValueBox` contains a boxed value.
     pub fn is_boxed(&self) -> bool {
-        matches!(self, ValueBox::Boxed(_))
+        matches!(self, FirehoseValue::Boxed(_))
     }
 
     /// Unwraps the `ValueBox` and returns a reference to the contained JSON value.
     pub fn unwrap_value(&self) -> &serde_json::Value {
-        if let ValueBox::Value(value) = self {
+        if let FirehoseValue::Value(value) = self {
             value
         } else {
             panic!("ValueBox::unwrap_value() called on {self:?}");
@@ -168,7 +168,7 @@ impl ValueBox {
     where
         T: 'static,
     {
-        if let ValueBox::Boxed(boxed) = self {
+        if let FirehoseValue::Boxed(boxed) = self {
             boxed
                 .downcast_ref::<T>()
                 .with_context(|| "Failed to downcast boxed value")
@@ -213,7 +213,7 @@ mod tests {
     #[test]
     fn test_from_json_value() -> anyhow::Result<()> {
         let json_value = serde_json::json!(["foo", "bar"]);
-        let vb = ValueBox::from_json_value(json_value.clone());
+        let vb = FirehoseValue::from_json_value(json_value.clone());
         assert!(vb.is_value());
         assert!(!vb.is_boxed());
 
@@ -226,7 +226,7 @@ mod tests {
 
     #[test]
     fn test_string_value() -> anyhow::Result<()> {
-        let vb = ValueBox::serialized("abc")?;
+        let vb = FirehoseValue::serialized("abc")?;
         assert!(vb.is_value());
         assert!(!vb.is_boxed());
 
@@ -245,7 +245,7 @@ mod tests {
     #[test]
     #[should_panic(expected = r"called on {")]
     fn test_unwrap_value_as_boxed() {
-        let vb = ValueBox::serialized("abc").unwrap();
+        let vb = FirehoseValue::serialized("abc").unwrap();
         assert!(vb.is_value());
         assert!(!vb.is_boxed());
 
@@ -260,7 +260,7 @@ mod tests {
             field2: 123,
         };
 
-        let vb = ValueBox::boxing(my_struct.clone());
+        let vb = FirehoseValue::boxing(my_struct.clone());
         assert!(!vb.is_value());
         assert!(vb.is_boxed());
 
@@ -269,7 +269,7 @@ mod tests {
 
     #[test]
     fn test_int_value() -> anyhow::Result<()> {
-        let vb = ValueBox::serialized(42_i32)?;
+        let vb = FirehoseValue::serialized(42_i32)?;
         assert!(vb.is_value());
         assert!(!vb.is_boxed());
 
@@ -284,7 +284,7 @@ mod tests {
 
     #[test]
     fn test_int_array() -> anyhow::Result<()> {
-        let vb = ValueBox::serialized(vec![42_i32, 0_i32])?;
+        let vb = FirehoseValue::serialized(vec![42_i32, 0_i32])?;
         assert!(vb.is_value());
         assert!(!vb.is_boxed());
 
@@ -308,7 +308,7 @@ mod tests {
             field2: 123,
         };
 
-        let vb = ValueBox::boxing(my_struct.clone());
+        let vb = FirehoseValue::boxing(my_struct.clone());
         assert!(!vb.is_value());
         assert!(vb.is_boxed());
 
