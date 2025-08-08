@@ -37,7 +37,7 @@ jobs:
 
       - name: Install Tools
         run: |
-          cargo install cargo-tarpaulin
+          cargo binstall -q cargo-tarpaulin
 
       - name: Check Format
         run: cargo fmt --check
