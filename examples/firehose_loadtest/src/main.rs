@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use bimm_firehose::core::operations::executor::FirehoseBatchExecutor;
 use bimm_firehose::core::{FirehoseRowBatch, FirehoseRowWriter};
-use bimm_firehose::ops::image::augmentation::{FlipSpec, ImageAugmenter};
+use bimm_firehose::ops::image::augmentation::legacy::{FlipSpec, ImageAugmenter};
 use bimm_firehose::ops::image::burn::ImageToTensorData;
 use bimm_firehose::ops::init_default_operator_environment;
 use burn::prelude::Tensor;

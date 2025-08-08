@@ -42,8 +42,7 @@ macro_rules! define_firehose_operator {
 #[macro_export]
 macro_rules! define_firehose_operator_id {
     ($name:ident) => {
-        /// Self-referential operator ID.
-        pub static $name: &str = concat!(module_path!(), "::", stringify!($name),);
+        $crate::define_self_referential_id!($name);
     };
 }
 
