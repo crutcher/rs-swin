@@ -1,35 +1,36 @@
 use crate::define_image_aug_plugin;
-use crate::ops::image::augmentation::plugins::{
-    AugmentationStage, AugmentationStageConfig, ImageAugContext, PluginBuilder, WithPluginBuilder,
+use crate::ops::image::augmentation::{
+    AugmentationStage, AugmentationStageConfig, ImageAugContext, PluginBuilder,
+    WithAugmentationStageBuilder,
 };
 use image::DynamicImage;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-define_image_aug_plugin!(NOOP, NoOpPlugin::build_plugin);
+define_image_aug_plugin!(NOOP_STAGE, NoOpStage::build_stage);
 
 /// A no-operation plugin for image augmentation that does nothing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NoOpPlugin;
+pub struct NoOpStage;
 
-impl WithPluginBuilder for NoOpPlugin {
-    fn build_plugin(
+impl WithAugmentationStageBuilder for NoOpStage {
+    fn build_stage(
         config: &AugmentationStageConfig,
         _builder: &dyn PluginBuilder,
     ) -> anyhow::Result<Box<dyn AugmentationStage>> {
-        Ok(Box::new(serde_json::from_value::<NoOpPlugin>(
+        Ok(Box::new(serde_json::from_value::<NoOpStage>(
             config.body.clone(),
         )?))
     }
 }
 
-impl AugmentationStage for NoOpPlugin {
+impl AugmentationStage for NoOpStage {
     fn name(&self) -> &str {
-        NOOP
+        NOOP_STAGE
     }
 
     fn as_config_body(&self) -> Value {
-        serde_json::Value::Null
+        Value::Null
     }
 
     fn augment_image(

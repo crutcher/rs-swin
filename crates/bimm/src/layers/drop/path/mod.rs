@@ -17,7 +17,7 @@ pub mod rate_table;
 
 /// Checks if the given probability is within the valid range [0, 1].
 #[inline(always)]
-fn check_probability(prob: f64) -> f64 {
+fn expect_probability(prob: f64) -> f64 {
     if !(0.0..=1.0).contains(&prob) {
         panic!("Probability should be between 0 and 1, but got {prob}");
     }
@@ -78,7 +78,7 @@ fn _drop_path_sample<B: Backend, const D: usize>(
     scale_by_keep: bool,
     sample: fn([usize; D], f64, &B::Device) -> Tensor<B, D>,
 ) -> Tensor<B, D> {
-    check_probability(drop_prob);
+    expect_probability(drop_prob);
 
     if !training || drop_prob == 0.0 {
         return x;
@@ -142,7 +142,7 @@ impl DropPathConfig {
     #[must_use]
     pub fn init(&self) -> DropPath {
         DropPath {
-            drop_prob: check_probability(self.drop_prob),
+            drop_prob: expect_probability(self.drop_prob),
             scale_by_keep: self.scale_by_keep,
         }
     }
@@ -219,7 +219,7 @@ mod tests {
     #[should_panic(expected = "Probability should be between 0 and 1, but got 2")]
     #[test]
     fn test_check_probability_panic() {
-        let _ = check_probability(2.0);
+        let _ = expect_probability(2.0);
     }
 
     #[test]

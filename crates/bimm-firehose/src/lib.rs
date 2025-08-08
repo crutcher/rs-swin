@@ -12,6 +12,8 @@ pub mod ops;
 
 /// Burn Integration Module.
 pub mod burn;
+/// Augmentation stage utility functions.
+pub mod utility;
 
 /// Define a self-referential ID.
 ///
