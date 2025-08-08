@@ -36,7 +36,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Install Tools
-        run: cargo install -q cargo-tarpaulin
+        run: cargo install -q cargo-tarpaulin || true
 
       - name: Check Format
         run: cargo fmt --check
