@@ -1,48 +1,53 @@
 use crate::define_image_aug_plugin;
-use crate::ops::image::augmentation::plugins::{
-    AugmentationStage, AugmentationStageConfig, ImageAugContext, PluginBuilder, WithPluginBuilder,
+use crate::ops::image::augmentation::{
+    AugmentationStage, AugmentationStageConfig, ImageAugContext, PluginBuilder,
+    WithAugmentationStageBuilder,
 };
 use image::DynamicImage;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
-define_image_aug_plugin!(SEQUENCE, SequencePlugin::build_plugin);
+define_image_aug_plugin!(STAGE_SEQUENCE, StageSequence::build_stage);
 
-/// Serialized configuration for the `SequencePlugin`.
+/// Serialized configuration for `StageSequence`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SequencePluginConfig {
+pub struct StageSequenceConfig {
     /// The sequence of augmentation stages.
     pub stages: Vec<AugmentationStageConfig>,
 }
 
-/// A plugin which applies a sequence of augmentation stages.
+/// A stage which applies a sequence of augmentation stages.
 #[derive(Debug, Clone)]
-pub struct SequencePlugin {
+pub struct StageSequence {
     /// The sequence of augmentation stages.
-    pub stages: Vec<Box<dyn AugmentationStage>>,
+    stages: Vec<Box<dyn AugmentationStage>>,
 }
 
-impl WithPluginBuilder for SequencePlugin {
+impl WithAugmentationStageBuilder for StageSequence {
     /// Builder for `SequencePlugin`.
-    fn build_plugin(
+    fn build_stage(
         config: &AugmentationStageConfig,
         builder: &dyn PluginBuilder,
     ) -> anyhow::Result<Box<dyn AugmentationStage>> {
-        let config: SequencePluginConfig = serde_json::from_value(config.body.clone())?;
+        let config: StageSequenceConfig = serde_json::from_value(config.body.clone())?;
         let stages = builder.build_stage_vector(&config.stages)?;
-        Ok(Box::new(SequencePlugin { stages }))
+        Ok(Box::new(StageSequence { stages }))
     }
 }
 
-impl AugmentationStage for SequencePlugin {
+impl AugmentationStage for StageSequence {
     fn name(&self) -> &str {
-        SEQUENCE
+        STAGE_SEQUENCE
     }
 
     fn as_config_body(&self) -> serde_json::Value {
-        json! {{
-            "stages": self.stages.iter().map(|s| s.as_config()).collect::<Vec<_>>(),
-        }}
+        serde_json::to_value(StageSequenceConfig {
+            stages: self
+                .stages
+                .iter()
+                .map(|s| s.as_config())
+                .collect::<Vec<_>>(),
+        })
+        .unwrap()
     }
 
     fn augment_image(

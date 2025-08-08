@@ -1,4 +1,8 @@
-/// Module providing a no-op augmentation operation.
+/// Stage that randomly selects one of its children.
+mod choose_one;
+/// Stage that does nothing.
 pub mod noop;
-/// Module providing a sequence of augmentation operations.
+/// Stage that runs a sequence of stages.
 pub mod sequence;
+/// Stage that randomly runs, or skips, a child.
+mod with_prob;
