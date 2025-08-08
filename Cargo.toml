@@ -14,6 +14,9 @@ version = "0.2.0"
 repository = "https://github.com/crutcher/bimm"
 license = "MIT"
 
+[workspace.lints.rust]
+warnings = "deny"
+
 [workspace.lints.clippy]
 double_must_use = "allow"
 doc_markdown = "warn"

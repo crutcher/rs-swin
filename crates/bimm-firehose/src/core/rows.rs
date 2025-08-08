@@ -448,7 +448,7 @@ impl FirehoseRowBatch {
     pub fn drain_rows<R>(
         &mut self,
         range: R,
-    ) -> Drain<FirehoseRow>
+    ) -> Drain<'_, FirehoseRow>
     where
         R: RangeBounds<usize>,
     {
