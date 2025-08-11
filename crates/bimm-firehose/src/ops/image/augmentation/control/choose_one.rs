@@ -7,6 +7,7 @@ use anyhow::bail;
 use image::DynamicImage;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 define_image_aug_plugin!(CHOOSE_ONE, ChooseOneStage::build_stage);
 
@@ -38,7 +39,7 @@ pub struct ChooseOneStage {
     total_weight: f32,
 
     /// The sequence of augmentation stages.
-    stages: Vec<Box<dyn AugmentationStage>>,
+    stages: Vec<Arc<dyn AugmentationStage>>,
 }
 
 impl WithAugmentationStageBuilder for ChooseOneStage {
@@ -46,7 +47,7 @@ impl WithAugmentationStageBuilder for ChooseOneStage {
     fn build_stage(
         config: &AugmentationStageConfig,
         builder: &dyn PluginBuilder,
-    ) -> anyhow::Result<Box<dyn AugmentationStage>> {
+    ) -> anyhow::Result<Arc<dyn AugmentationStage>> {
         let config: ChooseOneStageConfig = serde_json::from_value(config.body.clone())?;
 
         let mut stages = Vec::with_capacity(config.choices.len());
@@ -67,7 +68,7 @@ impl WithAugmentationStageBuilder for ChooseOneStage {
             stages.push(builder.build_stage(&choice.stage)?);
         }
 
-        Ok(Box::new(Self {
+        Ok(Arc::new(Self {
             weights,
             total_weight,
             stages,

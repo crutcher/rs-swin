@@ -153,7 +153,6 @@ impl FirehoseOperator for ImageAugmenter {
         let mut rng = StdRng::seed_from_u64(seed);
 
         let source: &DynamicImage = txn.maybe_get("source").unwrap().as_ref()?;
-
         let mut image = source.clone();
 
         if let Some(flip) = &self.flip {

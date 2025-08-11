@@ -5,6 +5,7 @@ use crate::ops::image::augmentation::{
 };
 use image::DynamicImage;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 define_image_aug_plugin!(STAGE_SEQUENCE, StageSequence::build_stage);
 
@@ -19,7 +20,7 @@ pub struct StageSequenceConfig {
 #[derive(Debug, Clone)]
 pub struct StageSequence {
     /// The sequence of augmentation stages.
-    stages: Vec<Box<dyn AugmentationStage>>,
+    stages: Vec<Arc<dyn AugmentationStage>>,
 }
 
 impl WithAugmentationStageBuilder for StageSequence {
@@ -27,10 +28,10 @@ impl WithAugmentationStageBuilder for StageSequence {
     fn build_stage(
         config: &AugmentationStageConfig,
         builder: &dyn PluginBuilder,
-    ) -> anyhow::Result<Box<dyn AugmentationStage>> {
+    ) -> anyhow::Result<Arc<dyn AugmentationStage>> {
         let config: StageSequenceConfig = serde_json::from_value(config.body.clone())?;
         let stages = builder.build_stage_vector(&config.stages)?;
-        Ok(Box::new(StageSequence { stages }))
+        Ok(Arc::new(StageSequence { stages }))
     }
 }
 

@@ -6,6 +6,7 @@ use crate::ops::image::augmentation::{
 use image::DynamicImage;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::sync::Arc;
 
 define_image_aug_plugin!(NOOP_STAGE, NoOpStage::build_stage);
 
@@ -17,8 +18,8 @@ impl WithAugmentationStageBuilder for NoOpStage {
     fn build_stage(
         config: &AugmentationStageConfig,
         _builder: &dyn PluginBuilder,
-    ) -> anyhow::Result<Box<dyn AugmentationStage>> {
-        Ok(Box::new(serde_json::from_value::<NoOpStage>(
+    ) -> anyhow::Result<Arc<dyn AugmentationStage>> {
+        Ok(Arc::new(serde_json::from_value::<NoOpStage>(
             config.body.clone(),
         )?))
     }

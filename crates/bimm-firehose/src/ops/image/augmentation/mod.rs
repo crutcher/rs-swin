@@ -2,6 +2,7 @@ pub use image::imageops::FilterType;
 pub use image::{ColorType, DynamicImage};
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
+use std::sync::Arc;
 
 /// Control flow plugins.
 pub mod control;
@@ -43,7 +44,7 @@ macro_rules! register_image_aug_plugin {
 #[macro_export]
 macro_rules! define_image_aug_plugin_id {
     ($name:ident) => {
-        $crate::define_self_referential_id!($name);
+        $crate::define_self_referential_id!("istage", $name);
     };
 }
 
@@ -58,7 +59,7 @@ pub struct AugmentationStageGlobalRegistration {
     pub build_stage: fn(
         config: &AugmentationStageConfig,
         builder: &dyn PluginBuilder,
-    ) -> anyhow::Result<Box<dyn AugmentationStage>>,
+    ) -> anyhow::Result<Arc<dyn AugmentationStage>>,
 }
 
 /// Builder for the `PluginConfig` to `ImageAugPlugin` path.
@@ -67,13 +68,13 @@ pub trait PluginBuilder {
     fn build_stage(
         &self,
         config: &AugmentationStageConfig,
-    ) -> anyhow::Result<Box<dyn AugmentationStage>>;
+    ) -> anyhow::Result<Arc<dyn AugmentationStage>>;
 
     /// Build a vector of
     fn build_stage_vector(
         &self,
         configs: &Vec<AugmentationStageConfig>,
-    ) -> anyhow::Result<Vec<Box<dyn AugmentationStage>>> {
+    ) -> anyhow::Result<Vec<Arc<dyn AugmentationStage>>> {
         let mut plugins = Vec::with_capacity(configs.len());
         for config in configs {
             plugins.push(self.build_stage(config)?);
@@ -88,7 +89,7 @@ pub trait WithAugmentationStageBuilder {
     fn build_stage(
         config: &AugmentationStageConfig,
         builder: &dyn PluginBuilder,
-    ) -> anyhow::Result<Box<dyn AugmentationStage>>;
+    ) -> anyhow::Result<Arc<dyn AugmentationStage>>;
 }
 
 /// Global plugin registry builder.
@@ -98,7 +99,7 @@ impl PluginBuilder for GlobalRegistryBuilder {
     fn build_stage(
         &self,
         config: &AugmentationStageConfig,
-    ) -> anyhow::Result<Box<dyn AugmentationStage>> {
+    ) -> anyhow::Result<Arc<dyn AugmentationStage>> {
         let name = config.name.as_str();
 
         let reg = inventory::iter::<AugmentationStageGlobalRegistration>
@@ -129,19 +130,8 @@ impl ImageAugContext {
     }
 }
 
-/// Trait to help `Box<dyn AugmentationStep>` implement Clone.
-///
-/// This is helpful for nesting.
-pub trait CloneBox {
-    /// Clone the plugin into a Box.
-    ///
-    /// This is used with an impl of `Clone` for `Box<dyn ImagePlugin>`
-    /// to make plugins containable.
-    fn clone_box(&self) -> Box<dyn AugmentationStage>;
-}
-
 /// A trait defining a plugin for image augmentation.
-pub trait AugmentationStage: Debug + CloneBox {
+pub trait AugmentationStage: Debug + Send + Sync {
     /// Get the stage name.
     fn name(&self) -> &str;
 
@@ -173,21 +163,6 @@ pub trait AugmentationStage: Debug + CloneBox {
     ) -> anyhow::Result<DynamicImage>;
 }
 
-impl<T> CloneBox for T
-where
-    T: 'static + AugmentationStage + Clone,
-{
-    fn clone_box(&self) -> Box<dyn AugmentationStage> {
-        Box::new(self.clone())
-    }
-}
-
-impl Clone for Box<dyn AugmentationStage> {
-    fn clone(&self) -> Self {
-        self.clone_box()
-    }
-}
-
 /// Serializable config for name + body for `AugmentationStage`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AugmentationStageConfig {
@@ -198,6 +173,67 @@ pub struct AugmentationStageConfig {
     #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
     pub body: serde_json::Value,
 }
+
+/*
+/// Image augmentation operator.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AugmentImageConfig {
+    /// The stages to apply.
+    pub stages: Vec<AugmentationStageConfig>,
+}
+
+impl AugmentImageConfig {
+    /// Converts into an `OperationPlanner`
+    ///
+    /// ## Arguments
+    ///
+    /// * `seed_column`: The name of the input column containing the augmentation seed.
+    /// * `source_column`: The name of the input image column.
+    /// * `result_column`: The name of the output image column.
+    pub fn to_plan(
+        &self,
+        seed_column: &str,
+        source_column: &str,
+        result_column: &str,
+    ) -> OperationPlan {
+        OperationPlan::for_operation_id(AUG_IMAGE)
+            .with_input("seed", seed_column)
+            .with_input("source", source_column)
+            .with_output("result", result_column)
+            .with_config(self.clone())
+    }
+}
+
+/// Image augmentation operator.
+#[derive(Debug, Clone)]
+pub struct AugmentImageOperation {
+    /// The stages to apply.
+    stages: Vec<Box<dyn AugmentationStage>>,
+}
+
+impl FirehoseOperator for AugmentImageOperation {
+    fn apply_to_row(
+        &self,
+        txn: &mut FirehoseRowTransaction,
+    ) -> anyhow::Result<()> {
+        let seed: u64 = txn.maybe_get("seed").unwrap().parse_as()?;
+        let rng = StdRng::seed_from_u64(seed);
+
+        let source: &DynamicImage = txn.maybe_get("source").unwrap().as_ref()?;
+        let mut image = source.clone();
+
+        let mut ctx = ImageAugContext::new(rng);
+
+        for stage in &self.stages {
+            image = stage.augment_image(image, &mut ctx)?;
+        }
+
+        txn.expect_set_from_box("result", Box::new(image));
+
+        Ok(())
+    }
+}
+ */
 
 #[cfg(test)]
 mod tests {
