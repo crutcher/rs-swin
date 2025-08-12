@@ -64,7 +64,7 @@ struct Args {
     batch_size: usize,
 
     /// Number of workers for data loading.
-    #[arg(long, default_value = "std::option::Option::Some(2 as usize)")]
+    #[arg(long, default_value = "2")]
     num_workers: Option<usize>,
 
     /// Number of epochs to train the model.
