@@ -123,7 +123,7 @@ impl FirehoseValue {
         }
     }
 
-    /// Unwraps and deserializes the contained JSON value into a specified type.
+    /// Parses the value as the target `DeserializeOwned` type.
     ///
     /// # Type Parameters
     ///
@@ -150,6 +150,27 @@ impl FirehoseValue {
         })
     }
 
+    /// Parses the value as the target `DeserializeOwned` type.
+    ///
+    /// # Type Parameters
+    ///
+    /// `T`: The type to deserialize the JSON value into. It must implement `DeserializeOwned`.
+    ///
+    /// # Panics
+    ///
+    /// If the `ValueBox` does not contain a JSON value;
+    /// or the value fails to deserialize into the specified type.
+    ///
+    /// # Returns
+    ///
+    /// A `T`.
+    pub fn expect_parse_as<T>(&self) -> T
+    where
+        T: DeserializeOwned + 'static,
+    {
+        self.parse_as::<T>().unwrap()
+    }
+
     /// Unwraps the `ValueBox` and returns a reference to the contained boxed value.
     ///
     /// # Type Parameters
@@ -158,7 +179,7 @@ impl FirehoseValue {
     ///
     /// # Panics
     ///
-    /// If the `ValueBox` does not contain a boxed value or if the downcast fails.
+    /// If the `ValueBox` does not contain a boxed value.
     ///
     /// # Returns
     ///
@@ -178,6 +199,26 @@ impl FirehoseValue {
                 std::any::type_name::<T>()
             );
         }
+    }
+
+    /// Unwraps the `ValueBox` and returns a reference to the contained boxed value.
+    ///
+    /// # Type Parameters
+    ///
+    /// `T`: The type to downcast the boxed value to.
+    ///
+    /// # Panics
+    ///
+    /// If the `ValueBox` does not contain a boxed value or if the downcast fails.
+    ///
+    /// # Returns
+    ///
+    /// A `&T`.
+    pub fn expect_as_ref<T>(&self) -> &T
+    where
+        T: 'static,
+    {
+        self.as_ref::<T>().unwrap()
     }
 }
 

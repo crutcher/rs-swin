@@ -31,6 +31,16 @@ pub struct WithProbStage {
     inner: Arc<dyn AugmentationStage>,
 }
 
+impl WithProbStage {
+    /// Construct a new `WithProbStage`.
+    pub fn new(
+        prob: f64,
+        inner: Arc<dyn AugmentationStage>,
+    ) -> Self {
+        Self { prob, inner }
+    }
+}
+
 impl WithAugmentationStageBuilder for WithProbStage {
     /// Builder for `WithProbStage`.
     fn build_stage(

@@ -93,16 +93,14 @@ where
         context: &dyn FirehoseOperatorInitContext,
     ) -> anyhow::Result<Box<dyn FirehoseOperator>> {
         let config = &context.build_plan().config;
-        let loader: Box<T> =
-            Box::new(serde_json::from_value(config.clone()).with_context(|| {
-                format!(
-                    "Failed to deserialize operator config for {}: {}",
-                    self.signature.operator_id.as_deref().unwrap_or("unknown"),
-                    serde_json::to_string_pretty(config).unwrap()
-                )
-            })?);
-
-        Ok(loader)
+        let op: T = serde_json::from_value(config.clone()).with_context(|| {
+            format!(
+                "Failed to deserialize operator config for {}: {}",
+                self.signature.operator_id.as_deref().unwrap_or("unknown"),
+                serde_json::to_string_pretty(config).unwrap()
+            )
+        })?;
+        Ok(Box::new(op))
     }
 }
 

@@ -14,6 +14,19 @@ define_image_aug_plugin!(HORIZONTAL_FLIP, HorizontalFlipStage::build_stage);
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HorizontalFlipStage;
 
+impl Default for HorizontalFlipStage {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl HorizontalFlipStage {
+    /// Creates a new `HorizontalFlipStage`.
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
 impl WithAugmentationStageBuilder for HorizontalFlipStage {
     fn build_stage(
         config: &AugmentationStageConfig,
@@ -48,6 +61,19 @@ define_image_aug_plugin!(VERTICAL_FLIP, VerticalFlipStage::build_stage);
 /// An `AugmentationStage` that flips the image vertically.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VerticalFlipStage;
+
+impl Default for VerticalFlipStage {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl VerticalFlipStage {
+    /// Creates a new `VerticalFlipStage`.
+    pub fn new() -> Self {
+        Self {}
+    }
+}
 
 impl WithAugmentationStageBuilder for VerticalFlipStage {
     fn build_stage(

@@ -42,7 +42,7 @@ macro_rules! define_firehose_operator {
 #[macro_export]
 macro_rules! define_firehose_operator_id {
     ($name:ident) => {
-        $crate::define_self_referential_id!("fop", $name);
+        $crate::define_self_referential_id!("fh:op", $name);
     };
 }
 
@@ -216,7 +216,7 @@ mod tests {
             indoc! {r#"
                ColumnBuilder {
                    build_plan: BuildPlan {
-                       operator_id: "fop://bimm_firehose::core::operations::tests::ADD",
+                       operator_id: "fh:op://bimm_firehose::core::operations::tests::ADD",
                        description: Some(
                            "Adds inputs with a bias",
                        ),
@@ -279,7 +279,7 @@ mod tests {
     fn test_path_ident() {
         define_firehose_operator_id!(FOO);
 
-        assert_eq!(FOO, concat!("fop://", module_path!(), "::FOO"));
+        assert_eq!(FOO, concat!("fh:op://", module_path!(), "::FOO"));
     }
 
     #[test]

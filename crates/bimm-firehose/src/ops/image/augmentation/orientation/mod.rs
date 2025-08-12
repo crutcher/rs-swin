@@ -1,2 +1,2 @@
 /// Image flip stages.
-mod flip;
+pub mod flip;

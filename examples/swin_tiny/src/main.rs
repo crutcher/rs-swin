@@ -12,7 +12,11 @@ use bimm_firehose::core::schema::ColumnSchema;
 use bimm_firehose::core::{
     FirehoseRowBatch, FirehoseRowReader, FirehoseRowWriter, FirehoseTableSchema,
 };
-use bimm_firehose::ops::image::augmentation::legacy::{FlipSpec, ImageAugmenter};
+use bimm_firehose::ops::image::augmentation::AugmentImageOperation;
+use bimm_firehose::ops::image::augmentation::control::with_prob::WithProbStage;
+use bimm_firehose::ops::image::augmentation::orientation::flip::{
+    HorizontalFlipStage, VerticalFlipStage,
+};
 use bimm_firehose::ops::image::burn::{ImageToTensorData, stack_tensor_data_column};
 use bimm_firehose::ops::image::loader::{ImageLoader, ResizeSpec};
 use bimm_firehose::ops::image::{ColorType, ImageShape};
@@ -192,10 +196,15 @@ pub fn train<B: AutodiffBackend>(
         let schema = Arc::new({
             let mut schema = common_schema.clone();
 
-            ImageAugmenter::new()
-                .with_flip(FlipSpec::new().with_horizontal(0.5))
-                .to_plan(SEED_COLUMN, IMAGE_COLUMN, AUG_COLUMN)
-                .apply_to_schema(&mut schema, firehose_env.as_ref())?;
+            AugmentImageOperation::new(vec![
+                Arc::new(WithProbStage::new(
+                    0.25,
+                    Arc::new(HorizontalFlipStage::new()),
+                )),
+                Arc::new(WithProbStage::new(0.25, Arc::new(VerticalFlipStage::new()))),
+            ])
+            .to_plan(SEED_COLUMN, IMAGE_COLUMN, AUG_COLUMN)
+            .apply_to_schema(&mut schema, firehose_env.as_ref())?;
 
             // Convert the image to a tensor of shape (3, 32, 32) with float32 dtype.
             ImageToTensorData::new()

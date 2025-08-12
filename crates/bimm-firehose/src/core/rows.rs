@@ -1,6 +1,7 @@
 use crate::core::FirehoseValue;
 use crate::core::operations::signature::FirehoseOperatorSignature;
 use crate::core::schema::{BuildPlan, FirehoseTableSchema};
+use anyhow::Context;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::any::Any;
@@ -128,6 +129,28 @@ pub trait FirehoseRowReader {
         column_name: &str,
     ) -> Option<&FirehoseValue>;
 
+    /// Gets the column.
+    ///
+    /// ## Arguments
+    ///
+    /// - `column_name`: the name of the column.
+    ///
+    /// ## Returns
+    ///
+    /// A reference to the column.
+    ///
+    /// ## Panics
+    ///
+    /// If the column is absent.
+    fn expect_get(
+        &self,
+        column_name: &str,
+    ) -> &FirehoseValue {
+        self.maybe_get(column_name)
+            .with_context(|| format!("Column not found: {}", column_name))
+            .unwrap()
+    }
+
     /// Gets the column, parsing it as a T.
     ///
     /// # Generic Parameters
@@ -140,7 +163,7 @@ pub trait FirehoseRowReader {
     ///
     /// # Panics
     ///
-    /// If the column isn't found or if the parsing fails.
+    /// If the column isn't found or if parsing as `T` fails.
     fn expect_get_parsed<T>(
         &self,
         column_name: &str,
@@ -148,10 +171,30 @@ pub trait FirehoseRowReader {
     where
         T: DeserializeOwned + 'static,
     {
-        self.maybe_get(column_name)
-            .unwrap()
-            .parse_as::<T>()
-            .unwrap()
+        self.expect_get(column_name).expect_parse_as::<T>()
+    }
+
+    /// Gets the column, dereferencing it as a &T.
+    ///
+    /// # Generic Parameters
+    ///
+    /// - `T`: the type to parse the column as.
+    ///
+    /// # Arguments
+    ///
+    /// - `column_name`: the name of the column.
+    ///
+    /// # Panics
+    ///
+    /// If the column isn't a boxed value, or if dereferencing as `T` fails.
+    fn expect_get_ref<T>(
+        &self,
+        column_name: &str,
+    ) -> &T
+    where
+        T: 'static,
+    {
+        self.expect_get(column_name).expect_as_ref::<T>()
     }
 }
 

@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 define_image_aug_plugin!(CHOOSE_ONE, ChooseOneStage::build_stage);
 
+/// Serialized configuration for `ChooseOneStage`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChoiceItemConfig {
     /// The weight of the stage; default, treated as `1.0`.

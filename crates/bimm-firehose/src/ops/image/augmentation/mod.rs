@@ -1,5 +1,13 @@
+use crate::core::operations::factory::{FirehoseOperatorFactory, FirehoseOperatorInitContext};
+use crate::core::operations::operator::FirehoseOperator;
+use crate::core::operations::planner::OperationPlan;
+use crate::core::operations::signature::{FirehoseOperatorSignature, ParameterSpec};
+use crate::core::{FirehoseRowReader, FirehoseRowTransaction, FirehoseRowWriter};
+use crate::define_firehose_operator;
+use anyhow::Context;
 pub use image::imageops::FilterType;
 pub use image::{ColorType, DynamicImage};
+use rand::SeedableRng;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -7,8 +15,6 @@ use std::sync::Arc;
 /// Control flow plugins.
 pub mod control;
 
-/// Legacy augmentation operator.
-pub mod legacy;
 /// Image orientation augmentation.
 pub mod orientation;
 
@@ -44,7 +50,7 @@ macro_rules! register_image_aug_plugin {
 #[macro_export]
 macro_rules! define_image_aug_plugin_id {
     ($name:ident) => {
-        $crate::define_self_referential_id!("istage", $name);
+        $crate::define_self_referential_id!("fh:iaug", $name);
     };
 }
 
@@ -174,7 +180,6 @@ pub struct AugmentationStageConfig {
     pub body: serde_json::Value,
 }
 
-/*
 /// Image augmentation operator.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AugmentImageConfig {
@@ -196,7 +201,7 @@ impl AugmentImageConfig {
         source_column: &str,
         result_column: &str,
     ) -> OperationPlan {
-        OperationPlan::for_operation_id(AUG_IMAGE)
+        OperationPlan::for_operation_id(AUGMENT_IMAGE)
             .with_input("seed", seed_column)
             .with_input("source", source_column)
             .with_output("result", result_column)
@@ -204,11 +209,105 @@ impl AugmentImageConfig {
     }
 }
 
+define_firehose_operator!(AUGMENT_IMAGE, AugmentImageOperatorFactory::new());
+
+/// Image augmentation operator factory.
+#[derive(Debug)]
+pub struct AugmentImageOperatorFactory {
+    /// The operator signature.
+    signature: FirehoseOperatorSignature,
+}
+
+impl Default for AugmentImageOperatorFactory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl AugmentImageOperatorFactory {
+    /// Construct a new factory.
+    pub fn new() -> Self {
+        Self {
+            signature: FirehoseOperatorSignature::from_operator_id(AUGMENT_IMAGE)
+                .with_description("Loads an image from disk.")
+                .with_input(
+                    ParameterSpec::new::<u64>("seed").with_description("Augmentation seed."),
+                )
+                .with_input(
+                    ParameterSpec::new::<DynamicImage>("source").with_description("Source image."),
+                )
+                .with_output(
+                    ParameterSpec::new::<DynamicImage>("result").with_description("Result image."),
+                ),
+        }
+    }
+}
+
+impl FirehoseOperatorFactory for AugmentImageOperatorFactory {
+    fn signature(&self) -> &FirehoseOperatorSignature {
+        &self.signature
+    }
+
+    fn init(
+        &self,
+        context: &dyn FirehoseOperatorInitContext,
+    ) -> anyhow::Result<Box<dyn FirehoseOperator>> {
+        let config = &context.build_plan().config;
+        let cfg: AugmentImageConfig =
+            serde_json::from_value(config.clone()).with_context(|| {
+                format!(
+                    "Failed to deserialize operator config for {}: {}",
+                    self.signature.operator_id.as_deref().unwrap_or("unknown"),
+                    serde_json::to_string_pretty(config).unwrap()
+                )
+            })?;
+
+        let builder = GlobalRegistryBuilder {};
+        let stages = builder.build_stage_vector(&cfg.stages)?;
+
+        Ok(Box::new(AugmentImageOperation { stages }))
+    }
+}
+
 /// Image augmentation operator.
 #[derive(Debug, Clone)]
 pub struct AugmentImageOperation {
     /// The stages to apply.
-    stages: Vec<Box<dyn AugmentationStage>>,
+    stages: Vec<Arc<dyn AugmentationStage>>,
+}
+
+impl AugmentImageOperation {
+    /// Construct a new operation.
+    pub fn new(stages: Vec<Arc<dyn AugmentationStage>>) -> Self {
+        Self { stages }
+    }
+
+    /// Convert into a config.
+    pub fn to_config(&self) -> AugmentImageConfig {
+        AugmentImageConfig {
+            stages: self.stages.iter().map(|s| s.as_config()).collect(),
+        }
+    }
+
+    /// Converts into an `OperationPlanner`
+    ///
+    /// ## Arguments
+    ///
+    /// * `seed_column`: The name of the input column containing the augmentation seed.
+    /// * `source_column`: The name of the input image column.
+    /// * `result_column`: The name of the output image column.
+    pub fn to_plan(
+        &self,
+        seed_column: &str,
+        source_column: &str,
+        result_column: &str,
+    ) -> OperationPlan {
+        OperationPlan::for_operation_id(AUGMENT_IMAGE)
+            .with_input("seed", seed_column)
+            .with_input("source", source_column)
+            .with_output("result", result_column)
+            .with_config(self.to_config())
+    }
 }
 
 impl FirehoseOperator for AugmentImageOperation {
@@ -216,13 +315,10 @@ impl FirehoseOperator for AugmentImageOperation {
         &self,
         txn: &mut FirehoseRowTransaction,
     ) -> anyhow::Result<()> {
-        let seed: u64 = txn.maybe_get("seed").unwrap().parse_as()?;
-        let rng = StdRng::seed_from_u64(seed);
-
-        let source: &DynamicImage = txn.maybe_get("source").unwrap().as_ref()?;
-        let mut image = source.clone();
-
-        let mut ctx = ImageAugContext::new(rng);
+        let mut image = txn.expect_get_ref::<DynamicImage>("source").clone();
+        let mut ctx = ImageAugContext::new(rand::rngs::StdRng::seed_from_u64(
+            txn.expect_get_parsed("seed"),
+        ));
 
         for stage in &self.stages {
             image = stage.augment_image(image, &mut ctx)?;
@@ -233,7 +329,6 @@ impl FirehoseOperator for AugmentImageOperation {
         Ok(())
     }
 }
- */
 
 #[cfg(test)]
 mod tests {
