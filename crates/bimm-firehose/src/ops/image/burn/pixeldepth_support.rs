@@ -1,4 +1,5 @@
 use burn::data::dataset::vision::PixelDepth;
+use image::{ColorType, DynamicImage};
 
 /// Converts a `PixelDepth` to a `u8`.
 pub fn pixel_depth_to_u8(p: PixelDepth) -> u8 {
@@ -30,6 +31,65 @@ pub fn pixel_depth_to_f32(p: PixelDepth) -> f32 {
         // Scale U16 to F32
         PixelDepth::U16(v) => v as f32 / 65535.0,
         PixelDepth::F32(v) => v,
+    }
+}
+
+/// Converts an image to a vector of pixel depths.
+pub fn image_to_pixeldepth_vec(image: &DynamicImage) -> Vec<PixelDepth> {
+    let image = image.clone();
+    // Image as Vec<PixelDepth>
+    match image.color() {
+        ColorType::L8 => image
+            .into_luma8()
+            .iter()
+            .map(|&x| PixelDepth::U8(x))
+            .collect(),
+        ColorType::La8 => image
+            .into_luma_alpha8()
+            .iter()
+            .map(|&x| PixelDepth::U8(x))
+            .collect(),
+        ColorType::L16 => image
+            .into_luma16()
+            .iter()
+            .map(|&x| PixelDepth::U16(x))
+            .collect(),
+        ColorType::La16 => image
+            .into_luma_alpha16()
+            .iter()
+            .map(|&x| PixelDepth::U16(x))
+            .collect(),
+        ColorType::Rgb8 => image
+            .into_rgb8()
+            .iter()
+            .map(|&x| PixelDepth::U8(x))
+            .collect(),
+        ColorType::Rgba8 => image
+            .into_rgba8()
+            .iter()
+            .map(|&x| PixelDepth::U8(x))
+            .collect(),
+        ColorType::Rgb16 => image
+            .into_rgb16()
+            .iter()
+            .map(|&x| PixelDepth::U16(x))
+            .collect(),
+        ColorType::Rgba16 => image
+            .into_rgba16()
+            .iter()
+            .map(|&x| PixelDepth::U16(x))
+            .collect(),
+        ColorType::Rgb32F => image
+            .into_rgb32f()
+            .iter()
+            .map(|&x| PixelDepth::F32(x))
+            .collect(),
+        ColorType::Rgba32F => image
+            .into_rgba32f()
+            .iter()
+            .map(|&x| PixelDepth::F32(x))
+            .collect(),
+        _ => panic!("Unrecognized image color type"),
     }
 }
 

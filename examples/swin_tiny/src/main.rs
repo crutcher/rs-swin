@@ -13,6 +13,7 @@ use bimm_firehose::core::{
     FirehoseRowBatch, FirehoseRowReader, FirehoseRowWriter, FirehoseTableSchema,
 };
 use bimm_firehose::ops::image::augmentation::AugmentImageOperation;
+use bimm_firehose::ops::image::augmentation::control::choose_one::ChooseOneStage;
 use bimm_firehose::ops::image::augmentation::control::with_prob::WithProbStage;
 use bimm_firehose::ops::image::augmentation::noise::blur::BlurStage;
 use bimm_firehose::ops::image::augmentation::orientation::flip::HorizontalFlipStage;
@@ -23,9 +24,9 @@ use bimm_firehose::ops::init_default_operator_environment;
 use burn::backend::{Autodiff, Cuda};
 use burn::config::Config;
 use burn::data::dataloader::{DataLoaderBuilder, Dataset};
-use burn::data::dataset::transform::{SamplerDataset, ShuffledDataset};
+use burn::data::dataset::transform::{ComposedDataset, SamplerDataset, ShuffledDataset};
 use burn::grad_clipping::GradientClippingConfig;
-use burn::lr_scheduler::noam::NoamLrSchedulerConfig;
+use burn::lr_scheduler::cosine::CosineAnnealingLrSchedulerConfig;
 use burn::module::Module;
 use burn::nn::loss::CrossEntropyLossConfig;
 use burn::optim::AdamWConfig;
@@ -58,7 +59,11 @@ const DATA_COLUMN: &str = "data";
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
-struct Args {
+pub struct Args {
+    /// Random seed for reproducibility.
+    #[arg(short, long, default_value = "0")]
+    seed: u64,
+
     /// Batch size for processing
     #[arg(short, long, default_value_t = 512)]
     batch_size: usize,
@@ -71,24 +76,64 @@ struct Args {
     #[arg(long, default_value = "60")]
     num_epochs: usize,
 
-    /// Number of epochs to warmup the model.
-    #[arg(long, default_value = "4")]
-    num_warmup_epochs: usize,
+    // /// Number of epochs to warm-up the model.
+    // #[arg(long, default_value = "4")]
+    // num_warmup_epochs: usize,
+    /// Number of epochs between restarts.
+    #[arg(long, default_value = "3.5")]
+    restart_epochs: f64,
 
     /// Embedding ratio: ``ratio * channels * patch_size * patch_size``
-    #[arg(long, default_value = "2.5")]
+    #[arg(long, default_value = "0.75")]
     embed_ratio: f64,
 
     /// Ratio of oversampling the training dataset.
-    #[arg(long, default_value = "2.0")]
+    #[arg(long, default_value = "2.5")]
     oversample_ratio: f64,
+
+    /// Learning rate for the optimizer.
+    #[arg(long, default_value = "1.0e-3")]
+    learning_rate: f64,
+
+    /// Min learning rate for the optimizer.
+    #[arg(long, default_value = "1.0e-5")]
+    min_learning_rate: f64,
+
+    /// Directory to save the artifacts.
+    #[arg(long, default_value = "/tmp/swin_tiny_cinic10")]
+    artifact_dir: Option<String>,
+}
+
+/// Config for training the model.
+#[derive(Config)]
+pub struct TrainingConfig {
+    /// The inner model config.
+    pub model: ModelConfig,
+
+    /// The optimizer config.
+    pub optimizer: AdamWConfig,
 }
 
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
-
     type B = Autodiff<Cuda>;
 
+    let devices = vec![Default::default()];
+    backend_main::<B>(&args, devices)
+}
+
+/// Create the artifact directory for saving training artifacts.
+fn create_artifact_dir(artifact_dir: &str) {
+    // Remove existing artifacts before to get an accurate learner summary
+    std::fs::remove_dir_all(artifact_dir).ok();
+    std::fs::create_dir_all(artifact_dir).ok();
+}
+
+/// Train the model with the given configuration and devices.
+pub fn backend_main<B: AutodiffBackend>(
+    args: &Args,
+    devices: Vec<B::Device>,
+) -> anyhow::Result<()> {
     let h: usize = 32;
     let w: usize = 32;
     let image_dimensions = [h, w];
@@ -99,7 +144,7 @@ fn main() -> anyhow::Result<()> {
     let window_size: usize = 4;
     let embed_dim = ((image_channels * patch_size.pow(2)) as f64 * args.embed_ratio) as usize;
 
-    let config = SwinTransformerV2Config::new(
+    let swin_config = SwinTransformerV2Config::new(
         image_dimensions,
         patch_size,
         image_channels,
@@ -111,86 +156,21 @@ fn main() -> anyhow::Result<()> {
     .with_attn_drop_rate(0.1)
     .with_drop_rate(0.1);
 
+    B::seed(args.seed);
+
     let training_config = TrainingConfig::new(
-        ModelConfig { swin: config },
+        ModelConfig { swin: swin_config },
         AdamWConfig::new()
             .with_weight_decay(0.05)
             .with_grad_clipping(Some(GradientClippingConfig::Norm(5.0))),
-    )
-    .with_batch_size(args.batch_size)
-    .with_oversample_ratio(args.oversample_ratio)
-    .with_learning_rate(1.0e-1)
-    .with_num_warmup_epochs(args.num_warmup_epochs)
-    .with_num_epochs(args.num_epochs)
-    .with_num_workers(args.num_workers);
+    );
 
-    let device = Default::default();
-
-    train::<B>("/tmp/swin_tiny_cinic10", training_config, &device)
-}
-
-/// Config for training the model.
-#[derive(Config)]
-pub struct TrainingConfig {
-    /// The inner model config.
-    pub model: ModelConfig,
-
-    /// The optimizer config.
-    pub optimizer: AdamWConfig,
-
-    /// Ratio of oversampling the training dataset.
-    #[config(default = "1.5")]
-    pub oversample_ratio: f64,
-
-    /// Number of epochs to train the model.
-    #[config(default = 10)]
-    pub num_epochs: usize,
-
-    /// Number of epochs to warmup the model.
-    #[config(default = 10)]
-    pub num_warmup_epochs: usize,
-
-    /// Batch size for training and validation.
-    #[config(default = 64)]
-    pub batch_size: usize,
-
-    /// Number of workers for data loading.
-    #[config(default = "Option::None")]
-    pub num_workers: Option<usize>,
-
-    /// Random seed for reproducibility.
-    #[config(default = 42)]
-    pub seed: u64,
-
-    /// Learning rate for the optimizer.
-    #[config(default = 1.0e-3)]
-    pub learning_rate: f64,
-
-    /// Learning rate for the optimizer.
-    #[config(default = 1.0e-5)]
-    pub min_learning_rate: f64,
-}
-
-/// Create the artifact directory for saving training artifacts.
-fn create_artifact_dir(artifact_dir: &str) {
-    // Remove existing artifacts before to get an accurate learner summary
-    std::fs::remove_dir_all(artifact_dir).ok();
-    std::fs::create_dir_all(artifact_dir).ok();
-}
-
-/// Train the model with the given configuration and devices.
-pub fn train<B: AutodiffBackend>(
-    artifact_dir: &str,
-    config: TrainingConfig,
-    device: &B::Device,
-) -> anyhow::Result<()> {
+    let artifact_dir = args.artifact_dir.as_ref().unwrap().as_ref();
     create_artifact_dir(artifact_dir);
 
-    config
+    training_config
         .save(format!("{artifact_dir}/config.json"))
         .expect("Config should be saved successfully");
-
-    B::seed(config.seed);
 
     let cinic10_index: Cinic10Index = Default::default();
 
@@ -219,14 +199,19 @@ pub fn train<B: AutodiffBackend>(
     let num_batches: usize;
 
     let train_dataloader = {
-        let ds = CinicDataset {
-            items: cinic10_index.train.items.clone(),
-        };
-        let ds = ShuffledDataset::with_seed(ds, config.seed);
-        let num_samples = (config.oversample_ratio * (ds.len() as f64)).ceil() as usize;
+        let ds = ComposedDataset::new(vec![
+            CinicDataset {
+                items: cinic10_index.train.items.clone(),
+            },
+            CinicDataset {
+                items: cinic10_index.test.items.clone(),
+            },
+        ]);
+        let ds = ShuffledDataset::with_seed(ds, args.seed);
+        let num_samples = (args.oversample_ratio * (ds.len() as f64)).ceil() as usize;
         let ds = SamplerDataset::with_replacement(ds, num_samples);
 
-        num_batches = ds.len() / config.batch_size;
+        num_batches = ds.len() / args.batch_size;
 
         let schema = Arc::new({
             let mut schema = common_schema.clone();
@@ -236,10 +221,14 @@ pub fn train<B: AutodiffBackend>(
                     0.5,
                     Arc::new(HorizontalFlipStage::new()),
                 )),
-                Arc::new(WithProbStage::new(
-                    0.10,
-                    Arc::new(BlurStage::Gaussian { sigma: 0.5 }),
-                )),
+                Arc::new(
+                    ChooseOneStage::new()
+                        .with_choice(1.0, Arc::new(BlurStage::Gaussian { sigma: 0.25 }))
+                        .with_choice(1.0, Arc::new(BlurStage::Gaussian { sigma: 0.5 }))
+                        .with_choice(1.0, Arc::new(BlurStage::Gaussian { sigma: 0.75 }))
+                        .with_choice(1.0, Arc::new(BlurStage::Gaussian { sigma: 1.0 }))
+                        .with_noop_weight(4.0),
+                ),
             ])
             .to_plan(SEED_COLUMN, IMAGE_COLUMN, AUG_COLUMN)
             .apply_to_schema(&mut schema, firehose_env.as_ref())?;
@@ -261,8 +250,8 @@ pub fn train<B: AutodiffBackend>(
             Arc::new(OutputAdapter::<B>::default()),
         );
 
-        let mut builder = DataLoaderBuilder::new(batcher).batch_size(config.batch_size);
-        if let Some(num_workers) = config.num_workers {
+        let mut builder = DataLoaderBuilder::new(batcher).batch_size(args.batch_size);
+        if let Some(num_workers) = args.num_workers {
             builder = builder.num_workers(num_workers);
         }
         builder.build(ds)
@@ -294,16 +283,16 @@ pub fn train<B: AutodiffBackend>(
             Arc::new(OutputAdapter::<B::InnerBackend>::default()),
         );
 
-        let mut builder = DataLoaderBuilder::new(batcher).batch_size(config.batch_size);
-        if let Some(num_workers) = config.num_workers {
+        let mut builder = DataLoaderBuilder::new(batcher).batch_size(args.batch_size);
+        if let Some(num_workers) = args.num_workers {
             builder = builder.num_workers(num_workers);
         }
         builder.build(ds)
     };
 
-    let lr_scheduler = NoamLrSchedulerConfig::new(config.learning_rate)
-        .with_warmup_steps(config.num_warmup_epochs * num_batches)
-        .with_model_size(config.model.swin.d_embed)
+    let num_iters = (args.restart_epochs * (num_batches as f64)) as usize;
+    let lr_scheduler = CosineAnnealingLrSchedulerConfig::new(args.learning_rate, num_iters)
+        .with_min_lr(args.min_learning_rate)
         .init()
         .map_err(|e| anyhow::anyhow!("Failed to initialize learning rate scheduler: {}", e))?;
 
@@ -331,12 +320,12 @@ pub fn train<B: AutodiffBackend>(
             Split::Valid,
             StoppingCondition::NoImprovementSince { n_epochs: 6 },
         ))
-        .devices(vec![device.clone()])
-        .num_epochs(config.num_epochs)
+        .devices(devices.clone())
+        .num_epochs(args.num_epochs)
         .summary()
         .build(
-            config.model.init::<B>(device),
-            config.optimizer.init(),
+            training_config.model.init::<B>(&devices[0]),
+            training_config.optimizer.init(),
             lr_scheduler,
         );
 
