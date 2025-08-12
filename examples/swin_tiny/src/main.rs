@@ -96,7 +96,7 @@ fn main() -> anyhow::Result<()> {
     .with_learning_rate(1.0e-3)
     .with_min_learning_rate(1.0e-5)
     .with_num_epochs(60)
-    .with_num_workers(Some(8));
+    .with_num_workers(Some(2));
 
     let device = Default::default();
 
