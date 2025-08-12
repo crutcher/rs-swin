@@ -43,6 +43,9 @@ that is common in the torch ecosystem library.
 
 ### [bimm-firehose](crates/bimm-firehose) - a data loading and augmentation framework.
 
+[![Crates.io Version](https://img.shields.io/crates/v/bimm-firehose)](https://crates.io/crates/bimm-firehose)
+[![docs.rs](https://img.shields.io/docsrs/bimm-firehose)](https://docs.rs/bimm/latest/bimm-firehose/)
+
 This crate provides a SQL-inspired table + operations framework for modular data pipeline construction.
 
 It's still very much a work in progress, and any issues/design bugs reported
