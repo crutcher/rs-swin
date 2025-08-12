@@ -847,28 +847,14 @@ mod tests {
         let mut batch = FirehoseRowBatch::new(schema.clone());
         batch.new_row();
         // IndexMut<usize>
-        batch[0].expect_set("foo", FirehoseValue::serialized(42).unwrap());
+        batch[0].expect_set_serialized("foo", 42);
 
         let row2 = batch.new_row();
-        row2.expect_set("bar", FirehoseValue::serialized("Hello").unwrap());
+        row2.expect_set_serialized("bar", "Hello");
 
         // Index<usize>
-        assert_eq!(
-            batch[0]
-                .maybe_get("foo")
-                .unwrap()
-                .parse_as::<i32>()
-                .unwrap(),
-            42
-        );
-        assert_eq!(
-            batch[1]
-                .maybe_get("bar")
-                .unwrap()
-                .parse_as::<String>()
-                .unwrap(),
-            "Hello"
-        );
+        assert_eq!(batch[0].expect_get_parsed::<i32>("foo"), 42);
+        assert_eq!(batch[1].expect_get_parsed::<String>("bar"), "Hello");
     }
 
     #[should_panic(expected = "Cannot add row with different schema")]
@@ -897,11 +883,8 @@ mod tests {
         let mut batch = FirehoseRowBatch::new(schema.clone());
         for i in 0..5 {
             let row = batch.new_row();
-            row.expect_set("foo", FirehoseValue::serialized(i).unwrap());
-            row.expect_set(
-                "bar",
-                FirehoseValue::serialized(format!("Row {i}")).unwrap(),
-            );
+            row.expect_set_serialized("foo", i);
+            row.expect_set_serialized("bar", format!("Row {i}"));
         }
 
         assert_eq!(batch.len(), 5);
@@ -955,13 +938,19 @@ mod tests {
         assert!(!row.has_column_value("foo"));
         assert!(!row.has_column_value("bar"));
 
-        row.expect_set("foo", FirehoseValue::serialized(42)?);
+        row.expect_set_serialized("foo", 42);
         assert!(row.has_column_value("foo"));
-        assert_eq!(row.maybe_get("foo").unwrap().parse_as::<f32>()?, 42_f32);
+        assert_eq!(row.expect_get_parsed::<f32>("foo"), 42_f32);
 
         let my_struct = MyStruct { value: 100 };
-        row.expect_set("bar", FirehoseValue::boxing(my_struct.clone()));
+        row.expect_set_boxing("bar", my_struct.clone());
         assert!(row.has_column_value("bar"));
+        assert_eq!(row.expect_get_ref::<MyStruct>("bar").value, my_struct.value);
+
+        let my_struct = Box::new(MyStruct { value: 100 });
+        row.expect_set_from_box("bar", my_struct.clone());
+        assert!(row.has_column_value("bar"));
+        assert_eq!(row.expect_get_ref::<MyStruct>("bar").value, my_struct.value);
 
         assert_eq!(
             format!("{row:?}"),
@@ -981,6 +970,12 @@ mod tests {
                 qux: None,
               }"#},
         );
+
+        let val = row.take_column("foo");
+        assert!(!row.has_column_value("foo"));
+        assert_eq!(val.unwrap().parse_as::<i32>()?, 42);
+
+        assert!(row.take_column("foo").is_none());
 
         Ok(())
     }
@@ -1035,10 +1030,10 @@ mod tests {
 
         let mut batch = FirehoseRowBatch::new(schema.clone());
         let row = batch.new_row();
-        row.expect_set("foo", FirehoseValue::serialized(42).unwrap());
+        row.expect_set_serialized("foo", 42);
 
         let row = batch.new_row();
-        row.expect_set("bar", FirehoseValue::serialized("Hello").unwrap());
+        row.expect_set_serialized("bar", "Hello");
 
         assert_eq!(
             format!("{batch:#?}"),
@@ -1072,8 +1067,8 @@ mod tests {
 
         let mut batch = FirehoseRowBatch::new(schema.clone());
         let row = batch.new_row();
-        row.expect_set("foo", FirehoseValue::serialized(42)?);
-        row.expect_set("bar", FirehoseValue::serialized("Hello")?);
+        row.expect_set_serialized("foo", 42);
+        row.expect_set_serialized("bar", "Hello");
 
         let signature = Arc::new(
             FirehoseOperatorSignature::new()
@@ -1100,7 +1095,7 @@ mod tests {
 
         let row_txn = txn.mut_row_transaction(0);
         assert_eq!(row_txn.schema(), &schema);
-        assert_eq!(row_txn.maybe_get("source").unwrap().parse_as::<i32>()?, 42);
+        assert_eq!(row_txn.expect_get_parsed::<i32>("source"), 42);
 
         assert!(row_txn.has_column_value("source"));
         assert!(!row_txn.has_column_value("foo"));
@@ -1138,8 +1133,8 @@ mod tests {
 
         let mut batch = FirehoseRowBatch::new(schema.clone());
         let row = batch.new_row();
-        row.expect_set("foo", FirehoseValue::serialized(42).unwrap());
-        row.expect_set("bar", FirehoseValue::serialized("Hello").unwrap());
+        row.expect_set_serialized("foo", 42);
+        row.expect_set_serialized("bar", "Hello");
 
         let signature = Arc::new(
             FirehoseOperatorSignature::new()
