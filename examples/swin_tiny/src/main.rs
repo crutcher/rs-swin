@@ -296,14 +296,6 @@ pub fn backend_main<B: AutodiffBackend>(
         .init()
         .map_err(|e| anyhow::anyhow!("Failed to initialize learning rate scheduler: {}", e))?;
 
-    /*
-    let lr_scheduler = NoamLrSchedulerConfig::new(config.learning_rate)
-        .with_warmup_steps(args.num_warmup_epochs * num_batches)
-        .with_model_size(config.model.swin.d_embed)
-        .init()
-        .map_err(|e| anyhow::anyhow!("Failed to initialize learning rate scheduler: {}", e))?;
-     */
-
     let learner = LearnerBuilder::new(artifact_dir)
         .metric_train_numeric(LossMetric::new())
         .metric_valid_numeric(LossMetric::new())
