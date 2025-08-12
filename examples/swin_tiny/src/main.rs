@@ -41,6 +41,7 @@ use burn::train::{
     ClassificationOutput, LearnerBuilder, MetricEarlyStoppingStrategy, StoppingCondition,
 };
 use burn::train::{TrainOutput, TrainStep, ValidStep};
+use clap::Parser;
 use enum_ordinalize::Ordinalize;
 use rand::{Rng, rng};
 use rs_cinic_10_index::Cinic10Index;
@@ -55,30 +56,48 @@ const IMAGE_COLUMN: &str = "image";
 const AUG_COLUMN: &str = "aug";
 const DATA_COLUMN: &str = "data";
 
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Batch size for processing
+    #[arg(short, long, default_value_t = 512)]
+    batch_size: usize,
+
+    /// Number of workers for data loading.
+    #[arg(long, default_value = "std::option::Option::Some(2 as usize)")]
+    num_workers: Option<usize>,
+
+    /// Number of epochs to train the model.
+    #[arg(long, default_value = "60")]
+    num_epochs: usize,
+
+    /// Embedding ratio: ``ratio * channels * patch_size * patch_size``
+    #[arg(long, default_value = "2.5")]
+    embed_ratio: f64,
+}
+
 fn main() -> anyhow::Result<()> {
+    let args = Args::parse();
+
     type B = Autodiff<Cuda>;
 
-    let h = 32;
-    let w = 32;
-    let channels = 3;
+    let h: usize = 32;
+    let w: usize = 32;
+    let image_dimensions = [h, w];
+    let image_channels: usize = 3;
+    let num_classes: usize = ObjectClass::COUNT;
 
-    let img_res = [h, w];
-    let patch_size = 2;
-    let window_size = 4;
-    let embed_dim = 2 * channels * patch_size * patch_size;
-    let num_classes = ObjectClass::COUNT;
+    let patch_size: usize = 4;
+    let window_size: usize = 4;
+    let embed_dim = ((image_channels * patch_size.pow(2)) as f64 * args.embed_ratio) as usize;
 
     let config = SwinTransformerV2Config::new(
-        img_res,
+        image_dimensions,
         patch_size,
-        channels,
+        image_channels,
         num_classes,
         embed_dim,
-        vec![
-            LayerConfig::new(8, 6),
-            LayerConfig::new(8, 8),
-            LayerConfig::new(6, 12),
-        ],
+        vec![LayerConfig::new(8, 12), LayerConfig::new(8, 24)],
     )
     .with_window_size(window_size)
     .with_attn_drop_rate(0.1)
@@ -90,11 +109,11 @@ fn main() -> anyhow::Result<()> {
             .with_weight_decay(0.05)
             .with_grad_clipping(Some(GradientClippingConfig::Norm(5.0))),
     )
-    .with_batch_size(500)
+    .with_batch_size(args.batch_size)
     .with_learning_rate(1.0e-3)
     .with_min_learning_rate(1.0e-5)
-    .with_num_epochs(60)
-    .with_num_workers(Some(2));
+    .with_num_epochs(args.num_epochs)
+    .with_num_workers(args.num_workers);
 
     let device = Default::default();
 
@@ -190,7 +209,7 @@ pub fn train<B: AutodiffBackend>(
         };
         let ds = ShuffledDataset::with_seed(ds, config.seed);
         let num_samples = (config.oversample_ratio * (ds.len() as f64)).ceil() as usize;
-        let ds = SamplerDataset::without_replacement(ds, num_samples);
+        let ds = SamplerDataset::with_replacement(ds, num_samples);
 
         let schema = Arc::new({
             let mut schema = common_schema.clone();
