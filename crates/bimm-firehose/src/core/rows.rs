@@ -137,6 +137,23 @@ pub trait FirehoseRowReader {
     ///
     /// ## Returns
     ///
+    /// An `anyhow::Result<&FirehoseValue>` reference to the column value; or an error.
+    fn try_get(
+        &self,
+        column_name: &str,
+    ) -> anyhow::Result<&FirehoseValue> {
+        self.maybe_get(column_name)
+            .with_context(|| format!("Column not found: {}", column_name))
+    }
+
+    /// Gets the column.
+    ///
+    /// ## Arguments
+    ///
+    /// - `column_name`: the name of the column.
+    ///
+    /// ## Returns
+    ///
     /// A reference to the column.
     ///
     /// ## Panics
@@ -146,9 +163,7 @@ pub trait FirehoseRowReader {
         &self,
         column_name: &str,
     ) -> &FirehoseValue {
-        self.maybe_get(column_name)
-            .with_context(|| format!("Column not found: {}", column_name))
-            .unwrap()
+        self.try_get(column_name).unwrap()
     }
 
     /// Gets the column, parsing it as a T.
