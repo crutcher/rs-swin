@@ -4,6 +4,8 @@ edition.workspace = true
 version.workspace = true
 repository.workspace = true
 license.workspace = true
+documentation = "https://docs.rs/bimm-firehose/latest/"
+description = "bimm dataloader / processing pipeline"
 
 [lints]
 workspace = true
