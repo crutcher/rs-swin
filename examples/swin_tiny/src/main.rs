@@ -72,12 +72,16 @@ struct Args {
     num_epochs: usize,
 
     /// Number of epochs to warmup the model.
-    #[arg(long, default_value = "2")]
+    #[arg(long, default_value = "1")]
     num_warmup_epochs: usize,
 
     /// Embedding ratio: ``ratio * channels * patch_size * patch_size``
     #[arg(long, default_value = "2.5")]
     embed_ratio: f64,
+
+    /// Ratio of oversampling the training dataset.
+    #[arg(long, default_value = "2.0")]
+    oversample_ratio: f64,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -114,6 +118,7 @@ fn main() -> anyhow::Result<()> {
             .with_grad_clipping(Some(GradientClippingConfig::Norm(5.0))),
     )
     .with_batch_size(args.batch_size)
+    .with_oversample_ratio(args.oversample_ratio)
     .with_learning_rate(1.0e-3)
     .with_min_learning_rate(1.0e-5)
     .with_num_epochs(args.num_epochs)
