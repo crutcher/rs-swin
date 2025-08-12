@@ -13,6 +13,7 @@ mod image_to_tensor_data;
 pub mod pixeldepth_support;
 
 pub use image_to_tensor_data::*;
+use pixeldepth_support::image_to_pixeldepth_vec;
 
 define_firehose_operator!(
     IMAGE_TO_TENSOR_DATA,
@@ -91,7 +92,7 @@ pub fn image_to_f32_tensor<B: Backend>(
     let colors = image.color().channel_count() as usize;
     let shape = vec![height, width, colors];
 
-    let pixvec = image_to_pixvec(image);
+    let pixvec = image_to_pixeldepth_vec(image);
     let data: Vec<f32> = pixvec
         .iter()
         .map(|p| pixeldepth_support::pixel_depth_to_f32(p.clone()))
