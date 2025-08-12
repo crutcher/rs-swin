@@ -41,6 +41,13 @@ The current work surface is focused on extending the dataloader framework to sup
 more flexible image datasets and transforms, and the kind of composable image augmentation
 that is common in the torch ecosystem library.
 
+### [bimm-firehose](crates/bimm-firehose) - a data loading and augmentation framework.
+
+This crate provides a SQL-inspired table + operations framework for modular data pipeline construction.
+
+It's still very much a work in progress, and any issues/design bugs reported
+are very appreciated.
+
 ### [bimm-contracts](crates/bimm-contracts) - a crate for static shape contracts for tensors.
 
 [![Crates.io Version](https://img.shields.io/crates/v/bimm-contracts)](https://crates.io/crates/bimm-contracts)

@@ -10,7 +10,7 @@ members = [
 
 [workspace.package]
 edition = "2024"
-version = "0.2.0"
+version = "0.2.1"
 repository = "https://github.com/crutcher/bimm"
 license = "MIT"
 
@@ -30,10 +30,10 @@ rpath = true
 # burn = { git = "https://github.com/tracel-ai/burn", rev = "250d5530c21e03909bd27f6e294dddb63ea0f6c8" }
 
 [workspace.dependencies]
-bimm = { version = "0.2.0", path = "crates/bimm" }
-bimm-contracts = { version = "0.2.0", path = "crates/bimm-contracts" }
-bimm-contracts-macros = { version = "0.2.0", path = "crates/bimm-contracts-macros" }
-bimm-firehose = { version = "0.2.0", path = "crates/bimm-firehose" }
+bimm = { version = "0.2.1", path = "crates/bimm" }
+bimm-contracts = { version = "0.2.1", path = "crates/bimm-contracts" }
+bimm-contracts-macros = { version = "0.2.1", path = "crates/bimm-contracts-macros" }
+bimm-firehose = { version = "0.2.1", path = "crates/bimm-firehose" }
 
 burn = { version = "^0.18.0" }
 
