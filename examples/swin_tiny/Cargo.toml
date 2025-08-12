@@ -12,6 +12,8 @@ workspace = true
 [dependencies]
 burn = { workspace = true, features = ["train", "autodiff", "cuda", "fusion", "vision", "dataset"] }
 
+clap = { workspace = true, features = ["derive"] }
+
 serde = { workspace = true, features = ["derive"] }
 
 bimm = { workspace = true }

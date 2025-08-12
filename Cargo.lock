@@ -5188,6 +5188,7 @@ dependencies = [
  "bimm",
  "bimm-firehose",
  "burn",
+ "clap",
  "enum-ordinalize",
  "rand 0.9.2",
  "rs-cinic-10-index",

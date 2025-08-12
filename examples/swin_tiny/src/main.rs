@@ -25,7 +25,7 @@ use burn::config::Config;
 use burn::data::dataloader::{DataLoaderBuilder, Dataset};
 use burn::data::dataset::transform::{SamplerDataset, ShuffledDataset};
 use burn::grad_clipping::GradientClippingConfig;
-use burn::lr_scheduler::cosine::CosineAnnealingLrSchedulerConfig;
+use burn::lr_scheduler::noam::NoamLrSchedulerConfig;
 use burn::module::Module;
 use burn::nn::loss::CrossEntropyLossConfig;
 use burn::optim::AdamWConfig;
@@ -41,6 +41,7 @@ use burn::train::{
     ClassificationOutput, LearnerBuilder, MetricEarlyStoppingStrategy, StoppingCondition,
 };
 use burn::train::{TrainOutput, TrainStep, ValidStep};
+use clap::Parser;
 use enum_ordinalize::Ordinalize;
 use rand::{Rng, rng};
 use rs_cinic_10_index::Cinic10Index;
@@ -55,30 +56,56 @@ const IMAGE_COLUMN: &str = "image";
 const AUG_COLUMN: &str = "aug";
 const DATA_COLUMN: &str = "data";
 
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Batch size for processing
+    #[arg(short, long, default_value_t = 512)]
+    batch_size: usize,
+
+    /// Number of workers for data loading.
+    #[arg(long, default_value = "2")]
+    num_workers: Option<usize>,
+
+    /// Number of epochs to train the model.
+    #[arg(long, default_value = "60")]
+    num_epochs: usize,
+
+    /// Number of epochs to warmup the model.
+    #[arg(long, default_value = "4")]
+    num_warmup_epochs: usize,
+
+    /// Embedding ratio: ``ratio * channels * patch_size * patch_size``
+    #[arg(long, default_value = "2.5")]
+    embed_ratio: f64,
+
+    /// Ratio of oversampling the training dataset.
+    #[arg(long, default_value = "2.0")]
+    oversample_ratio: f64,
+}
+
 fn main() -> anyhow::Result<()> {
+    let args = Args::parse();
+
     type B = Autodiff<Cuda>;
 
-    let h = 32;
-    let w = 32;
-    let channels = 3;
+    let h: usize = 32;
+    let w: usize = 32;
+    let image_dimensions = [h, w];
+    let image_channels: usize = 3;
+    let num_classes: usize = ObjectClass::COUNT;
 
-    let img_res = [h, w];
-    let patch_size = 2;
-    let window_size = 4;
-    let embed_dim = 2 * channels * patch_size * patch_size;
-    let num_classes = ObjectClass::COUNT;
+    let patch_size: usize = 4;
+    let window_size: usize = 4;
+    let embed_dim = ((image_channels * patch_size.pow(2)) as f64 * args.embed_ratio) as usize;
 
     let config = SwinTransformerV2Config::new(
-        img_res,
+        image_dimensions,
         patch_size,
-        channels,
+        image_channels,
         num_classes,
         embed_dim,
-        vec![
-            LayerConfig::new(8, 6),
-            LayerConfig::new(8, 8),
-            LayerConfig::new(6, 12),
-        ],
+        vec![LayerConfig::new(8, 12), LayerConfig::new(8, 24)],
     )
     .with_window_size(window_size)
     .with_attn_drop_rate(0.1)
@@ -90,11 +117,12 @@ fn main() -> anyhow::Result<()> {
             .with_weight_decay(0.05)
             .with_grad_clipping(Some(GradientClippingConfig::Norm(5.0))),
     )
-    .with_batch_size(500)
-    .with_learning_rate(1.0e-3)
-    .with_min_learning_rate(1.0e-5)
-    .with_num_epochs(60)
-    .with_num_workers(Some(2));
+    .with_batch_size(args.batch_size)
+    .with_oversample_ratio(args.oversample_ratio)
+    .with_learning_rate(1.0e-1)
+    .with_num_warmup_epochs(args.num_warmup_epochs)
+    .with_num_epochs(args.num_epochs)
+    .with_num_workers(args.num_workers);
 
     let device = Default::default();
 
@@ -118,6 +146,10 @@ pub struct TrainingConfig {
     #[config(default = 10)]
     pub num_epochs: usize,
 
+    /// Number of epochs to warmup the model.
+    #[config(default = 10)]
+    pub num_warmup_epochs: usize,
+
     /// Batch size for training and validation.
     #[config(default = 64)]
     pub batch_size: usize,
@@ -131,11 +163,11 @@ pub struct TrainingConfig {
     pub seed: u64,
 
     /// Learning rate for the optimizer.
-    #[config(default = 1.0e-5)]
+    #[config(default = 1.0e-3)]
     pub learning_rate: f64,
 
     /// Learning rate for the optimizer.
-    #[config(default = 1.0e-7)]
+    #[config(default = 1.0e-5)]
     pub min_learning_rate: f64,
 }
 
@@ -184,13 +216,17 @@ pub fn train<B: AutodiffBackend>(
         schema
     };
 
+    let num_batches: usize;
+
     let train_dataloader = {
         let ds = CinicDataset {
             items: cinic10_index.train.items.clone(),
         };
         let ds = ShuffledDataset::with_seed(ds, config.seed);
         let num_samples = (config.oversample_ratio * (ds.len() as f64)).ceil() as usize;
-        let ds = SamplerDataset::without_replacement(ds, num_samples);
+        let ds = SamplerDataset::with_replacement(ds, num_samples);
+
+        num_batches = ds.len() / config.batch_size;
 
         let schema = Arc::new({
             let mut schema = common_schema.clone();
@@ -265,15 +301,11 @@ pub fn train<B: AutodiffBackend>(
         builder.build(ds)
     };
 
-    let num_batches = train_dataloader.num_items() / config.batch_size;
-
-    let lr_scheduler = CosineAnnealingLrSchedulerConfig::new(
-        config.learning_rate,
-        num_batches * config.num_epochs,
-    )
-    .with_min_lr(config.min_learning_rate)
-    .init()
-    .map_err(|e| anyhow::anyhow!("Failed to initialize learning rate scheduler: {}", e))?;
+    let lr_scheduler = NoamLrSchedulerConfig::new(config.learning_rate)
+        .with_warmup_steps(config.num_warmup_epochs * num_batches)
+        .with_model_size(config.model.swin.d_embed)
+        .init()
+        .map_err(|e| anyhow::anyhow!("Failed to initialize learning rate scheduler: {}", e))?;
 
     let learner = LearnerBuilder::new(artifact_dir)
         .metric_train_numeric(LossMetric::new())
