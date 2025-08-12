@@ -9,7 +9,9 @@ use std::sync::Arc;
 
 use bimm_firehose::core::operations::executor::FirehoseBatchExecutor;
 use bimm_firehose::core::{FirehoseRowBatch, FirehoseRowWriter};
-use bimm_firehose::ops::image::augmentation::legacy::{FlipSpec, ImageAugmenter};
+use bimm_firehose::ops::image::augmentation::AugmentImageOperation;
+use bimm_firehose::ops::image::augmentation::control::with_prob::WithProbStage;
+use bimm_firehose::ops::image::augmentation::orientation::flip::HorizontalFlipStage;
 use bimm_firehose::ops::image::burn::ImageToTensorData;
 use bimm_firehose::ops::init_default_operator_environment;
 use burn::prelude::Tensor;
@@ -58,11 +60,12 @@ fn main() -> anyhow::Result<()> {
             .to_plan("path", "image")
             .apply_to_schema(&mut schema, env.as_ref())?;
 
-        ImageAugmenter::new()
-            .with_flip(FlipSpec::new().with_vertical(0.5).with_horizontal(0.5))
-            .with_rotate(true)
-            .to_plan("seed", "image", "aug")
-            .apply_to_schema(&mut schema, env.as_ref())?;
+        AugmentImageOperation::new(vec![Arc::new(WithProbStage::new(
+            0.5,
+            Arc::new(HorizontalFlipStage::new()),
+        ))])
+        .to_plan("seed", "image", "aug")
+        .apply_to_schema(&mut schema, env.as_ref())?;
 
         // Convert the image to a tensor of shape (32, 32, 3) with float32 dtype.
         ImageToTensorData::new()

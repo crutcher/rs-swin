@@ -7,6 +7,7 @@ use crate::utility::probability::try_probability;
 use image::DynamicImage;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 define_image_aug_plugin!(WITH_PROB, WithProbStage::build_stage);
 
@@ -27,7 +28,17 @@ pub struct WithProbStage {
     prob: f64,
 
     /// The wrapped stage.
-    inner: Box<dyn AugmentationStage>,
+    inner: Arc<dyn AugmentationStage>,
+}
+
+impl WithProbStage {
+    /// Construct a new `WithProbStage`.
+    pub fn new(
+        prob: f64,
+        inner: Arc<dyn AugmentationStage>,
+    ) -> Self {
+        Self { prob, inner }
+    }
 }
 
 impl WithAugmentationStageBuilder for WithProbStage {
@@ -35,10 +46,10 @@ impl WithAugmentationStageBuilder for WithProbStage {
     fn build_stage(
         config: &AugmentationStageConfig,
         builder: &dyn PluginBuilder,
-    ) -> anyhow::Result<Box<dyn AugmentationStage>> {
+    ) -> anyhow::Result<Arc<dyn AugmentationStage>> {
         let config: WithProbStageConfig = serde_json::from_value(config.body.clone())?;
 
-        Ok(Box::new(Self {
+        Ok(Arc::new(Self {
             prob: try_probability(config.prob)?,
             inner: builder.build_stage(&config.inner)?,
         }))

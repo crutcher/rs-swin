@@ -112,7 +112,7 @@ mod tests {
                   ],
                   "build_plans": [
                     {
-                      "operator_id": "bimm_firehose::ops::image::loader::LOAD_IMAGE",
+                      "operator_id": "fh:op://bimm_firehose::ops::image::loader::LOAD_IMAGE",
                       "description": "Loads an image from disk.",
                       "config": {
                         "recolor": "L16",
@@ -132,7 +132,7 @@ mod tests {
                       }
                     },
                     {
-                      "operator_id": "bimm_firehose::ops::image::burn::IMAGE_TO_TENSOR_DATA",
+                      "operator_id": "fh:op://bimm_firehose::ops::image::burn::IMAGE_TO_TENSOR_DATA",
                       "description": "Converts an image to TensorData.",
                       "config": {},
                       "inputs": {

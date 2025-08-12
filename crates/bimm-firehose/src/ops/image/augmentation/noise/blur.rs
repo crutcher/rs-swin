@@ -8,30 +8,42 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
 
-define_image_aug_plugin!(NOOP_STAGE, NoOpStage::build_stage);
+define_image_aug_plugin!(BLUR, BlurStage::build_stage);
 
-/// A no-operation plugin for image augmentation that does nothing.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NoOpStage;
+/// A stage of blurring.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum BlurStage {
+    /// A Gaussian blur.
+    Gaussian {
+        /// The standard deviation for the Gaussian blur.
+        sigma: f32,
+    },
+}
 
-impl WithAugmentationStageBuilder for NoOpStage {
+impl Default for BlurStage {
+    fn default() -> Self {
+        Self::Gaussian { sigma: 1.0 }
+    }
+}
+
+impl WithAugmentationStageBuilder for BlurStage {
     fn build_stage(
         config: &AugmentationStageConfig,
         _builder: &dyn PluginBuilder,
     ) -> anyhow::Result<Arc<dyn AugmentationStage>> {
-        Ok(Arc::new(serde_json::from_value::<NoOpStage>(
+        Ok(Arc::new(serde_json::from_value::<BlurStage>(
             config.body.clone(),
         )?))
     }
 }
 
-impl AugmentationStage for NoOpStage {
+impl AugmentationStage for BlurStage {
     fn name(&self) -> &str {
-        NOOP_STAGE
+        BLUR
     }
 
     fn as_config_body(&self) -> Value {
-        Value::Null
+        serde_json::to_value(self).unwrap()
     }
 
     fn augment_image(
@@ -39,6 +51,8 @@ impl AugmentationStage for NoOpStage {
         image: DynamicImage,
         _ctx: &mut ImageAugContext,
     ) -> anyhow::Result<DynamicImage> {
-        Ok(image)
+        Ok(match self {
+            BlurStage::Gaussian { sigma } => image.blur(*sigma),
+        })
     }
 }

@@ -37,4 +37,8 @@ macro_rules! define_self_referential_id {
         /// Self-referential ID.
         pub static $name: &str = concat!(module_path!(), "::", stringify!($name),);
     };
+    ($schema:literal, $name:ident) => {
+        #[doc = concat!("Self-referential '", $schema, "' ID.")]
+        pub static $name: &str = concat!($schema, "://", module_path!(), "::", stringify!($name),);
+    };
 }
