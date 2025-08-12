@@ -2,12 +2,6 @@
 
 This example shows how to use a Swin Transformer V2 Tiny model for image classification.
 
-It is built upon the `rs-cinic-10-index` dataset, which uses the CINIC-10 dataset.
-
-It is a goal to move to `burn`s `ImageFolderDataset` in the future, but for now it uses a custom dataset implementation.
-`burn`s machinery does not support image-color coercion yet, which is required for the CINIC-10 dataset
-because it contains images in sevarl color formats.
-
 ## Installing the Dataset
 
 See:
@@ -21,6 +15,10 @@ See:
 
 Run the training:
 
-`cargo run --release -p swin_tiny`
+```bash
+cargo run --release -p swin_tiny -- \
+  --training-root $CINIC10_PATH/train \
+  --validation-root $CINIC10_PATH/val 
+```
 
 
