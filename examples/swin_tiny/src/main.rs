@@ -15,9 +15,7 @@ use bimm_firehose::core::{
 use bimm_firehose::ops::image::augmentation::AugmentImageOperation;
 use bimm_firehose::ops::image::augmentation::control::with_prob::WithProbStage;
 use bimm_firehose::ops::image::augmentation::noise::blur::BlurStage;
-use bimm_firehose::ops::image::augmentation::orientation::flip::{
-    HorizontalFlipStage, VerticalFlipStage,
-};
+use bimm_firehose::ops::image::augmentation::orientation::flip::HorizontalFlipStage;
 use bimm_firehose::ops::image::burn::{ImageToTensorData, stack_tensor_data_column};
 use bimm_firehose::ops::image::loader::{ImageLoader, ResizeSpec};
 use bimm_firehose::ops::image::{ColorType, ImageShape};
@@ -96,7 +94,7 @@ fn main() -> anyhow::Result<()> {
     .with_learning_rate(1.0e-3)
     .with_min_learning_rate(1.0e-5)
     .with_num_epochs(60)
-    .with_num_workers(Some(8));
+    .with_num_workers(Some(2));
 
     let device = Default::default();
 
@@ -113,7 +111,7 @@ pub struct TrainingConfig {
     pub optimizer: AdamWConfig,
 
     /// Ratio of oversampling the training dataset.
-    #[config(default = "2.5")]
+    #[config(default = "1.5")]
     pub oversample_ratio: f64,
 
     /// Number of epochs to train the model.
@@ -192,19 +190,18 @@ pub fn train<B: AutodiffBackend>(
         };
         let ds = ShuffledDataset::with_seed(ds, config.seed);
         let num_samples = (config.oversample_ratio * (ds.len() as f64)).ceil() as usize;
-        let ds = SamplerDataset::with_replacement(ds, num_samples);
+        let ds = SamplerDataset::without_replacement(ds, num_samples);
 
         let schema = Arc::new({
             let mut schema = common_schema.clone();
 
             AugmentImageOperation::new(vec![
                 Arc::new(WithProbStage::new(
-                    0.25,
+                    0.5,
                     Arc::new(HorizontalFlipStage::new()),
                 )),
-                Arc::new(WithProbStage::new(0.25, Arc::new(VerticalFlipStage::new()))),
                 Arc::new(WithProbStage::new(
-                    0.25,
+                    0.10,
                     Arc::new(BlurStage::Gaussian { sigma: 0.5 }),
                 )),
             ])

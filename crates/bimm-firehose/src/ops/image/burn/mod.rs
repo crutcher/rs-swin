@@ -48,10 +48,7 @@ pub fn stack_tensor_data_column(
     assert!(!batch.is_empty());
 
     let item_shape = batch[0]
-        .maybe_get(column_name)
-        .unwrap_or_else(|| panic!("No '{column_name}' column in batch"))
-        .as_ref::<TensorData>()
-        .expect("Failed to get tensor data from row")
+        .expect_get_ref::<TensorData>(column_name)
         .shape
         .clone();
     let stack_shape = [batch.len(), item_shape[0], item_shape[1], item_shape[2]];
@@ -59,10 +56,7 @@ pub fn stack_tensor_data_column(
     let data_vec = batch
         .iter()
         .map(|row| {
-            row.maybe_get(column_name)
-                .unwrap_or_else(|| panic!("No '{column_name}' column in batch"))
-                .as_ref::<TensorData>()
-                .expect("Failed to get tensor data from row")
+            row.expect_get_ref::<TensorData>(column_name)
                 .as_slice::<f32>()
                 .map_err(|_| "Failed to get slice from tensor data")
                 .unwrap()
