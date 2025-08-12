@@ -72,7 +72,7 @@ struct Args {
     num_epochs: usize,
 
     /// Number of epochs to warmup the model.
-    #[arg(long, default_value = "1")]
+    #[arg(long, default_value = "3")]
     num_warmup_epochs: usize,
 
     /// Embedding ratio: ``ratio * channels * patch_size * patch_size``
@@ -119,10 +119,9 @@ fn main() -> anyhow::Result<()> {
     )
     .with_batch_size(args.batch_size)
     .with_oversample_ratio(args.oversample_ratio)
-    .with_learning_rate(1.0e-3)
-    .with_min_learning_rate(1.0e-5)
+    .with_learning_rate(1.0e-1)
+        .with_num_warmup_epochs(args.num_warmup_epochs)
     .with_num_epochs(args.num_epochs)
-    .with_num_warmup_epochs(args.num_warmup_epochs)
     .with_num_workers(args.num_workers);
 
     let device = Default::default();
@@ -148,7 +147,7 @@ pub struct TrainingConfig {
     pub num_epochs: usize,
 
     /// Number of epochs to warmup the model.
-    #[config(default = 2)]
+    #[config(default = 10)]
     pub num_warmup_epochs: usize,
 
     /// Batch size for training and validation.
@@ -164,11 +163,11 @@ pub struct TrainingConfig {
     pub seed: u64,
 
     /// Learning rate for the optimizer.
-    #[config(default = 1.0e-5)]
+    #[config(default = 1.0e-3)]
     pub learning_rate: f64,
 
     /// Learning rate for the optimizer.
-    #[config(default = 1.0e-7)]
+    #[config(default = 1.0e-5)]
     pub min_learning_rate: f64,
 }
 
@@ -299,7 +298,8 @@ pub fn train<B: AutodiffBackend>(
     };
 
     let lr_scheduler = NoamLrSchedulerConfig::new(config.learning_rate)
-        .with_warmup_steps(config.num_warmup_epochs * (config.batch_size / 2))
+        .with_warmup_steps(config.num_warmup_epochs * config.batch_size)
+        .with_model_size(config.model.swin.d_embed)
         .init()
         .map_err(|e| anyhow::anyhow!("Failed to initialize learning rate scheduler: {}", e))?;
 
