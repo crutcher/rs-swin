@@ -72,7 +72,7 @@ struct Args {
     num_epochs: usize,
 
     /// Number of epochs to warmup the model.
-    #[arg(long, default_value = "3")]
+    #[arg(long, default_value = "4")]
     num_warmup_epochs: usize,
 
     /// Embedding ratio: ``ratio * channels * patch_size * patch_size``
@@ -120,7 +120,7 @@ fn main() -> anyhow::Result<()> {
     .with_batch_size(args.batch_size)
     .with_oversample_ratio(args.oversample_ratio)
     .with_learning_rate(1.0e-1)
-        .with_num_warmup_epochs(args.num_warmup_epochs)
+    .with_num_warmup_epochs(args.num_warmup_epochs)
     .with_num_epochs(args.num_epochs)
     .with_num_workers(args.num_workers);
 
@@ -216,6 +216,8 @@ pub fn train<B: AutodiffBackend>(
         schema
     };
 
+    let num_batches: usize;
+
     let train_dataloader = {
         let ds = CinicDataset {
             items: cinic10_index.train.items.clone(),
@@ -223,6 +225,8 @@ pub fn train<B: AutodiffBackend>(
         let ds = ShuffledDataset::with_seed(ds, config.seed);
         let num_samples = (config.oversample_ratio * (ds.len() as f64)).ceil() as usize;
         let ds = SamplerDataset::with_replacement(ds, num_samples);
+
+        num_batches = ds.len() / config.batch_size;
 
         let schema = Arc::new({
             let mut schema = common_schema.clone();
@@ -298,7 +302,7 @@ pub fn train<B: AutodiffBackend>(
     };
 
     let lr_scheduler = NoamLrSchedulerConfig::new(config.learning_rate)
-        .with_warmup_steps(config.num_warmup_epochs * config.batch_size)
+        .with_warmup_steps(config.num_warmup_epochs * num_batches)
         .with_model_size(config.model.swin.d_embed)
         .init()
         .map_err(|e| anyhow::anyhow!("Failed to initialize learning rate scheduler: {}", e))?;
