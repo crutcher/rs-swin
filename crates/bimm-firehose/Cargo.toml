@@ -13,12 +13,14 @@ burn = { workspace = true, features = ["dataset", "vision"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
+globwalk = { workspace = true }
+
 anyhow = { workspace = true }
 
 rand = { workspace = true, features = ["std"] }
-itertools = { workspace = true }
+# itertools = { workspace = true }
 inventory = { workspace = true }
-threadpool = { workspace = true }
+# threadpool = { workspace = true }
 
 indoc = { workspace = true }
 

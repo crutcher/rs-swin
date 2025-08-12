@@ -7,6 +7,7 @@ use bimm::models::swin::v2::transformer::{
 use bimm_firehose::burn::batcher::{
     BatcherInputAdapter, BatcherOutputAdapter, FirehoseExecutorBatcher,
 };
+use bimm_firehose::burn::path_scanning;
 use bimm_firehose::core::operations::executor::SequentialBatchExecutor;
 use bimm_firehose::core::schema::ColumnSchema;
 use bimm_firehose::core::{
@@ -25,7 +26,7 @@ use bimm_firehose::ops::init_default_operator_environment;
 use burn::backend::{Autodiff, Cuda};
 use burn::config::Config;
 use burn::data::dataloader::{DataLoaderBuilder, Dataset};
-use burn::data::dataset::transform::{ComposedDataset, SamplerDataset, ShuffledDataset};
+use burn::data::dataset::transform::{SamplerDataset, ShuffledDataset};
 use burn::grad_clipping::GradientClippingConfig;
 use burn::lr_scheduler::exponential::ExponentialLrSchedulerConfig;
 use burn::module::Module;
@@ -36,7 +37,7 @@ use burn::record::CompactRecorder;
 use burn::tensor::backend::AutodiffBackend;
 use burn::train::metric::store::{Aggregate, Direction, Split};
 use burn::train::metric::{
-    AccuracyMetric, CpuMemory, CpuTemperature, CpuUse, CudaMetric, LearningRateMetric, LossMetric,
+    AccuracyMetric, CpuMemory, CpuUse, CudaMetric, LearningRateMetric, LossMetric,
     TopKAccuracyMetric,
 };
 use burn::train::{
@@ -44,12 +45,8 @@ use burn::train::{
 };
 use burn::train::{TrainOutput, TrainStep, ValidStep};
 use clap::Parser;
-use enum_ordinalize::Ordinalize;
 use rand::{Rng, rng};
-use rs_cinic_10_index::Cinic10Index;
-use rs_cinic_10_index::index::{DatasetItem, ObjectClass};
 use std::sync::Arc;
-use strum::EnumCount;
 
 const PATH_COLUMN: &str = "path";
 const SEED_COLUMN: &str = "seed";
@@ -66,11 +63,11 @@ pub struct Args {
     seed: u64,
 
     /// Batch size for processing
-    #[arg(short, long, default_value_t = 1024)]
+    #[arg(short, long, default_value_t = 512)]
     batch_size: usize,
 
     /// Number of workers for data loading.
-    #[arg(long, default_value = "2")]
+    #[arg(long, default_value = "4")]
     num_workers: Option<usize>,
 
     /// Number of epochs to train the model.
@@ -86,16 +83,24 @@ pub struct Args {
     oversample_ratio: f64,
 
     /// Learning rate for the optimizer.
-    #[arg(long, default_value = "1.0e-3")]
+    #[arg(long, default_value = "1.0e-2")]
     learning_rate: f64,
 
     /// Learning rate decay gamma.
-    #[arg(long, default_value = "0.999")]
+    #[arg(long, default_value = "0.9995")]
     lr_gamma: f64,
 
     /// Directory to save the artifacts.
     #[arg(long, default_value = "/tmp/swin_tiny_cinic10")]
     artifact_dir: Option<String>,
+
+    /// Root directory of the training dataset.
+    #[arg(long)]
+    training_root: String,
+
+    /// Root directory of the validation dataset.
+    #[arg(long)]
+    validation_root: String,
 }
 
 /// Config for training the model.
@@ -132,7 +137,7 @@ pub fn backend_main<B: AutodiffBackend>(
     let w: usize = 32;
     let image_dimensions = [h, w];
     let image_channels: usize = 3;
-    let num_classes: usize = ObjectClass::COUNT;
+    let num_classes: usize = 10;
 
     let patch_size: usize = 4;
     let window_size: usize = 4;
@@ -166,8 +171,6 @@ pub fn backend_main<B: AutodiffBackend>(
         .save(format!("{artifact_dir}/config.json"))
         .expect("Config should be saved successfully");
 
-    let cinic10_index: Cinic10Index = Default::default();
-
     let firehose_env = Arc::new(init_default_operator_environment());
 
     let common_schema = {
@@ -191,14 +194,7 @@ pub fn backend_main<B: AutodiffBackend>(
     };
 
     let train_dataloader = {
-        let ds = ComposedDataset::new(vec![
-            CinicDataset {
-                items: cinic10_index.train.items.clone(),
-            },
-            CinicDataset {
-                items: cinic10_index.test.items.clone(),
-            },
-        ]);
+        let ds = path_scanning::image_dataset_for_folder(args.training_root.clone())?;
         let ds = ShuffledDataset::with_seed(ds, args.seed);
         let num_samples = (args.oversample_ratio * (ds.len() as f64)).ceil() as usize;
         let ds = SamplerDataset::with_replacement(ds, num_samples);
@@ -211,16 +207,13 @@ pub fn backend_main<B: AutodiffBackend>(
                     0.5,
                     Arc::new(HorizontalFlipStage::new()),
                 )),
-                Arc::new(SpeckleStage::Uniform {
-                    density: 1.0 / 32.0,
-                }),
+                Arc::new(WithProbStage::new(0.5, Arc::new(SpeckleStage::default()))),
                 Arc::new(
                     ChooseOneStage::new()
-                        .with_choice(1.0, Arc::new(BlurStage::Gaussian { sigma: 0.25 }))
                         .with_choice(1.0, Arc::new(BlurStage::Gaussian { sigma: 0.5 }))
-                        .with_choice(1.0, Arc::new(BlurStage::Gaussian { sigma: 0.75 }))
                         .with_choice(1.0, Arc::new(BlurStage::Gaussian { sigma: 1.0 }))
-                        .with_noop_weight(4.0),
+                        .with_choice(1.0, Arc::new(BlurStage::Gaussian { sigma: 1.5 }))
+                        .with_noop_weight(6.0),
                 ),
             ])
             .to_plan(SEED_COLUMN, IMAGE_COLUMN, AUG_COLUMN)
@@ -251,10 +244,7 @@ pub fn backend_main<B: AutodiffBackend>(
     };
 
     let validation_dataloader = {
-        let ds = CinicDataset {
-            items: cinic10_index.valid.items.clone(),
-        };
-
+        let ds = path_scanning::image_dataset_for_folder(args.validation_root.clone())?;
         let schema = Arc::new({
             let mut schema = common_schema.clone();
 
@@ -300,8 +290,6 @@ pub fn backend_main<B: AutodiffBackend>(
         .metric_valid_numeric(CpuUse::new())
         .metric_train_numeric(CpuMemory::new())
         .metric_valid_numeric(CpuMemory::new())
-        .metric_train_numeric(CpuTemperature::new())
-        .metric_valid_numeric(CpuTemperature::new())
         .metric_train_numeric(LearningRateMetric::new())
         .with_file_checkpointer(CompactRecorder::new())
         .early_stopping(MetricEarlyStoppingStrategy::new(
@@ -392,31 +380,16 @@ impl<B: Backend> ValidStep<(Tensor<B, 4>, Tensor<B, 1, Int>), ClassificationOutp
     }
 }
 
-pub struct CinicDataset {
-    pub items: Vec<DatasetItem>,
-}
-impl Dataset<DatasetItem> for CinicDataset {
-    fn get(
-        &self,
-        index: usize,
-    ) -> Option<DatasetItem> {
-        Some(self.items[index].clone())
-    }
-
-    fn len(&self) -> usize {
-        self.items.len()
-    }
-}
-
 fn init_batch_from_dataset_items(
-    inputs: &Vec<DatasetItem>,
+    inputs: &Vec<(String, usize)>,
     batch: &mut FirehoseRowBatch,
 ) -> anyhow::Result<()> {
     let mut local_rng = rng();
     for item in inputs {
+        let (path, class) = item;
         let row = batch.new_row();
-        row.expect_set_serialized(PATH_COLUMN, item.path.to_string_lossy().to_string());
-        row.expect_set_serialized(CLASS_COLUMN, item.class.ordinal() as i32);
+        row.expect_set_serialized(PATH_COLUMN, path.clone());
+        row.expect_set_serialized(CLASS_COLUMN, *class as i32);
         row.expect_set_serialized(SEED_COLUMN, local_rng.random::<u64>());
     }
 
@@ -431,10 +404,10 @@ impl InputAdapter {
         Self { schema }
     }
 }
-impl BatcherInputAdapter<DatasetItem> for InputAdapter {
+impl BatcherInputAdapter<(String, usize)> for InputAdapter {
     fn apply(
         &self,
-        inputs: Vec<DatasetItem>,
+        inputs: Vec<(String, usize)>,
     ) -> anyhow::Result<FirehoseRowBatch> {
         let mut batch = FirehoseRowBatch::new(self.schema.clone());
         init_batch_from_dataset_items(&inputs, &mut batch)?;
