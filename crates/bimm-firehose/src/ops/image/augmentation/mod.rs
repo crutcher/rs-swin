@@ -15,6 +15,8 @@ use std::sync::Arc;
 /// Control flow plugins.
 pub mod control;
 
+/// Image noise stages.
+pub mod noise;
 /// Image orientation augmentation.
 pub mod orientation;
 

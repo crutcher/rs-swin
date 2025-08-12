@@ -14,6 +14,7 @@ use bimm_firehose::core::{
 };
 use bimm_firehose::ops::image::augmentation::AugmentImageOperation;
 use bimm_firehose::ops::image::augmentation::control::with_prob::WithProbStage;
+use bimm_firehose::ops::image::augmentation::noise::blur::BlurStage;
 use bimm_firehose::ops::image::augmentation::orientation::flip::{
     HorizontalFlipStage, VerticalFlipStage,
 };
@@ -95,7 +96,7 @@ fn main() -> anyhow::Result<()> {
     .with_learning_rate(1.0e-3)
     .with_min_learning_rate(1.0e-5)
     .with_num_epochs(60)
-    .with_num_workers(Some(1));
+    .with_num_workers(Some(8));
 
     let device = Default::default();
 
@@ -191,7 +192,7 @@ pub fn train<B: AutodiffBackend>(
         };
         let ds = ShuffledDataset::with_seed(ds, config.seed);
         let num_samples = (config.oversample_ratio * (ds.len() as f64)).ceil() as usize;
-        let ds = SamplerDataset::without_replacement(ds, num_samples);
+        let ds = SamplerDataset::with_replacement(ds, num_samples);
 
         let schema = Arc::new({
             let mut schema = common_schema.clone();
@@ -202,6 +203,10 @@ pub fn train<B: AutodiffBackend>(
                     Arc::new(HorizontalFlipStage::new()),
                 )),
                 Arc::new(WithProbStage::new(0.25, Arc::new(VerticalFlipStage::new()))),
+                Arc::new(WithProbStage::new(
+                    0.25,
+                    Arc::new(BlurStage::Gaussian { sigma: 0.5 }),
+                )),
             ])
             .to_plan(SEED_COLUMN, IMAGE_COLUMN, AUG_COLUMN)
             .apply_to_schema(&mut schema, firehose_env.as_ref())?;
