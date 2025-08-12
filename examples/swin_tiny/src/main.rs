@@ -26,7 +26,7 @@ use bimm_firehose::ops::init_default_operator_environment;
 use burn::backend::{Autodiff, Cuda};
 use burn::config::Config;
 use burn::data::dataloader::{DataLoaderBuilder, Dataset};
-use burn::data::dataset::transform::{SamplerDataset, ShuffledDataset};
+use burn::data::dataset::transform::SamplerDataset;
 use burn::grad_clipping::GradientClippingConfig;
 use burn::lr_scheduler::exponential::ExponentialLrSchedulerConfig;
 use burn::module::Module;
@@ -75,7 +75,7 @@ pub struct Args {
     num_epochs: usize,
 
     /// Embedding ratio: ``ratio * channels * patch_size * patch_size``
-    #[arg(long, default_value = "0.75")]
+    #[arg(long, default_value = "1.25")]
     embed_ratio: f64,
 
     /// Ratio of oversampling the training dataset.
@@ -149,11 +149,11 @@ pub fn backend_main<B: AutodiffBackend>(
         image_channels,
         num_classes,
         embed_dim,
-        vec![LayerConfig::new(8, 12), LayerConfig::new(8, 24)],
+        vec![LayerConfig::new(8, 6), LayerConfig::new(8, 12)],
     )
     .with_window_size(window_size)
-    .with_attn_drop_rate(0.1)
-    .with_drop_rate(0.1);
+    .with_attn_drop_rate(0.2)
+    .with_drop_rate(0.2);
 
     B::seed(args.seed);
 
@@ -195,7 +195,6 @@ pub fn backend_main<B: AutodiffBackend>(
 
     let train_dataloader = {
         let ds = path_scanning::image_dataset_for_folder(args.training_root.clone())?;
-        let ds = ShuffledDataset::with_seed(ds, args.seed);
         let num_samples = (args.oversample_ratio * (ds.len() as f64)).ceil() as usize;
         let ds = SamplerDataset::with_replacement(ds, num_samples);
 
