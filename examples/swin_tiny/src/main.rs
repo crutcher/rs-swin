@@ -16,6 +16,7 @@ use bimm_firehose::ops::image::augmentation::AugmentImageOperation;
 use bimm_firehose::ops::image::augmentation::control::choose_one::ChooseOneStage;
 use bimm_firehose::ops::image::augmentation::control::with_prob::WithProbStage;
 use bimm_firehose::ops::image::augmentation::noise::blur::BlurStage;
+use bimm_firehose::ops::image::augmentation::noise::speckle::SpeckleStage;
 use bimm_firehose::ops::image::augmentation::orientation::flip::HorizontalFlipStage;
 use bimm_firehose::ops::image::burn::{ImageToTensorData, stack_tensor_data_column};
 use bimm_firehose::ops::image::loader::{ImageLoader, ResizeSpec};
@@ -26,7 +27,7 @@ use burn::config::Config;
 use burn::data::dataloader::{DataLoaderBuilder, Dataset};
 use burn::data::dataset::transform::{ComposedDataset, SamplerDataset, ShuffledDataset};
 use burn::grad_clipping::GradientClippingConfig;
-use burn::lr_scheduler::cosine::CosineAnnealingLrSchedulerConfig;
+use burn::lr_scheduler::exponential::ExponentialLrSchedulerConfig;
 use burn::module::Module;
 use burn::nn::loss::CrossEntropyLossConfig;
 use burn::optim::AdamWConfig;
@@ -65,7 +66,7 @@ pub struct Args {
     seed: u64,
 
     /// Batch size for processing
-    #[arg(short, long, default_value_t = 512)]
+    #[arg(short, long, default_value_t = 1024)]
     batch_size: usize,
 
     /// Number of workers for data loading.
@@ -95,9 +96,9 @@ pub struct Args {
     #[arg(long, default_value = "1.0e-3")]
     learning_rate: f64,
 
-    /// Min learning rate for the optimizer.
-    #[arg(long, default_value = "1.0e-5")]
-    min_learning_rate: f64,
+    /// Learning rate for the optimizer.
+    #[arg(long, default_value = "0.99")]
+    lr_gamma: f64,
 
     /// Directory to save the artifacts.
     #[arg(long, default_value = "/tmp/swin_tiny_cinic10")]
@@ -196,8 +197,6 @@ pub fn backend_main<B: AutodiffBackend>(
         schema
     };
 
-    let num_batches: usize;
-
     let train_dataloader = {
         let ds = ComposedDataset::new(vec![
             CinicDataset {
@@ -211,8 +210,6 @@ pub fn backend_main<B: AutodiffBackend>(
         let num_samples = (args.oversample_ratio * (ds.len() as f64)).ceil() as usize;
         let ds = SamplerDataset::with_replacement(ds, num_samples);
 
-        num_batches = ds.len() / args.batch_size;
-
         let schema = Arc::new({
             let mut schema = common_schema.clone();
 
@@ -221,6 +218,7 @@ pub fn backend_main<B: AutodiffBackend>(
                     0.5,
                     Arc::new(HorizontalFlipStage::new()),
                 )),
+                Arc::new(SpeckleStage::default()),
                 Arc::new(
                     ChooseOneStage::new()
                         .with_choice(1.0, Arc::new(BlurStage::Gaussian { sigma: 0.25 }))
@@ -290,9 +288,7 @@ pub fn backend_main<B: AutodiffBackend>(
         builder.build(ds)
     };
 
-    let num_iters = (args.restart_epochs * (num_batches as f64)) as usize;
-    let lr_scheduler = CosineAnnealingLrSchedulerConfig::new(args.learning_rate, num_iters)
-        .with_min_lr(args.min_learning_rate)
+    let lr_scheduler = ExponentialLrSchedulerConfig::new(args.learning_rate, args.lr_gamma)
         .init()
         .map_err(|e| anyhow::anyhow!("Failed to initialize learning rate scheduler: {}", e))?;
 
