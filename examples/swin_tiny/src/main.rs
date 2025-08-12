@@ -96,8 +96,8 @@ pub struct Args {
     #[arg(long, default_value = "1.0e-3")]
     learning_rate: f64,
 
-    /// Learning rate for the optimizer.
-    #[arg(long, default_value = "0.99")]
+    /// Learning rate decay gamma.
+    #[arg(long, default_value = "0.9999")]
     lr_gamma: f64,
 
     /// Directory to save the artifacts.
