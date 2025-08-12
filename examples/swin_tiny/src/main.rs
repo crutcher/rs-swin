@@ -298,11 +298,8 @@ pub fn train<B: AutodiffBackend>(
         builder.build(ds)
     };
 
-    let model = config.model.init::<B>(device);
-
     let lr_scheduler = NoamLrSchedulerConfig::new(config.learning_rate)
-        .with_warmup_steps(config.num_warmup_epochs * config.batch_size)
-        .with_model_size(model.num_params())
+        .with_warmup_steps(config.num_warmup_epochs * (config.batch_size / 2))
         .init()
         .map_err(|e| anyhow::anyhow!("Failed to initialize learning rate scheduler: {}", e))?;
 
@@ -333,7 +330,11 @@ pub fn train<B: AutodiffBackend>(
         .devices(vec![device.clone()])
         .num_epochs(config.num_epochs)
         .summary()
-        .build(model, config.optimizer.init(), lr_scheduler);
+        .build(
+            config.model.init::<B>(device),
+            config.optimizer.init(),
+            lr_scheduler,
+        );
 
     let model_trained = learner.fit(train_dataloader, validation_dataloader);
 
