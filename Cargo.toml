@@ -39,21 +39,21 @@ burn = { version = "^0.18.0" }
 
 # Burn coupled-dependencies
 serde = { version = "^1.0.219" }
-serde_json = { version = "^1.0.141" }
+serde_json = { version = "^1.0.142" }
 
-clap = { version = "^4.5.42"}
+clap = { version = "^4.5.44"}
 
 rand = {  version = "^0.9.2"  }
 regex = { version = "^1.11.1" }
 regex-macro = { version = "^0.3.0" }
-anyhow = { version = "^1.0.98" }
+anyhow = { version = "^1.0.99" }
 itertools = { version = "^0.14.0" }
 threadpool = { version = "^1.8.1" }
 
 image = { version = "^0.25.6" }
 
 # macro dependencies
-proc-macro2 = { version = "^1.0.95" }
+proc-macro2 = { version = "^1.0.97" }
 syn = { version = "^2.0.104" }
 quote = { version = "^1.0.40" }
 inventory = { version = "^0.3.20" }

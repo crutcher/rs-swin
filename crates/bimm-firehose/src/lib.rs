@@ -4,8 +4,6 @@
 
 /// New Data Table module.
 pub mod core;
-/// New Data Pipeline module.
-pub mod pipeline;
 
 /// Namespace of common operators.
 pub mod ops;
@@ -14,6 +12,10 @@ pub mod ops;
 pub mod burn;
 /// Augmentation stage utility functions.
 pub mod utility;
+
+/// Experimental Data Pipeline module; non-public.
+#[allow(dead_code)]
+mod pipeline;
 
 /// Define a self-referential ID.
 ///
