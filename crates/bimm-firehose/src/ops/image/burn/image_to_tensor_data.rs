@@ -1,7 +1,7 @@
 use crate::core::operations::operator::FirehoseOperator;
 use crate::core::operations::planner::OperationPlan;
 use crate::core::rows::FirehoseRowTransaction;
-use crate::core::{FirehoseRowReader, FirehoseRowWriter, FirehoseValue};
+use crate::core::{FirehoseRowReader, FirehoseRowWriter};
 use crate::ops;
 use crate::ops::image::burn::{IMAGE_TO_TENSOR_DATA, pixeldepth_support};
 use burn::data::dataset::vision::PixelDepth;
@@ -48,7 +48,7 @@ impl FirehoseOperator for ImageToTensorData {
         &self,
         txn: &mut FirehoseRowTransaction,
     ) -> anyhow::Result<()> {
-        let image: &DynamicImage = txn.maybe_get("image").unwrap().as_ref()?;
+        let image: &DynamicImage = txn.expect_get_ref("image");
 
         let height = image.height() as usize;
         let width = image.width() as usize;
@@ -63,7 +63,7 @@ impl FirehoseOperator for ImageToTensorData {
 
         let data = TensorData::new(data, shape);
 
-        txn.expect_set("data", FirehoseValue::boxing(data));
+        txn.expect_set_boxing("data", data);
 
         Ok(())
     }
