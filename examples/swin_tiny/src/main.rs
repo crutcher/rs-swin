@@ -25,7 +25,7 @@ use burn::config::Config;
 use burn::data::dataloader::{DataLoaderBuilder, Dataset};
 use burn::data::dataset::transform::{SamplerDataset, ShuffledDataset};
 use burn::grad_clipping::GradientClippingConfig;
-use burn::lr_scheduler::cosine::CosineAnnealingLrSchedulerConfig;
+use burn::lr_scheduler::noam::NoamLrSchedulerConfig;
 use burn::module::Module;
 use burn::nn::loss::CrossEntropyLossConfig;
 use burn::optim::AdamWConfig;
@@ -71,6 +71,10 @@ struct Args {
     #[arg(long, default_value = "60")]
     num_epochs: usize,
 
+    /// Number of epochs to warmup the model.
+    #[arg(long, default_value = "2")]
+    num_warmup_epochs: usize,
+
     /// Embedding ratio: ``ratio * channels * patch_size * patch_size``
     #[arg(long, default_value = "2.5")]
     embed_ratio: f64,
@@ -113,6 +117,7 @@ fn main() -> anyhow::Result<()> {
     .with_learning_rate(1.0e-3)
     .with_min_learning_rate(1.0e-5)
     .with_num_epochs(args.num_epochs)
+    .with_num_warmup_epochs(args.num_warmup_epochs)
     .with_num_workers(args.num_workers);
 
     let device = Default::default();
@@ -136,6 +141,10 @@ pub struct TrainingConfig {
     /// Number of epochs to train the model.
     #[config(default = 10)]
     pub num_epochs: usize,
+
+    /// Number of epochs to warmup the model.
+    #[config(default = 2)]
+    pub num_warmup_epochs: usize,
 
     /// Batch size for training and validation.
     #[config(default = 64)]
@@ -284,15 +293,13 @@ pub fn train<B: AutodiffBackend>(
         builder.build(ds)
     };
 
-    let num_batches = train_dataloader.num_items() / config.batch_size;
+    let model = config.model.init::<B>(device);
 
-    let lr_scheduler = CosineAnnealingLrSchedulerConfig::new(
-        config.learning_rate,
-        num_batches * config.num_epochs,
-    )
-    .with_min_lr(config.min_learning_rate)
-    .init()
-    .map_err(|e| anyhow::anyhow!("Failed to initialize learning rate scheduler: {}", e))?;
+    let lr_scheduler = NoamLrSchedulerConfig::new(config.learning_rate)
+        .with_warmup_steps(config.num_warmup_epochs * config.batch_size)
+        .with_model_size(model.num_params())
+        .init()
+        .map_err(|e| anyhow::anyhow!("Failed to initialize learning rate scheduler: {}", e))?;
 
     let learner = LearnerBuilder::new(artifact_dir)
         .metric_train_numeric(LossMetric::new())
@@ -321,11 +328,7 @@ pub fn train<B: AutodiffBackend>(
         .devices(vec![device.clone()])
         .num_epochs(config.num_epochs)
         .summary()
-        .build(
-            config.model.init::<B>(device),
-            config.optimizer.init(),
-            lr_scheduler,
-        );
+        .build(model, config.optimizer.init(), lr_scheduler);
 
     let model_trained = learner.fit(train_dataloader, validation_dataloader);
 
