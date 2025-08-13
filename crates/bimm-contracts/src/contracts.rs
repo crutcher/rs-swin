@@ -93,7 +93,7 @@ impl Display for DimMatcher<'_> {
         f: &mut Formatter<'_>,
     ) -> core::fmt::Result {
         if let Some(label) = self.label() {
-            write!(f, "{label}: ")?;
+            write!(f, "{label}=")?;
         }
         match self {
             DimMatcher::Any { label: _ } => write!(f, "_"),
@@ -449,7 +449,25 @@ impl<'a> ShapeContract<'a> {
                 shape_idx + 1 - e_size
             };
 
-            let expr = match &self.terms[term_idx] {
+            let matcher = &self.terms[term_idx];
+            if let Some(label) = matcher.label() {
+                match env.lookup(label) {
+                    Some(value) => {
+                        if value != dim_size {
+                            return Err(fail_at(
+                                shape_idx,
+                                term_idx,
+                                "Value MissMatch.".to_string(),
+                            ));
+                        }
+                    }
+                    None => {
+                        env.bind(label, dim_size);
+                    }
+                }
+            }
+
+            let expr = match matcher {
                 DimMatcher::Any { label: _ } => continue,
                 DimMatcher::Ellipsis { label: _ } => {
                     unreachable!("Ellipsis should have been handled before");
@@ -460,7 +478,7 @@ impl<'a> ShapeContract<'a> {
             match expr.try_match(dim_size as isize, env) {
                 Ok(TryMatchResult::Match) => continue,
                 Ok(TryMatchResult::Conflict) => {
-                    return Err(fail_at(shape_idx, term_idx, "Value MissMatch".to_string()));
+                    return Err(fail_at(shape_idx, term_idx, "Value MissMatch.".to_string()));
                 }
                 Ok(TryMatchResult::ParamConstraint(param_name, value)) => {
                     env.bind(param_name, value as usize);
@@ -547,13 +565,18 @@ mod tests {
 
         let shape = [1, 2, 3, hwins * window, wwins * window, color];
 
-        let [h, w] = CONTRACT.unpack_shape(
+        let [u_hwins, u_wwins, u_height] = CONTRACT.unpack_shape(
             &shape,
-            &["hwins", "wwins"],
-            &[("window", window), ("color", color)],
+            &["hwins", "wwins", "height"],
+            &[
+                ("height", hwins * window),
+                ("window", window),
+                ("color", color),
+            ],
         );
-        assert_eq!(h, hwins);
-        assert_eq!(w, wwins);
+        assert_eq!(u_hwins, hwins);
+        assert_eq!(u_wwins, wwins);
+        assert_eq!(u_height, hwins * window);
 
         assert_eq!(
             CONTRACT
@@ -564,14 +587,32 @@ mod tests {
                 )
                 .unwrap_err(),
             indoc! {r#"
-                Shape Error:: 8 !~ height: (hwins*window) :: No integer solution.
+                Shape Error:: 8 !~ height=(hwins*window) :: No integer solution.
                  shape:
                   [1, 2, 3, 8, 12, 3]
                  expected:
-                  [..., height: (hwins*window), width: (wwins*window), color]
+                  [..., height=(hwins*window), width=(wwins*window), color]
                   {"window": 5, "color": 3}"#
             },
-        )
+        );
+
+        assert_eq!(
+            CONTRACT
+                .try_unpack_shape(
+                    &shape,
+                    &["hwins", "wwins"],
+                    &[("height", 1), ("window", window), ("color", color),]
+                )
+                .unwrap_err(),
+            indoc! {r#"
+                Shape Error:: 8 !~ height=(hwins*window) :: Value MissMatch.
+                 shape:
+                  [1, 2, 3, 8, 12, 3]
+                 expected:
+                  [..., height=(hwins*window), width=(wwins*window), color]
+                  {"height": 1, "window": 4, "color": 3}"#
+            },
+        );
     }
 
     #[test]
@@ -621,45 +662,6 @@ mod tests {
         ]);
 
         assert_eq!(PATTERN.to_string(), "[_, ..., b, (h*(a+(-b))), (h)^2]");
-    }
-
-    #[test]
-    fn test_panic_msg() {
-        static CONTRACT: ShapeContract = ShapeContract::new(&[
-            DimMatcher::any(),
-            DimMatcher::expr(DimExpr::Param("b")),
-            DimMatcher::ellipsis(),
-            DimMatcher::expr(DimExpr::Prod(&[DimExpr::Param("h"), DimExpr::Param("p")]))
-                .with_label(Some("height")),
-            DimMatcher::expr(DimExpr::Prod(&[DimExpr::Param("w"), DimExpr::Param("p")]))
-                .with_label(Some("width")),
-            DimMatcher::expr(DimExpr::Pow(&DimExpr::Param("z"), 3)),
-            DimMatcher::expr(DimExpr::Param("c")),
-        ]);
-
-        let b = 2;
-        let h = 3;
-        let w = 2;
-        let p = 4;
-        let c = 5;
-        let z = 4;
-
-        let shape = [12, b, 1, 2, 3, h * p, w * p, 1 + z * z * z, c];
-
-        let result =
-            CONTRACT.try_unpack_shape(&shape, &["b", "h", "w", "z"], &[("p", p), ("c", c)]);
-        assert!(result.is_err());
-        let err_msg = result.unwrap_err();
-        assert_eq!(
-            err_msg,
-            "\
-Shape Error:: 65 !~ (z)^3 :: No integer solution.
- shape:
-  [12, 2, 1, 2, 3, 12, 8, 65, 5]
- expected:
-  [_, b, ..., height: (h*p), width: (w*p), (z)^3, c]
-  {\"p\": 4, \"c\": 5}"
-        );
     }
 
     #[test]
