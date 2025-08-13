@@ -1,3 +1,4 @@
+use anyhow::bail;
 use num_traits::Float;
 use std::fmt::Debug;
 
@@ -12,9 +13,7 @@ use std::fmt::Debug;
 /// An `anyhow::Result<prob>`
 pub fn try_probability<F: Float + Debug>(prob: F) -> anyhow::Result<F> {
     if prob < F::zero() || prob > F::one() {
-        return Err(anyhow::anyhow!(
-            "probability must be in [0.0, 1.0]: {prob:?}"
-        ));
+        bail!("probability must be in [0.0, 1.0]: {prob:?}");
     }
     Ok(prob)
 }
@@ -57,7 +56,7 @@ mod tests {
         assert!(try_probability(2.0f64).is_err());
     }
 
-    #[should_panic]
+    #[should_panic(expected = "probability must be in [0.0, 1.0]: -1.0")]
     #[test]
     fn test_probability_panic() {
         expect_probability(-1.0);
