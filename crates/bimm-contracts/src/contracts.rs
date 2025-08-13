@@ -4,6 +4,8 @@ use crate::shape_argument::ShapeArgument;
 use std::fmt::{Display, Formatter};
 
 /// A term in a shape pattern.
+///
+/// Users should generally use [`crate::shape_contract`] to construct patterns.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DimMatcher<'a> {
     /// Matches any dimension size.
@@ -134,6 +136,21 @@ impl<'a> ShapeContract<'a> {
     /// ## Returns
     ///
     /// A new `ShapePattern` instance.
+    ///
+    /// ## Macro Support
+    ///
+    /// Consider using the [`crate::shape_contract`] macro instead.
+    ///
+    /// ```
+    /// use bimm_contracts::{shape_contract, ShapeContract};
+    ///
+    /// static CONTRACT : ShapeContract = shape_contract![
+    ///    ...,
+    ///    "height" * "window",
+    ///    "width" * "window",
+    ///    "channels",
+    /// ];
+    /// ```
     pub const fn new(terms: &'a [DimMatcher<'a>]) -> Self {
         let mut i = 0;
         let mut ellipsis_pos: Option<usize> = None;
@@ -164,6 +181,31 @@ impl<'a> ShapeContract<'a> {
     /// ## Panics
     ///
     /// If the shape does not match the pattern, or if there is a conflict in the bindings.
+    ///
+    /// ## Example
+    ///
+    /// ```rust
+    /// use bimm_contracts::{shape_contract, run_every_nth, ShapeContract};
+    ///
+    /// let shape = [1, 2, 3, 2 * 8, 3 * 8, 4];
+    ///
+    /// // Run under backoff amortization.
+    /// run_every_nth! {{
+    ///     // Statically allocated contract.
+    ///     static CONTRACT : ShapeContract = shape_contract![
+    ///        ...,
+    ///        "height" * "window",
+    ///        "width" * "window",
+    ///        "channels",
+    ///     ];
+    ///
+    ///     // Assert the shape, given the bindings.
+    ///     CONTRACT.assert_shape(
+    ///         &shape,
+    ///         &[("height", 2), ("width", 3), ("channels", 4)]
+    ///     );
+    /// }}
+    /// ```
     #[inline(always)]
     pub fn assert_shape<S>(
         &'a self,
@@ -189,6 +231,28 @@ impl<'a> ShapeContract<'a> {
     ///
     /// - `Ok(())`: if the shape matches the pattern.
     /// - `Err(String)`: if the shape does not match the pattern, with an error message.
+    ///
+    /// ## Example
+    ///
+    /// ```rust
+    /// use bimm_contracts::{shape_contract, run_every_nth, ShapeContract};
+    ///
+    /// let shape = [1, 2, 3, 2 * 8, 3 * 8, 4];
+    ///
+    /// // Statically allocated contract.
+    /// static CONTRACT : ShapeContract = shape_contract![
+    ///    ...,
+    ///    "height" * "window",
+    ///    "width" * "window",
+    ///    "channels",
+    /// ];
+    ///
+    /// // Assert the shape, given the bindings; or throw.
+    /// CONTRACT.try_assert_shape(
+    ///     &shape,
+    ///     &[("height", 2), ("width", 3), ("channels", 4)]
+    /// ).unwrap();
+    /// ```
     #[inline(always)]
     pub fn try_assert_shape<S>(
         &'a self,
@@ -200,7 +264,7 @@ impl<'a> ShapeContract<'a> {
     {
         let mut mut_env = MutableStackEnvironment::new(env);
 
-        self.resolve_match(shape, &mut mut_env)
+        self.try_resolve_match(shape, &mut mut_env)
     }
 
     /// Match and unpack `K` keys from a shape pattern.
@@ -224,6 +288,32 @@ impl<'a> ShapeContract<'a> {
     /// ## Panics
     ///
     /// If the shape does not match the pattern, or if there is a conflict in the bindings.
+    ///
+    /// ## Example
+    ///
+    /// ```rust
+    /// use bimm_contracts::{shape_contract, run_every_nth, ShapeContract};
+    ///
+    /// let shape = [1, 2, 3, 2 * 8, 3 * 8, 4];
+    ///
+    /// // Statically allocated contract.
+    /// static CONTRACT : ShapeContract = shape_contract![
+    ///    ...,
+    ///    "height" * "window",
+    ///    "width" * "window",
+    ///    "channels",
+    /// ];
+    ///
+    /// // Unpack the shape, given the bindings.
+    /// let [h, w, c] = CONTRACT.unpack_shape(
+    ///     &shape,
+    ///     &["height", "width", "channels"],
+    ///     &[("window", 8)]
+    /// );
+    /// assert_eq!(h, 2);
+    /// assert_eq!(w, 3);
+    /// assert_eq!(c, 4);
+    /// ```
     #[must_use]
     #[inline(always)]
     pub fn unpack_shape<S, const K: usize>(
@@ -256,6 +346,32 @@ impl<'a> ShapeContract<'a> {
     /// ## Returns
     ///
     /// A `Result<[usize; K], String>` of the unpacked `keys` values.
+    ///
+    /// ## Example
+    ///
+    /// ```rust,no_run
+    /// use bimm_contracts::{shape_contract, run_every_nth, ShapeContract};
+    ///
+    /// let shape = [1, 2, 3, 2 * 8, 3 * 8, 4];
+    ///
+    /// // Statically allocated contract.
+    /// static CONTRACT : ShapeContract = shape_contract![
+    ///    ...,
+    ///    "height" * "window",
+    ///    "width" * "window",
+    ///    "channels",
+    /// ];
+    ///
+    /// // Unpack the shape, given the bindings; or throw.
+    /// let [h, w, c] = CONTRACT.try_unpack_shape(
+    ///     &shape,
+    ///     &["height", "width", "channels"],
+    ///     &[("window", 8)]
+    /// ).unwrap();
+    /// assert_eq!(h, 2);
+    /// assert_eq!(w, 3);
+    /// assert_eq!(c, 4);
+    /// ```
     #[must_use]
     #[inline(always)]
     pub fn try_unpack_shape<S, const K: usize>(
@@ -269,7 +385,7 @@ impl<'a> ShapeContract<'a> {
     {
         let mut mut_env = MutableStackEnvironment::new(env);
 
-        self.resolve_match(shape, &mut mut_env)?;
+        self.try_resolve_match(shape, &mut mut_env)?;
 
         Ok(mut_env.export_key_values(keys))
     }
@@ -287,7 +403,7 @@ impl<'a> ShapeContract<'a> {
     /// - `Err(String)`: if the shape does not match the pattern, with an error message.
     #[must_use]
     #[inline(always)]
-    fn resolve_match<S>(
+    fn try_resolve_match<S>(
         &'a self,
         shape: S,
         env: &mut MutableStackEnvironment<'a>,
@@ -316,7 +432,7 @@ impl<'a> ShapeContract<'a> {
 
         let rank = shape.len();
 
-        let (e_start, e_size) = match self.check_ellipsis_split(rank) {
+        let (e_start, e_size) = match self.try_ellipsis_split(rank) {
             Ok((e_start, e_size)) => (e_start, e_size),
             Err(msg) => return Err(fail(msg)),
         };
@@ -365,7 +481,7 @@ impl<'a> ShapeContract<'a> {
     /// - `Err(String)`: an error message if the pattern does not match the expected size.
     #[inline(always)]
     #[must_use]
-    fn check_ellipsis_split(
+    fn try_ellipsis_split(
         &self,
         rank: usize,
     ) -> Result<(usize, usize), String> {
@@ -464,12 +580,12 @@ mod tests {
                 DimMatcher::expr(DimExpr::Param("b")),
             ]);
 
-            assert_eq!(PATTERN.check_ellipsis_split(2), Ok((1, 0)));
-            assert_eq!(PATTERN.check_ellipsis_split(3), Ok((1, 1)));
-            assert_eq!(PATTERN.check_ellipsis_split(4), Ok((1, 2)));
+            assert_eq!(PATTERN.try_ellipsis_split(2), Ok((1, 0)));
+            assert_eq!(PATTERN.try_ellipsis_split(3), Ok((1, 1)));
+            assert_eq!(PATTERN.try_ellipsis_split(4), Ok((1, 2)));
 
             assert_eq!(
-                PATTERN.check_ellipsis_split(1),
+                PATTERN.try_ellipsis_split(1),
                 Err("Shape rank 1 < non-ellipsis pattern term count 2".to_string())
             );
         }
@@ -478,10 +594,10 @@ mod tests {
             static PATTERN: ShapeContract =
                 ShapeContract::new(&[DimMatcher::any(), DimMatcher::expr(DimExpr::Param("b"))]);
 
-            assert_eq!(PATTERN.check_ellipsis_split(2), Ok((2, 0)));
+            assert_eq!(PATTERN.try_ellipsis_split(2), Ok((2, 0)));
 
             assert_eq!(
-                PATTERN.check_ellipsis_split(1),
+                PATTERN.try_ellipsis_split(1),
                 Err("Shape rank 1 != pattern dim count 2".to_string())
             );
         }

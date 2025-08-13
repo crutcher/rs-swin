@@ -6,7 +6,7 @@
 //!
 //! Contract programming, or [Design by Contract](https://en.wikipedia.org/wiki/Design_by_contract),
 //! is a programming paradigm that specifies the rights and obligations of software components.
-//!u
+//!
 //! The goal of this library is to make in-line geometry contracts:
 //! * Easy to Read, Write, and Use,
 //! * Performant at Runtime (so they can always be enabled),
@@ -24,9 +24,9 @@
 //! * ``burn::prelude::Shape``,
 //! * ``&burn::prelude::Shape``,
 //! * ``&burn::prelude::Tensor``,
-//! * ``&[usize]``; ``&[usize; D]``,
-//! * ``&[u32]``; ``&[u32; D]``,
-//! * ``&[i32]``; ``&[i32; D]``,
+//! * ``&[usize]``, ``&[usize; D]``,
+//! * ``&[u32]``, ``&[u32; D]``,
+//! * ``&[i32]``, ``&[i32; D]``,
 //! * ``&Vec<usize>``,
 //! * ``&Vec<u32>``,
 //! * ``&Vec<i32>``,
@@ -43,19 +43,44 @@
 //! * [`ShapeContract::unpack_shape`] - ~140ns
 //! * [`run_every_nth`] / [`ShapeContract::unpack_shape`] - ~4ns
 //!
+//! ## `shape_contract`! macro
+//!
+//! The `shape_contract!` macro is a compile-time macro that parses a shape contract
+//! from a shape contract pattern:
+//!
+//! ```rust
+//! use bimm_contracts::{ShapeContract, shape_contract};
+//! static CONTRACT: ShapeContract = shape_contract!(_, "x" + "y", ..., "z" ^ 2);
+//! ```
+//!
+//! A shape pattern is made of one or more dimension matcher terms:
+//! - `_`: for any shape; ignores the size, but requires the dimension to exist.,
+//! - `...`: for ellipsis; matches any number of dimensions, only one ellipsis is allowed,
+//! - a dim expression.
+//!
+//! ```bnf
+//! ShapeContract => <LabeledExpr> { ',' <LabeledExpr> }* ','?
+//! LabeledExpr => {Param ":"}? <Expr>
+//! Expr => <Term> { <AddOp> <Term> }
+//! Term => <Power> { <MulOp> <Power> }
+//! Power => <Factor> [ ^ <usize> ]
+//! Factor => <Param> | ( '(' <Expression> ')' ) | NegOp <Factor>
+//! Param => '"' <identifier> '"'
+//! identifier => { <alpha> | "_" } { <alphanumeric> | "_" }*
+//! NegOp =>      '+' | '-'
+//! AddOp =>      '+' | '-'
+//! MulOp =>      '*'
+//! ```
+//!
 //! ## Error Messages
 //!
 //! Error messages are verbose and helpful.
 //!
-//! ## Example
-//!
-//! ```rust
+//! ```rust,no_run
 //! use bimm_contracts::{ShapeContract, shape_contract};
 //! use indoc::indoc;
-//! #[test]
-//! fn test_shape_contract_macro() {
-//!     /// For the shape_contract macro namespace.
-//!     use crate as bimm_contracts;
+//!
+//! fn example() {
 //!     static CONTRACT: ShapeContract = shape_contract![
 //!             ...,
 //!             "hwins" * "window",
@@ -90,11 +115,11 @@
 //!               [..., (hwins*window), (wwins*window), color]
 //!               {"window": 5, "color": 3}"#
 //!         },
-//!     )
+//!     );
 //! }
 //! ```
 //!
-//! ## Example
+//! ## Usage Example
 //!
 //! ```rust,no_run
 //! use burn::prelude::{Tensor, Backend};

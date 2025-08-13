@@ -5,6 +5,9 @@
 
 #### Recent Changes
 
+* **0.2.2**
+  * Extensive documentation.
+  * Renamed `ShapeContract::maybe_*` to `ShapeContract::try_*`
 * **0.2.0**
   * bumped `burn` dependency to `0.18.0`.
 * **0.1.9**
@@ -16,112 +19,131 @@
    * Removed `assert_shape_every_n` in favor of `run_every_nth!` macro.
    * Improved isolation of `run_every_nth!`.
 
-## Benchmarks
-
-[benchmarks](benches/contracts.rs) are provided to measure the performance of the contract checks.
-```
-test benchmarks::bench_assert_shape           ... bench:         159.44 ns/iter (+/- 4.23)
-test benchmarks::bench_assert_shape_every_nth ... bench:           4.36 ns/iter (+/- 0.03)
-test benchmarks::bench_unpack_shape           ... bench:         175.21 ns/iter (+/- 3.99)
-```
-
-`assert_shape()` checks are very slightly faster than `unpack_shape()`;
-and amortized checks are extremely fast, on average.
-
 ## Overview
 
-`bimm-contracts` is runtime tensor-api contract enforcement library for the `burn` machine learning framework;
-developed as an independently installable crate of the [Burn Image Models](https://github.com/crutcher/bimm) project.
+This is an inline contract programming library for tensor geometry
+for the [burn](https://burn.dev) tensor framework.
 
-Contract programming, or [design by contract](https://en.wikipedia.org/wiki/Design_by_contract),
+Contract programming, or [Design by Contract](https://en.wikipedia.org/wiki/Design_by_contract),
 is a programming paradigm that specifies the rights and obligations of software components.
 
-This crate provides a set of tools to define and enforce shape contracts for tensors in the Burn framework,
-aiming for:
+The goal of this library is to make in-line geometry contracts:
+* Easy to Read, Write, and Use,
+* Performant at Runtime (so they can always be enabled),
+* Verbose and Helpful in their error messages.
 
-- *easy authorship* of contracts,
-- *static allocation* of contracts,
-- *low-heap overhead* for runtime checks,
-- *fast fast-path execution*,
-- *informative error messages*,
-- *amortization of checks* over multiple calls.
+## API
 
-## Api
+The primary public API of this library is:
+* `shape_contract` - a macro for defining shape contracts.
+* `run_every_nth` - a macro for running code on an incrementally lengthening schedule.
+* `ShapeContract::assert_shape` - assert a contract.
+* `ShapeContract::unpack_shape` - assert a contract, and unpack geometry components.
 
-`bimm-contracts` is made of a handful of primary API components:
+The shape methods take a `ShapeArgument` parameter; with implementations for:
+* ``burn::prelude::Shape``,
+* ``&burn::prelude::Shape``,
+* ``&burn::prelude::Tensor``,
+* ``&[usize]``, ``&[usize; D]``,
+* ``&[u32]``, ``&[u32; D]``,
+* ``&[i32]``, ``&[i32; D]``,
+* ``&Vec<usize>``,
+* ``&Vec<u32>``,
+* ``&Vec<i32>``,
 
-1. **shape_contract!**: The primary construction interface, a macro to simplify defining a `ShapeContract`.
-2. **ShapeContract**: A contract that defines the expected shape of a tensor.
-   - **ShapeContract::unpack_shape()**: Unpacks a tensor shape into its components, allowing for parameterized dimensions.
-   - **ShapeContract::assert_shape()**: Asserts that a tensor matches the expected shape defined by the contract.
-3. **DimMatcher, DimExpr**: A structural pattern language, built of statically allocated pattern components:
-   - **DimMatcher**: Represents a single dimension matcher, which can be a parameter, an expression, or a wildcard.
-   - **DimExpr**: Represents an expression that can be used to define complex dimension relationships.
-4. **run_every_nth!**: A macro that allows for periodic shape checks, amortizing the cost of checks over multiple calls.
+## Speed and Stack Design
 
-## ShapeContracts
+Contracts are only useful when they are fast enough to be always enabled.
 
-A `ShapeContract` is a sequence of `DimMatcher`s that defines the expected shape of a tensor. The matchers are:
+As a result, this library is designed to be fast at runtime,
+focusing on `static` contracts and using stack over heap wherever possible.
 
-- **DimMatcher::Any**: Matches a single dimension, of any size.
-- **DimMatcher::Ellipsis**: Matches zero or more dimensions, allowing for flexible shapes.
-- **DimMatcher::Expr(DimExpr)**: Matches a dimension based on an expression,
-  which can include parameters and operations like multiplication, addition, and exponentiation.
+Benchmarks on release builds are available under ``cargo bench``:
+* `ShapeContract::assert_shape` - ~160ns
+* `ShapeContract::unpack_shape` - ~140ns
+* `run_every_nth` / `ShapeContract::unpack_shape` - ~4ns
 
-We'll generally use a short-hand syntax for defining `ShapeContract`s, which is a sequence of `DimMatcher`s,
-where each matcher can be a parameter, an expression, or a wildcard.
+## shape_contract! macro
 
-Consider the contract, using the `shape_contract!` macro:
+The `shape_contract!` macro is a compile-time macro that parses a shape contract
+from a shape contract pattern:
 
 ```rust
-    static CONTRACT : ShapeContract =
-        shape_contract!["batch", ..., "h_wins" * "window_size", "w_wins" * "window_size", "channels"];
+use bimm_contracts::{ShapeContract, shape_contract};
+static CONTRACT: ShapeContract = shape_contract!(_, "x" + "y", ..., "z" ^ 2);
 ```
 
-1. This matches shapes of 4 or more dimensions.
-2. The first dimension is a parameter named `"batch"`.
-3. Any (non-negative) number of dimensions can follow, represented by `...`.
-4. The next two dimensions are products of parameters:
-   - The third dimension is the product of `"h_wins"` and `"window_size"`.
-   - The fourth dimension is the product of `"w_wins"` and `"window_size"`.
-5. The last dimension is a parameter named `"channels"`.
+A shape pattern is made of one or more dimension matcher terms:
+- `_`: for any shape; ignores the size, but requires the dimension to exist.,
+- `...`: for ellipsis; matches any number of dimensions, only one ellipsis is allowed,
+- a dim expression.
 
-This could also have been constructed manually using the `ShapeContract` constructor:
-
-```rust
-static CONTRACT : ShapeContract = ShapeContract::new(&[
-    DimMatcher::Expr(DimExpr::Param("batch")),
-    DimMatcher::Ellipsis,
-    DimMatcher::Expr(DimExpr::Prod(&[
-        DimExpr::Param("h_wins"),
-        DimExpr::Param("window_size"),
-    ])),
-    DimMatcher::Expr(DimExpr::Prod(&[
-        DimExpr::Param("w_wins"),
-        DimExpr::Param("window_size"),
-    ])),
-    DimMatcher::Expr(DimExpr::Param("channels")),
-]);
+```bnf
+ShapeContract => <LabeledExpr> { ',' <LabeledExpr> }* ','?
+LabeledExpr => {Param ":"}? <Expr>
+Expr => <Term> { <AddOp> <Term> }
+Term => <Power> { <MulOp> <Power> }
+Power => <Factor> [ ^ <usize> ]
+Factor => <Param> | ( '(' <Expression> ')' ) | NegOp <Factor>
+Param => '"' <identifier> '"'
+identifier => { <alpha> | "_" } { <alphanumeric> | "_" }*
+NegOp =>      '+' | '-'
+AddOp =>      '+' | '-'
+MulOp =>      '*'
 ```
 
-## Dim Expressions
+## Error Messages
 
-The `DimExpr` expression language permits algebraic expressions over dimensions,
-provided that, at assert and/or unpack time, at most one of the parameters is unknown.
-
-The operations supported are limited by those for which a simple solver can be implemented,
-and the currently supported operations are:
-
-- **Param**: A named parameter, pulled from the binding environment.
-- **A + B**: Addition.
-- **A - B**: Subtraction.
-- **A * B**: Multiplication.
-- **A ^ N**: Exponentiation, where the exponent is a positive constant.
-- **A + (B * C)**: Mixed and grouped operations.
-
-## Example Usage
+Error messages are verbose and helpful.
 
 ```rust
+use bimm_contracts::{ShapeContract, shape_contract};
+use indoc::indoc;
+
+fn example() {
+    static CONTRACT: ShapeContract = shape_contract![
+            ...,
+            "hwins" * "window",
+            "wwins" * "window",
+            "color",
+        ];
+
+    let hwins = 2;
+    let wwins = 3;
+    let window = 4;
+    let color = 3;
+
+    let shape = [1, 2, 3, hwins * window, wwins * window, color];
+
+    let [h, w] = CONTRACT.unpack_shape(&shape, &["hwins", "wwins"], &[
+        ("window", window),
+        ("color", color),
+    ]);
+    assert_eq!(h, hwins);
+    assert_eq!(w, wwins);
+
+    assert_eq!(
+        CONTRACT.try_unpack_shape(&shape, &["hwins", "wwins"], &[
+            ("window", window + 1),
+            ("color", color),
+        ]).unwrap_err(),
+        indoc! {r#"
+            Shape Error:: 8 !~ (hwins*window) :: No integer solution.
+             shape:
+              [1, 2, 3, 8, 12, 3]
+             expected:
+              [..., (hwins*window), (wwins*window), color]
+              {"window": 5, "color": 3}"#
+        },
+    );
+}
+```
+
+## Usage Example
+
+```rust
+use burn::prelude::{Tensor, Backend};
+use burn::tensor::BasicOps;
 use bimm_contracts::{ShapeContract, shape_contract, run_every_nth};
 
 /// Window Partition
@@ -188,8 +210,7 @@ where
             ]
         );
     });
-    
+
     tensor
 }
 ```
-
