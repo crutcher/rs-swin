@@ -328,6 +328,7 @@ dependencies = [
  "bimm-contracts-macros",
  "burn",
  "criterion",
+ "indoc",
 ]
 
 [[package]]
