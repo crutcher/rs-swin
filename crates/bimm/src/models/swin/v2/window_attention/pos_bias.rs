@@ -5,7 +5,7 @@ use burn::config::Config;
 use burn::module::Module;
 use burn::nn;
 use burn::prelude::{Backend, Int, Tensor};
-// use burn::tensor::BasicOps;
+// use burn_support::tensor::BasicOps;
 use bimm_contracts::{ShapeContract, run_every_nth, shape_contract};
 use burn::tensor::activation::sigmoid;
 

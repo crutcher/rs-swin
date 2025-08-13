@@ -1,10 +1,12 @@
-use crate::core::operations::factory::{FirehoseOperatorFactory, FirehoseOperatorInitContext};
-use crate::core::operations::operator::FirehoseOperator;
-use crate::core::operations::planner::OperationPlan;
-use crate::core::operations::signature::{FirehoseOperatorSignature, ParameterSpec};
-use crate::core::{FirehoseRowReader, FirehoseRowTransaction, FirehoseRowWriter};
-use crate::define_firehose_operator;
 use anyhow::Context;
+use bimm_firehose::core::operations::factory::{
+    FirehoseOperatorFactory, FirehoseOperatorInitContext,
+};
+use bimm_firehose::core::operations::operator::FirehoseOperator;
+use bimm_firehose::core::operations::planner::OperationPlan;
+use bimm_firehose::core::operations::signature::{FirehoseOperatorSignature, ParameterSpec};
+use bimm_firehose::core::{FirehoseRowReader, FirehoseRowTransaction, FirehoseRowWriter};
+use bimm_firehose::define_firehose_operator;
 pub use image::imageops::FilterType;
 pub use image::{ColorType, DynamicImage};
 use rand::SeedableRng;
@@ -40,7 +42,7 @@ macro_rules! define_image_aug_plugin {
 macro_rules! register_image_aug_plugin {
     ($name:ident, $builder:expr) => {
         inventory::submit! {
-            $crate::ops::image::augmentation::AugmentationStageGlobalRegistration {
+            $crate::augmentation::AugmentationStageGlobalRegistration {
                 name: $name,
                 build_stage: |cfg, builder| ($builder)(cfg, builder),
             }
@@ -52,7 +54,7 @@ macro_rules! register_image_aug_plugin {
 #[macro_export]
 macro_rules! define_image_aug_plugin_id {
     ($name:ident) => {
-        $crate::define_self_referential_id!("fh:iaug", $name);
+        bimm_firehose::define_self_referential_id!("fh:iaug", $name);
     };
 }
 
@@ -335,8 +337,8 @@ impl FirehoseOperator for AugmentImageOperation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ops::image::augmentation::control::noop::NOOP_STAGE;
-    use crate::ops::image::augmentation::control::sequence::STAGE_SEQUENCE;
+    use crate::augmentation::control::noop::NOOP_STAGE;
+    use crate::augmentation::control::sequence::STAGE_SEQUENCE;
     use serde_json::json;
 
     #[test]

@@ -1,9 +1,6 @@
 use crate::core::operations::environment::MapOpEnvironment;
 use crate::core::operations::registration::FirehoseOperatorFactoryRegistration;
 
-/// Image operators.
-pub mod image;
-
 /// Build the default environment.
 ///
 /// This constructs a `MapOpEnvironment` and adds all operator builders

@@ -14,10 +14,10 @@ burn = { workspace = true, features = ["train", "autodiff", "cuda", "fusion", "v
 serde = { workspace = true, features = ["derive"] }
 
 clap = { workspace = true, features = ["derive"] }
-globwalk = { workspace = true }
 
 bimm = { workspace = true }
 bimm-firehose = { workspace = true }
+bimm-firehose-image = { workspace = true }
 rand = { workspace = true }
 anyhow = { workspace = true }
 

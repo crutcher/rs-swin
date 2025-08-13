@@ -1,7 +1,7 @@
-use crate::core::operations::factory::SimpleConfigOperatorFactory;
-use crate::core::operations::signature::{FirehoseOperatorSignature, ParameterSpec};
-use crate::core::{FirehoseRowBatch, FirehoseRowReader};
-use crate::define_firehose_operator;
+use bimm_firehose::core::operations::factory::SimpleConfigOperatorFactory;
+use bimm_firehose::core::operations::signature::{FirehoseOperatorSignature, ParameterSpec};
+use bimm_firehose::core::{FirehoseRowBatch, FirehoseRowReader};
+use bimm_firehose::define_firehose_operator;
 use burn::prelude::{Backend, Tensor};
 use burn::tensor::TensorData;
 use image::DynamicImage;

@@ -1,9 +1,8 @@
-use crate::core::operations::operator::FirehoseOperator;
-use crate::core::operations::planner::OperationPlan;
-use crate::core::rows::FirehoseRowTransaction;
-use crate::core::{FirehoseRowReader, FirehoseRowWriter};
-use crate::ops;
-use crate::ops::image::burn::{IMAGE_TO_TENSOR_DATA, pixeldepth_support};
+use crate::burn_support::{IMAGE_TO_TENSOR_DATA, pixeldepth_support};
+use bimm_firehose::core::operations::operator::FirehoseOperator;
+use bimm_firehose::core::operations::planner::OperationPlan;
+use bimm_firehose::core::rows::FirehoseRowTransaction;
+use bimm_firehose::core::{FirehoseRowReader, FirehoseRowWriter};
 use burn::prelude::TensorData;
 use image::DynamicImage;
 use serde::{Deserialize, Serialize};
@@ -54,7 +53,7 @@ impl FirehoseOperator for ImageToTensorData {
         let colors = image.color().channel_count() as usize;
         let shape = vec![height, width, colors];
 
-        let pixvec = ops::image::burn::image_to_pixeldepth_vec(image);
+        let pixvec = crate::burn_support::image_to_pixeldepth_vec(image);
         let data: Vec<f32> = pixvec
             .iter()
             .map(|p| pixeldepth_support::pixel_depth_to_f32(p.clone()))

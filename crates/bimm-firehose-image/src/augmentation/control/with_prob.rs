@@ -1,9 +1,9 @@
-use crate::define_image_aug_plugin;
-use crate::ops::image::augmentation::{
+use crate::augmentation::{
     AugmentationStage, AugmentationStageConfig, ImageAugContext, PluginBuilder,
     WithAugmentationStageBuilder,
 };
-use crate::utility::probability::try_probability;
+use crate::define_image_aug_plugin;
+use bimm_firehose::utility::probability::try_probability;
 use image::DynamicImage;
 use rand::Rng;
 use serde::{Deserialize, Serialize};

@@ -1,4 +1,4 @@
-use crate::ops::image::ImageShape;
+use crate::ImageShape;
 use image::{DynamicImage, ImageBuffer, Rgb, RgbImage};
 use image_compare::BlendInput;
 
