@@ -195,10 +195,6 @@
 //! }
 //! ```
 
-#![cfg_attr(all(feature = "nightly", test), feature(test))]
-#[cfg(all(feature = "nightly", test))]
-extern crate test;
-
 extern crate core;
 
 pub use bimm_contracts_macros::shape_contract;

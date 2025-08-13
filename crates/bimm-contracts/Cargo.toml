@@ -12,19 +12,19 @@ workspace = true
 
 [dependencies]
 bimm-contracts-macros = { version = "0.2.2", path = "../bimm-contracts-macros" }
-
-burn = { workspace = true }
+burn = { workspace = true, optional = true }
 
 [dev-dependencies]
 burn = { workspace = true, features = ["ndarray"] }
-criterion = { workspace = true }
 indoc = { workspace = true }
+
+# Benchmark dependencies
+criterion = { workspace = true }
 
 [[bench]]
 name = "contracts"
 harness = false
 
 [features]
-default = []
-
-nightly = []
+default = ["burn_support"]
+burn_support = ["burn"]
