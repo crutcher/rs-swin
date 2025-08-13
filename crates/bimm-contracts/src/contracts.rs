@@ -470,7 +470,7 @@ impl<'a> ShapeContract<'a> {
             let expr = match matcher {
                 DimMatcher::Any { label: _ } => continue,
                 DimMatcher::Ellipsis { label: _ } => {
-                    unreachable!("Ellipsis should have been handled before");
+                    unreachable!("Ellipsis should have been handled before")
                 }
                 DimMatcher::Expr { label: _, expr } => expr,
             };
@@ -535,6 +535,42 @@ mod tests {
     use alloc::string::ToString;
     use bimm_contracts_macros::shape_contract;
     use indoc::indoc;
+
+    #[test]
+    fn test_dim_matcher_builders() {
+        assert_eq!(DimMatcher::any(), DimMatcher::Any { label: None });
+
+        assert_eq!(DimMatcher::ellipsis(), DimMatcher::Ellipsis { label: None });
+
+        assert_eq!(
+            DimMatcher::expr(DimExpr::Param("a")),
+            DimMatcher::Expr {
+                label: None,
+                expr: DimExpr::Param("a")
+            }
+        );
+    }
+
+    #[test]
+    fn test_with_label() {
+        assert_eq!(
+            DimMatcher::any().with_label(Some("abc")),
+            DimMatcher::Any { label: Some("abc") }
+        );
+
+        assert_eq!(
+            DimMatcher::ellipsis().with_label(Some("abc")),
+            DimMatcher::Ellipsis { label: Some("abc") }
+        );
+
+        assert_eq!(
+            DimMatcher::expr(DimExpr::Param("a")).with_label(Some("abc")),
+            DimMatcher::Expr {
+                label: Some("abc"),
+                expr: DimExpr::Param("a")
+            }
+        );
+    }
 
     #[should_panic(expected = "Multiple ellipses in pattern")]
     #[test]
@@ -694,6 +730,14 @@ mod tests {
         assert_eq!(u_h, h);
         assert_eq!(u_w, w);
         assert_eq!(u_z, z);
+    }
+
+    #[should_panic(expected = "Shape Error:: 1 !~ a :: Value MissMatch.")]
+    #[test]
+    fn test_unpack_shape_panic() {
+        use crate as bimm_contracts;
+        static CONTRACT: ShapeContract = shape_contract!["a", "b", "c"];
+        let _ignore = CONTRACT.unpack_shape(&[1, 2, 3], &["a", "b", "c"], &[("a", 7)]);
     }
 
     #[should_panic(expected = "Shape rank 3 != pattern dim count 1")]

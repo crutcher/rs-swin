@@ -312,7 +312,7 @@ checksum = "55248b47b0caf0546f7988906588779981c43bb1bc9d0c44087278f80cdb44ba"
 
 [[package]]
 name = "bimm"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "bimm-contracts",
  "burn",
@@ -323,7 +323,7 @@ dependencies = [
 
 [[package]]
 name = "bimm-contracts"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "bimm-contracts-macros",
  "burn",
@@ -333,7 +333,7 @@ dependencies = [
 
 [[package]]
 name = "bimm-contracts-macros"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -342,7 +342,7 @@ dependencies = [
 
 [[package]]
 name = "bimm-firehose"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "anyhow",
  "burn",
@@ -358,7 +358,7 @@ dependencies = [
 
 [[package]]
 name = "bimm-firehose-image"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "anyhow",
  "bimm-firehose",

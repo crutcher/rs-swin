@@ -6,8 +6,8 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
-bimm-firehose = { version = "0.2.4", path = "../../crates/bimm-firehose"  }
-bimm-firehose-image = { version = "0.2.4", path = "../../crates/bimm-firehose-image"  }
+bimm-firehose = { version = "0.2.5", path = "../../crates/bimm-firehose"  }
+bimm-firehose-image = { version = "0.2.5", path = "../../crates/bimm-firehose-image"  }
 
 anyhow = { workspace = true }
 burn = { workspace = true, features = ["train", "autodiff", "cuda", "fusion", "vision", "dataset"] }
