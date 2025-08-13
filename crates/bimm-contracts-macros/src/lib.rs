@@ -36,7 +36,14 @@ fn parse_shape_contract_terms(input: ParseStream) -> SynResult<ShapeContract> {
 
 /// Parse a single contract dim term from tokens.
 fn parse_dim_matcher_tokens(input: ParseStream) -> SynResult<DimMatcher> {
-    let label = None;
+    let mut label = None;
+
+    // peek 2: ["name" =]
+    if input.peek(LitStr) && input.peek2(Token![=]) {
+        let lit: LitStr = input.parse()?;
+        label = Some(lit.value());
+        input.parse::<Token![=]>()?;
+    }
 
     // Check for "_" (underscore) for Any
     if input.peek(Token![_]) {
@@ -50,7 +57,7 @@ fn parse_dim_matcher_tokens(input: ParseStream) -> SynResult<DimMatcher> {
         return Ok(DimMatcher::Ellipsis { label });
     }
 
-    // Otherwise, parse as expression
+    // Otherwise, parse as an expression.
     let expr = parse_expr_tokens(input)?;
     Ok(DimMatcher::Expr { label, expr })
 }
@@ -246,7 +253,7 @@ impl DimMatcher {
             DimMatcher::Any { label } => {
                 let base = quote! { bimm_contracts::DimMatcher::any() };
                 if label.is_some() {
-                    quote! { #base.with_label(#label) }
+                    quote! { #base.with_label(Some(#label)) }
                 } else {
                     base
                 }
@@ -254,7 +261,7 @@ impl DimMatcher {
             DimMatcher::Ellipsis { label } => {
                 let base = quote! { bimm_contracts::DimMatcher::ellipsis() };
                 if label.is_some() {
-                    quote! { #base.with_label(#label) }
+                    quote! { #base.with_label(Some(#label)) }
                 } else {
                     base
                 }
@@ -263,7 +270,7 @@ impl DimMatcher {
                 let expr_tokens = expr.to_tokens();
                 let base = quote! { bimm_contracts::DimMatcher::expr(#expr_tokens) };
                 if label.is_some() {
-                    quote! { #base.with_label(#label) }
+                    quote! { #base.with_label(Some(#label)) }
                 } else {
                     base
                 }
@@ -438,12 +445,17 @@ mod tests {
     #[test]
     fn test_parse_shape_contract_terms() {
         let tokens: proc_macro2::TokenStream =
-            r#"_, "x", ..., "y" + ("z" * "w") ^ 2"#.parse().unwrap();
+            r#""any" = _, "x", ..., "y" + ("z" * "w") ^ 2"#.parse().unwrap();
         let input = syn::parse2::<ContractSyntax>(tokens).unwrap();
         let contract = input.contract;
 
         assert_eq!(contract.terms.len(), 4);
-        assert_eq!(contract.terms[0], DimMatcher::Any { label: None });
+        assert_eq!(
+            contract.terms[0],
+            DimMatcher::Any {
+                label: Some("any".to_string())
+            }
+        );
         assert_eq!(
             contract.terms[1],
             DimMatcher::Expr {
@@ -472,7 +484,7 @@ mod tests {
         assert_eq!(
             contract.to_tokens().to_string(),
             "bimm_contracts :: ShapeContract :: new (& [\
-bimm_contracts :: DimMatcher :: any () , \
+bimm_contracts :: DimMatcher :: any () . with_label (Some (\"any\")) , \
 bimm_contracts :: DimMatcher :: expr (bimm_contracts :: DimExpr :: Param (\"x\")) , \
 bimm_contracts :: DimMatcher :: ellipsis () , \
 bimm_contracts :: DimMatcher :: expr (bimm_contracts :: DimExpr :: Sum (& [bimm_contracts :: DimExpr :: Param (\"y\") , \
