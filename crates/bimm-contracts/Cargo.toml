@@ -14,7 +14,7 @@ categories = ["development-tools::debugging"]
 workspace = true
 
 [dependencies]
-bimm-contracts-macros = { version = "0.2.5", path = "../bimm-contracts-macros" }
+bimm-contracts-macros = { version = "0.2.6", path = "../bimm-contracts-macros" }
 burn = { workspace = true, optional = true }
 
 [dev-dependencies]
