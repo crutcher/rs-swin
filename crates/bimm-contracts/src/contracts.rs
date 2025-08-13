@@ -149,8 +149,8 @@ impl<'a> ShapeContract<'a> {
     ///
     /// static CONTRACT : ShapeContract = shape_contract![
     ///    ...,
-    ///    "height" * "window",
-    ///    "width" * "window",
+    ///    "height" = "h_wins" * "window",
+    ///    "width" = "w_wins" * "window",
     ///    "channels",
     /// ];
     /// ```
@@ -197,15 +197,15 @@ impl<'a> ShapeContract<'a> {
     ///     // Statically allocated contract.
     ///     static CONTRACT : ShapeContract = shape_contract![
     ///        ...,
-    ///        "height" * "window",
-    ///        "width" * "window",
+    ///        "height" = "h_wins" * "window",
+    ///        "width" = "w_wins" * "window",
     ///        "channels",
     ///     ];
     ///
     ///     // Assert the shape, given the bindings.
     ///     CONTRACT.assert_shape(
     ///         &shape,
-    ///         &[("height", 2), ("width", 3), ("channels", 4)]
+    ///         &[("h_wins", 2), ("w_wins", 3), ("channels", 4)]
     ///     );
     /// }}
     /// ```
@@ -245,15 +245,15 @@ impl<'a> ShapeContract<'a> {
     /// // Statically allocated contract.
     /// static CONTRACT : ShapeContract = shape_contract![
     ///    ...,
-    ///    "height" * "window",
-    ///    "width" * "window",
+    ///    "height" = "h_wins" * "window",
+    ///    "width" = "w_wins" * "window",
     ///    "channels",
     /// ];
     ///
     /// // Assert the shape, given the bindings; or throw.
     /// CONTRACT.try_assert_shape(
     ///     &shape,
-    ///     &[("height", 2), ("width", 3), ("channels", 4)]
+    ///     &[("h_wins", 2), ("w_wins", 3), ("channels", 4)]
     /// ).unwrap();
     /// ```
     #[inline(always)]
@@ -302,15 +302,15 @@ impl<'a> ShapeContract<'a> {
     /// // Statically allocated contract.
     /// static CONTRACT : ShapeContract = shape_contract![
     ///    ...,
-    ///    "height" * "window",
-    ///    "width" * "window",
+    ///    "height" = "h_wins" * "window",
+    ///    "width" = "w_wins" * "window",
     ///    "channels",
     /// ];
     ///
     /// // Unpack the shape, given the bindings.
     /// let [h, w, c] = CONTRACT.unpack_shape(
     ///     &shape,
-    ///     &["height", "width", "channels"],
+    ///     &["h_wins", "w_wins", "channels"],
     ///     &[("window", 8)]
     /// );
     /// assert_eq!(h, 2);
@@ -352,7 +352,7 @@ impl<'a> ShapeContract<'a> {
     ///
     /// ## Example
     ///
-    /// ```rust,no_run
+    /// ```rust
     /// use bimm_contracts::{shape_contract, run_every_nth, ShapeContract};
     ///
     /// let shape = [1, 2, 3, 2 * 8, 3 * 8, 4];
@@ -360,15 +360,15 @@ impl<'a> ShapeContract<'a> {
     /// // Statically allocated contract.
     /// static CONTRACT : ShapeContract = shape_contract![
     ///    ...,
-    ///    "height" * "window",
-    ///    "width" * "window",
+    ///    "height" = "h_wins" * "window",
+    ///    "width" = "w_wins" * "window",
     ///    "channels",
     /// ];
     ///
     /// // Unpack the shape, given the bindings; or throw.
     /// let [h, w, c] = CONTRACT.try_unpack_shape(
     ///     &shape,
-    ///     &["height", "width", "channels"],
+    ///     &["h_wins", "w_wins", "channels"],
     ///     &[("window", 8)]
     /// ).unwrap();
     /// assert_eq!(h, 2);

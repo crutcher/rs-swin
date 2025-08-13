@@ -301,7 +301,7 @@ impl ShapeContract {
 ///
 /// ```bnf
 /// ShapeContract => <LabeledExpr> { ',' <LabeledExpr> }* ','?
-/// LabeledExpr => {Param ":"}? <Expr>
+/// LabeledExpr => {Param "="}? <Expr>
 /// Expr => <Term> { <AddOp> <Term> }
 /// Term => <Power> { <MulOp> <Power> }
 /// Power => <Factor> [ ^ <usize> ]

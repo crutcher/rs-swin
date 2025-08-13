@@ -5,6 +5,8 @@
 
 #### Recent Changes
 
+* **0.2.5**
+  * full support for ``"dim_label" = EXPR`` patterns in contracts.
 * **0.2.4**
   * no_std support.
 * **0.2.3**
@@ -98,7 +100,7 @@ A shape pattern is made of one or more dimension matcher terms:
 
 ```bnf
 ShapeContract => <LabeledExpr> { ',' <LabeledExpr> }* ','?
-LabeledExpr => {Param ":"}? <Expr>
+LabeledExpr => {Param "="}? <Expr>
 Expr => <Term> { <AddOp> <Term> }
 Term => <Power> { <MulOp> <Power> }
 Power => <Factor> [ ^ <usize> ]
@@ -120,37 +122,37 @@ use indoc::indoc;
 
 fn example() {
     static CONTRACT: ShapeContract = shape_contract![
-            ...,
-            "hwins" * "window",
-            "wwins" * "window",
-            "color",
-        ];
+        ...,
+        "height" = "h_wins" * "window",
+        "width" = "w_wins" * "window",
+        "color",
+    ];
 
-    let hwins = 2;
-    let wwins = 3;
+    let h_wins = 2;
+    let w_wins = 3;
     let window = 4;
     let color = 3;
 
-    let shape = [1, 2, 3, hwins * window, wwins * window, color];
+    let shape = [1, 2, 3, h_wins * window, w_wins * window, color];
 
-    let [h, w] = CONTRACT.unpack_shape(&shape, &["hwins", "wwins"], &[
+    let [h, w] = CONTRACT.unpack_shape(&shape, &["h_wins", "w_wins"], &[
         ("window", window),
         ("color", color),
     ]);
-    assert_eq!(h, hwins);
-    assert_eq!(w, wwins);
+    assert_eq!(h, h_wins);
+    assert_eq!(w, w_wins);
 
     assert_eq!(
-        CONTRACT.try_unpack_shape(&shape, &["hwins", "wwins"], &[
+        CONTRACT.try_unpack_shape(&shape, &["h_wins", "w_wins"], &[
             ("window", window + 1),
             ("color", color),
         ]).unwrap_err(),
         indoc! {r#"
-            Shape Error:: 8 !~ (hwins*window) :: No integer solution.
+            Shape Error:: 8 !~ (h_wins*window) :: No integer solution.
              shape:
               [1, 2, 3, 8, 12, 3]
              expected:
-              [..., (hwins*window), (wwins*window), color]
+              [..., (h_wins*window), (w_wins*window), color]
               {"window": 5, "color": 3}"#
         },
     );
@@ -187,8 +189,8 @@ where
 {
     static INPUT_CONTRACT: ShapeContract = shape_contract![
         "batch",
-        "h_wins" * "window_size",
-        "w_wins" * "window_size",
+        "height" = "h_wins" * "window_size",
+        "width" = "w_wins" * "window_size",
         "channels"
     ];
     // In release builds, this has an benchmark of ~170ns:
