@@ -348,6 +348,7 @@ dependencies = [
  "globwalk",
  "indoc",
  "inventory",
+ "num-traits",
  "regex 1.11.1",
  "regex-macro",
  "serde",
