@@ -535,8 +535,8 @@ mod tests {
         use crate as bimm_contracts;
         static CONTRACT: ShapeContract = shape_contract![
             ...,
-            "hwins" * "window",
-            "wwins" * "window",
+            "height" = "hwins" * "window",
+            "width" = "wwins" * "window",
             "color",
         ];
 
@@ -564,11 +564,11 @@ mod tests {
                 )
                 .unwrap_err(),
             indoc! {r#"
-                Shape Error:: 8 !~ (hwins*window) :: No integer solution.
+                Shape Error:: 8 !~ height: (hwins*window) :: No integer solution.
                  shape:
                   [1, 2, 3, 8, 12, 3]
                  expected:
-                  [..., (hwins*window), (wwins*window), color]
+                  [..., height: (hwins*window), width: (wwins*window), color]
                   {"window": 5, "color": 3}"#
             },
         )
