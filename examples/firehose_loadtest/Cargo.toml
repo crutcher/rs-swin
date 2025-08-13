@@ -6,10 +6,11 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
+bimm-firehose = { path = "../../crates/bimm-firehose"  }
+bimm-firehose-image = { path = "../../crates/bimm-firehose-image"  }
+
 anyhow = { workspace = true }
 burn = { workspace = true, features = ["train", "autodiff", "cuda", "fusion", "vision", "dataset"] }
-bimm-firehose = { workspace = true }
-bimm-firehose-image = { workspace = true }
 rs-cinic-10-index = { version = "^0.2.0" }
 itertools = { workspace = true }
 
