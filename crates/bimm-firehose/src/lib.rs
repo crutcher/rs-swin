@@ -10,7 +10,6 @@ pub mod ops;
 
 /// Burn Integration Module.
 pub mod burn;
-/// Augmentation stage utility functions.
 pub mod utility;
 
 /// Experimental Data Pipeline module; non-public.
