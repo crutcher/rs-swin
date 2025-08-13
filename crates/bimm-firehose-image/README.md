@@ -7,10 +7,15 @@ Image processing support for `bimm-firehose`.
 This is an example of how to use the image processing stages.
 
 ```rust
-use bimm_firehose_image::{
-    AugmentImageOperation, ChooseOneStage, HorizontalFlipStage, SpeckleStage,
-    WithProbStage,
-};
+use bimm_firehose_image::augmentation::AugmentImageOperation;
+use bimm_firehose_image::augmentation::control::choose_one::ChooseOneStage;
+use bimm_firehose_image::augmentation::control::with_prob::WithProbStage;
+use bimm_firehose_image::augmentation::noise::blur::BlurStage;
+use bimm_firehose_image::augmentation::noise::speckle::SpeckleStage;
+use bimm_firehose_image::augmentation::orientation::flip::HorizontalFlipStage;
+use bimm_firehose_image::burn_support::{ImageToTensorData, stack_tensor_data_column};
+use bimm_firehose_image::loader::{ImageLoader, ResizeSpec};
+use bimm_firehose_image::{ColorType, ImageShape};
 use bimm_firehose_schema::{AugmentColumn, AugmentSchema, FirehoseEnv};
 use bimm_firehose_utils::FirehoseError;
 use std::sync::Arc;
