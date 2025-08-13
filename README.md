@@ -86,8 +86,8 @@ where
 {
     static INPUT_CONTRACT: ShapeContract = shape_contract![
         "batch",
-        "h_wins" * "window_size",
-        "w_wins" * "window_size",
+        "height" = "h_wins" * "window_size",
+        "width" = "w_wins" * "window_size",
         "channels"
     ];
     let [b, h_wins, w_wins, c] = INPUT_CONTRACT.unpack_shape(
