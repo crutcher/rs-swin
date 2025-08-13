@@ -7,7 +7,6 @@ extern crate test;
 
 extern crate core;
 
-#[cfg(feature = "macros")]
 pub use bimm_contracts_macros::shape_contract;
 
 /// Evaluation Bindings.

@@ -1,13 +1,13 @@
 [package]
 name = "firehose_loadtest"
+publish = false
 edition.workspace = true
-version.workspace = true
 repository.workspace = true
 license.workspace = true
 
 [dependencies]
-bimm-firehose = { path = "../../crates/bimm-firehose"  }
-bimm-firehose-image = { path = "../../crates/bimm-firehose-image"  }
+bimm-firehose = { version = "0.2.1", path = "../../crates/bimm-firehose"  }
+bimm-firehose-image = { version = "0.2.1", path = "../../crates/bimm-firehose-image"  }
 
 anyhow = { workspace = true }
 burn = { workspace = true, features = ["train", "autodiff", "cuda", "fusion", "vision", "dataset"] }

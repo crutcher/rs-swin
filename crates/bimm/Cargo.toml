@@ -11,7 +11,7 @@ description = "burn image models"
 workspace = true
 
 [dependencies]
-bimm-contracts = { vesion = "0.2.1", path = "../bimm-contracts" }
+bimm-contracts = { version = "0.2.1", path = "../bimm-contracts" }
 
 burn = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
