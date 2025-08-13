@@ -172,7 +172,7 @@ impl<'a> ShapeContract<'a> {
     ) where
         S: ShapeArgument,
     {
-        let result = self.maybe_assert_shape(shape, env);
+        let result = self.try_assert_shape(shape, env);
         if result.is_err() {
             panic!("{}", result.unwrap_err());
         }
@@ -190,7 +190,7 @@ impl<'a> ShapeContract<'a> {
     /// - `Ok(())`: if the shape matches the pattern.
     /// - `Err(String)`: if the shape does not match the pattern, with an error message.
     #[inline(always)]
-    pub fn maybe_assert_shape<S>(
+    pub fn try_assert_shape<S>(
         &'a self,
         shape: S,
         env: StackEnvironment<'a>,
@@ -203,9 +203,13 @@ impl<'a> ShapeContract<'a> {
         self.resolve_match(shape, &mut mut_env)
     }
 
-    /// Match and unpack a shape pattern.
+    /// Match and unpack `K` keys from a shape pattern.
     ///
-    /// Wraps `maybe_unpack_shape` and panics if the shape does not match.
+    /// Wraps `try_unpack_shape` and panics if the shape does not match.
+    ///
+    /// ## Generics
+    ///
+    /// - `K`: the length of the `keys` array.
     ///
     /// ## Arguments
     ///
@@ -215,7 +219,7 @@ impl<'a> ShapeContract<'a> {
     ///
     /// ## Returns
     ///
-    /// The list of key values.
+    /// An `[usize; K]` of the unpacked `keys` values.
     ///
     /// ## Panics
     ///
@@ -231,13 +235,17 @@ impl<'a> ShapeContract<'a> {
     where
         S: ShapeArgument,
     {
-        match self.maybe_unpack_shape(shape, keys, env) {
+        match self.try_unpack_shape(shape, keys, env) {
             Ok(values) => values,
             Err(msg) => panic!("{msg}"),
         }
     }
 
-    /// Match and unpack a shape pattern.
+    /// Try and match and unpack `K` keys from a shape pattern.
+    ///
+    /// ## Generics
+    ///
+    /// - `K`: the length of the `keys` array.
     ///
     /// ## Arguments
     ///
@@ -247,10 +255,10 @@ impl<'a> ShapeContract<'a> {
     ///
     /// ## Returns
     ///
-    /// Either the list of key values; or an error.
+    /// A `Result<[usize; K], String>` of the unpacked `keys` values.
     #[must_use]
     #[inline(always)]
-    pub fn maybe_unpack_shape<S, const K: usize>(
+    pub fn try_unpack_shape<S, const K: usize>(
         &'a self,
         shape: S,
         keys: &[&'a str; K],
@@ -387,6 +395,8 @@ impl<'a> ShapeContract<'a> {
 mod tests {
     use super::*;
     use crate::contracts::{DimMatcher, ShapeContract};
+    use bimm_contracts_macros::shape_contract;
+    use indoc::indoc;
 
     #[should_panic(expected = "Multiple ellipses in pattern")]
     #[test]
@@ -398,6 +408,52 @@ mod tests {
             DimMatcher::ellipsis(),
         ]);
     }
+
+    #[test]
+    fn test_shape_contract_macro() {
+        /// For the shape_contract macro namespace.
+        use crate as bimm_contracts;
+        static CONTRACT: ShapeContract = shape_contract![
+            ...,
+            "hwins" * "window",
+            "wwins" * "window",
+            "color",
+        ];
+
+        let hwins = 2;
+        let wwins = 3;
+        let window = 4;
+        let color = 3;
+
+        let shape = [1, 2, 3, hwins * window, wwins * window, color];
+
+        let [h, w] = CONTRACT.unpack_shape(
+            &shape,
+            &["hwins", "wwins"],
+            &[("window", window), ("color", color)],
+        );
+        assert_eq!(h, hwins);
+        assert_eq!(w, wwins);
+
+        assert_eq!(
+            CONTRACT
+                .try_unpack_shape(
+                    &shape,
+                    &["hwins", "wwins"],
+                    &[("window", window + 1), ("color", color),]
+                )
+                .unwrap_err(),
+            indoc! {r#"
+                Shape Error:: 8 !~ (hwins*window) :: No integer solution.
+                 shape:
+                  [1, 2, 3, 8, 12, 3]
+                 expected:
+                  [..., (hwins*window), (wwins*window), color]
+                  {"window": 5, "color": 3}"#
+            },
+        )
+    }
+
     #[test]
     fn test_check_ellipsis_split() {
         {
@@ -471,7 +527,7 @@ mod tests {
         let shape = [12, b, 1, 2, 3, h * p, w * p, 1 + z * z * z, c];
 
         let result =
-            CONTRACT.maybe_unpack_shape(&shape, &["b", "h", "w", "z"], &[("p", p), ("c", c)]);
+            CONTRACT.try_unpack_shape(&shape, &["b", "h", "w", "z"], &[("p", p), ("c", c)]);
         assert!(result.is_err());
         let err_msg = result.unwrap_err();
         assert_eq!(

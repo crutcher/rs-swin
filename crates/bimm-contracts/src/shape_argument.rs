@@ -67,6 +67,12 @@ impl ShapeArgument for &Vec<u32> {
     }
 }
 
+impl ShapeArgument for &Vec<i32> {
+    fn get_shape(self) -> Shape {
+        Shape::from(self.iter().map(|&d| d as usize).collect::<Vec<_>>())
+    }
+}
+
 impl<B, const D: usize, K> ShapeArgument for &Tensor<B, D, K>
 where
     B: Backend,

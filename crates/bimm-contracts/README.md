@@ -151,6 +151,7 @@ where
         "w_wins" * "window_size",
         "channels"
     ];
+    // In release builds, this has an benchmark of ~160ns:
     let [b, h_wins, w_wins, c] = INPUT_CONTRACT.unpack_shape(
         &tensor,
         &["batch", "h_wins", "w_wins", "channels"],
@@ -162,12 +163,14 @@ where
         .swap_dims(2, 3)
         .reshape([b * h_wins * w_wins, window_size, window_size, c]);
 
-    // Run this check periodically on a doubling schedule,
-    // up to the default of every 1000th call.
+    // Run an amortized check on the output shape.
+    //
+    // `run_every_nth!{}` runs the first 10 times,
+    // then on an incrementally lengthening schedule,
+    // until it reaches its default period of 1000.
+    //
+    // Due to amortization, in release builds, this averages ~4ns:
     run_every_nth!({
-        // I'd normally not use a contract here, as the shape is already
-        // very clear from the above operations; but this is an example
-        // of low-overhead periodic shape checking.
         static OUTPUT_CONTRACT: ShapeContract = shape_contract![
             "batch" * "h_wins" * "w_wins",
             "window_size",

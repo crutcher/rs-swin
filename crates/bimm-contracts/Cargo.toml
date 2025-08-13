@@ -18,6 +18,7 @@ burn = { workspace = true }
 [dev-dependencies]
 burn = { workspace = true, features = ["ndarray"] }
 criterion = { workspace = true }
+indoc = { workspace = true }
 
 [[bench]]
 name = "contracts"
