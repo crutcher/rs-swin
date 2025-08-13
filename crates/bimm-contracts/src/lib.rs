@@ -1,7 +1,8 @@
+#![no_std]
 #![warn(missing_docs)]
 //! # bimm-contracts
 //!
-//! This is an inline contract programming library for tensor geometry
+//! This is a ``no_std`` inline contract programming library for tensor geometry
 //! for the [burn](https://burn.dev) tensor framework.
 //!
 //! Contract programming, or [Design by Contract](https://en.wikipedia.org/wiki/Design_by_contract),
@@ -38,10 +39,26 @@
 //! As a result, this library is designed to be fast at runtime,
 //! focusing on `static` contracts and using stack over heap wherever possible.
 //!
-//! Benchmarks on release builds are available under ``cargo bench``:
-//! * [`ShapeContract::assert_shape`] - ~160ns
-//! * [`ShapeContract::unpack_shape`] - ~140ns
-//! * [`run_every_nth`] / [`ShapeContract::unpack_shape`] - ~4ns
+//! Benchmarks on release builds are available under ``cargo bench -p bimm-contracts``:
+//!
+//! ```terminaloutput
+//! Running benches/contracts.rs (target/release/deps/contracts-86950340ff3748c1)
+//! unpack_shape            time:   [176.03 ns 177.39 ns 178.81 ns]
+//! Found 2 outliers among 100 measurements (2.00%)
+//! 1 (1.00%) high mild
+//! 1 (1.00%) high severe
+//!
+//! assert_shape            time:   [166.57 ns 168.00 ns 169.60 ns]
+//! Found 2 outliers among 100 measurements (2.00%)
+//! 1 (1.00%) high mild
+//! 1 (1.00%) high severe
+//!
+//! assert_shape_every_nth/assert_shape_every_nth
+//! time:   [4.4057 ns 4.4769 ns 4.5726 ns]
+//! Found 14 outliers among 100 measurements (14.00%)
+//! 6 (6.00%) high mild
+//! 8 (8.00%) high severe
+//! ```
 //!
 //! ## `shape_contract`! macro
 //!
@@ -195,6 +212,7 @@
 //! }
 //! ```
 
+extern crate alloc;
 extern crate core;
 
 pub use bimm_contracts_macros::shape_contract;

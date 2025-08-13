@@ -7,14 +7,14 @@ repository.workspace = true
 homepage = "https://github.com/crutcher/bimm/tree/main/crates/bimm-contracts"
 documentation = "https://docs.rs/bimm-contracts/latest/"
 description = "Runtime shape/geometry contracts for the burn framework."
-keywords = ["burn", "contracts", "testing", "shape", "tensor"]
+keywords = ["burn", "contracts", "testing", "shape", "no_std"]
 categories = ["development-tools::debugging"]
 
 [lints]
 workspace = true
 
 [dependencies]
-bimm-contracts-macros = { version = "0.2.3", path = "../bimm-contracts-macros" }
+bimm-contracts-macros = { version = "0.2.4", path = "../bimm-contracts-macros" }
 burn = { workspace = true, optional = true }
 
 [dev-dependencies]
@@ -31,3 +31,4 @@ harness = false
 [features]
 default = ["burn_support"]
 burn_support = ["burn"]
+std = []

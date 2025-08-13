@@ -1,3 +1,4 @@
+use alloc::vec::Vec;
 #[cfg(feature = "burn_support")]
 use burn::prelude::{Backend, Shape, Tensor};
 #[cfg(feature = "burn_support")]
@@ -91,6 +92,7 @@ impl ShapeArgument for &Vec<i32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::vec;
 
     #[test]
     fn test_shape_argument() {

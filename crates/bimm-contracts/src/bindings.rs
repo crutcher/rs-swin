@@ -1,3 +1,5 @@
+use alloc::vec::Vec;
+
 /// A trait for looking up parameters in a stack-like environment.
 pub trait StackMap<'a, V>
 where

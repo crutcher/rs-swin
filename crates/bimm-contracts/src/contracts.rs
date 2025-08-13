@@ -1,7 +1,10 @@
 use crate::bindings::{MutableStackEnvironment, MutableStackMap, StackEnvironment, StackMap};
 use crate::expressions::{DimExpr, TryMatchResult};
 use crate::shape_argument::ShapeArgument;
-use std::fmt::{Display, Formatter};
+use alloc::format;
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
+use core::fmt::{Display, Formatter};
 
 /// A term in a shape pattern.
 ///
@@ -88,7 +91,7 @@ impl Display for DimMatcher<'_> {
     fn fmt(
         &self,
         f: &mut Formatter<'_>,
-    ) -> std::fmt::Result {
+    ) -> core::fmt::Result {
         if let Some(label) = self.label() {
             write!(f, "{label}: ")?;
         }
@@ -114,7 +117,7 @@ impl Display for ShapeContract<'_> {
     fn fmt(
         &self,
         f: &mut Formatter<'_>,
-    ) -> std::fmt::Result {
+    ) -> core::fmt::Result {
         write!(f, "[")?;
         for (idx, expr) in self.terms.iter().enumerate() {
             if idx > 0 {
@@ -511,6 +514,7 @@ impl<'a> ShapeContract<'a> {
 mod tests {
     use super::*;
     use crate::contracts::{DimMatcher, ShapeContract};
+    use alloc::string::ToString;
     use bimm_contracts_macros::shape_contract;
     use indoc::indoc;
 
