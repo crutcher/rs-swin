@@ -4,7 +4,8 @@ edition.workspace = true
 version.workspace = true
 repository.workspace = true
 license.workspace = true
-description = "proc-macros for bimm contracts"
+homepage = "https://github.com/crutcher/bimm/tree/main/crates/bimm-contracts"
+description = "shape_contract![] proc-macro for bimm-contracts"
 
 [lints]
 workspace = true
