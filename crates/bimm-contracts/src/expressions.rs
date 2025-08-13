@@ -1,6 +1,7 @@
 use crate::bindings::StackMap;
 use crate::math::maybe_iroot;
-use std::fmt::{Display, Formatter};
+use alloc::string::{String, ToString};
+use core::fmt::{Display, Formatter};
 
 /// A stack/static expression algebra for dimension sizes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -25,7 +26,7 @@ impl Display for DimExpr<'_> {
     fn fmt(
         &self,
         f: &mut Formatter<'_>,
-    ) -> std::fmt::Result {
+    ) -> core::fmt::Result {
         // TODO: with some lifting, we could elide more of the parentheses.
         match self {
             DimExpr::Param(param) => write!(f, "{param}"),

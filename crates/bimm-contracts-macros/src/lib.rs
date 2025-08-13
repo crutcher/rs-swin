@@ -1,6 +1,12 @@
 #![warn(missing_docs)]
 //! `proc_macro` support for BIMM Contracts.
 
+extern crate alloc;
+
+use alloc::boxed::Box;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
@@ -279,6 +285,8 @@ impl ShapeContract {
 
 /// Parse a shape contract at compile time and return the `ShapePattern` struct.
 ///
+/// This macro generates `no_std` compatible code.
+///
 /// A shape pattern is made of one or more dimension matcher terms:
 /// - `_`: for any shape; ignores the size, but requires the dimension to exist.,
 /// - `...`: for ellipsis; matches any number of dimensions, only one ellipsis is allowed,
@@ -309,9 +317,10 @@ pub fn shape_contract(input: TokenStream) -> TokenStream {
     let tokens = parsed.contract.to_tokens();
     quote! {
         {
+            extern crate alloc;
             #[allow(unused_imports)]
             use bimm_contracts::{ShapeContract, DimMatcher, DimExpr};
-            use std::boxed::Box;
+            use alloc::boxed::Box;
             #tokens
         }
     }
@@ -321,6 +330,8 @@ pub fn shape_contract(input: TokenStream) -> TokenStream {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::string::ToString;
+    use alloc::vec;
 
     struct ExprSyntax {
         expr: ExprNode,

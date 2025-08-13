@@ -5,7 +5,9 @@
 
 #### Recent Changes
 
-* **0.2.2**
+* **0.2.4**
+  * no_std support.
+* **0.2.3**
   * Extensive documentation.
   * Renamed `ShapeContract::maybe_*` to `ShapeContract::try_*`
 * **0.2.0**
@@ -21,7 +23,7 @@
 
 ## Overview
 
-This is an inline contract programming library for tensor geometry
+This is a `no_std` inline contract programming library for tensor geometry
 for the [burn](https://burn.dev) tensor framework.
 
 Contract programming, or [Design by Contract](https://en.wikipedia.org/wiki/Design_by_contract),

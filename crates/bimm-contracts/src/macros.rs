@@ -40,13 +40,14 @@ macro_rules! run_every_nth {
 
     (@internal $period:literal, $($tt:tt)*) => {{
         if {
-            static PERIOD: std::sync::atomic::AtomicUsize =
-                std::sync::atomic::AtomicUsize::new(1);
-            static COUNTER: std::sync::atomic::AtomicUsize =
-                std::sync::atomic::AtomicUsize::new(0);
+            use core::sync::atomic::AtomicUsize;
+            use core::sync::atomic::Ordering;
 
-            let effective_period = PERIOD.load(std::sync::atomic::Ordering::Relaxed);
-            let count = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            static PERIOD: AtomicUsize = AtomicUsize::new(1);
+            static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+            let effective_period = PERIOD.load(Ordering::Relaxed);
+            let count = COUNTER.fetch_add(1, Ordering::Relaxed);
 
             if effective_period == 1 && count < 10 {
                 true
@@ -56,13 +57,13 @@ macro_rules! run_every_nth {
                 if effective_period < $period {
                     PERIOD.store(
                         (2 * effective_period).clamp(1, $period),
-                        std::sync::atomic::Ordering::Relaxed,
+                        Ordering::Relaxed,
                     );
                 }
                 // Reset the counter when we alter the period;
                 // or periodically reset it to avoid overflow.
                 if effective_period < $period || count > $period * 100 {
-                    COUNTER.store(1, std::sync::atomic::Ordering::Relaxed);
+                    COUNTER.store(1, Ordering::Relaxed);
                 }
                 true
 
@@ -77,6 +78,8 @@ macro_rules! run_every_nth {
 
 #[cfg(test)]
 mod tests {
+    use alloc::vec;
+    use alloc::vec::Vec;
 
     #[test]
     fn test_run_every_nth() {
