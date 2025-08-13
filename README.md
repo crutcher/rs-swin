@@ -51,9 +51,10 @@ This crate provides a SQL-inspired table + operations framework for modular data
 It's still very much a work in progress, and any issues/design bugs reported
 are very appreciated.
 
-#### [bimm-firehose-image](crates/bimm-firehose-image)
-
 This crate provides a set of image-specific operations for `bimm-firehose`.
+
+Add-on crates:
+* [bimm-firehose-image](crates/bimm-firehose-image)
 
 ### [bimm-contracts](crates/bimm-contracts) - a crate for static shape contracts for tensors.
 
