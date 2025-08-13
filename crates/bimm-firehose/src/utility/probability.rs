@@ -1,4 +1,7 @@
-/// Validate a probability range.
+use num_traits::Float;
+use std::fmt::Debug;
+
+/// Validate a probability in the range ``[0.0, 1.0]``.
 ///
 /// ## Arguments
 ///
@@ -6,15 +9,17 @@
 ///
 /// ## Returns
 ///
-/// An `anyhow::Result<f64>`
-pub fn try_probability(prob: f64) -> anyhow::Result<f64> {
-    if !(0.0..=1.0).contains(&prob) {
-        return Err(anyhow::anyhow!("probability must be in [0.0, 1.0]: {prob}"));
+/// An `anyhow::Result<prob>`
+pub fn try_probability<F: Float + Debug>(prob: F) -> anyhow::Result<F> {
+    if prob < F::zero() || prob > F::one() {
+        return Err(anyhow::anyhow!(
+            "probability must be in [0.0, 1.0]: {prob:?}"
+        ));
     }
     Ok(prob)
 }
 
-/// Expect a probability range.
+/// Expect a probability to be in range ``[0.0, 1.0]``, or panic.
 ///
 /// ## Arguments
 ///
@@ -22,12 +27,12 @@ pub fn try_probability(prob: f64) -> anyhow::Result<f64> {
 ///
 /// ## Returns
 ///
-/// An `f64`.
+/// `prob`.
 ///
 /// ## Panics
 ///
 /// On range error.
-pub fn expect_probability(prob: f64) -> f64 {
+pub fn expect_probability<F: Float + Debug>(prob: F) -> F {
     try_probability(prob).unwrap()
 }
 
@@ -37,13 +42,19 @@ mod tests {
 
     #[test]
     fn test_probability() {
-        for v in [0.0, 0.5, 1.0].iter() {
-            assert!(try_probability(*v).is_ok());
-            assert!(expect_probability(*v) == *v);
-        }
+        assert_eq!(expect_probability(0f32), 0f32);
+        assert_eq!(expect_probability(1f32), 1f32);
+        assert_eq!(expect_probability(0.5f32), 0.5f32);
 
-        assert!(try_probability(-1.0).is_err());
-        assert!(try_probability(2.0).is_err());
+        assert_eq!(expect_probability(0f64), 0f64);
+        assert_eq!(expect_probability(1f64), 1f64);
+        assert_eq!(expect_probability(0.5f64), 0.5f64);
+
+        assert!(try_probability(-1.0f32).is_err());
+        assert!(try_probability(2.0f32).is_err());
+
+        assert!(try_probability(-1.0f64).is_err());
+        assert!(try_probability(2.0f64).is_err());
     }
 
     #[should_panic]
