@@ -411,7 +411,7 @@ impl<'a> ShapeContract<'a> {
     where
         S: ShapeArgument,
     {
-        let shape = &shape.get_shape().dims;
+        let shape = &shape.get_shape_vec();
 
         let fail = |msg| -> String {
             format!(
