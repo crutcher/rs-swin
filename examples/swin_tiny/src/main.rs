@@ -13,16 +13,16 @@ use bimm_firehose::core::schema::ColumnSchema;
 use bimm_firehose::core::{
     FirehoseRowBatch, FirehoseRowReader, FirehoseRowWriter, FirehoseTableSchema,
 };
-use bimm_firehose::ops::image::augmentation::AugmentImageOperation;
-use bimm_firehose::ops::image::augmentation::control::choose_one::ChooseOneStage;
-use bimm_firehose::ops::image::augmentation::control::with_prob::WithProbStage;
-use bimm_firehose::ops::image::augmentation::noise::blur::BlurStage;
-use bimm_firehose::ops::image::augmentation::noise::speckle::SpeckleStage;
-use bimm_firehose::ops::image::augmentation::orientation::flip::HorizontalFlipStage;
-use bimm_firehose::ops::image::burn::{ImageToTensorData, stack_tensor_data_column};
-use bimm_firehose::ops::image::loader::{ImageLoader, ResizeSpec};
-use bimm_firehose::ops::image::{ColorType, ImageShape};
 use bimm_firehose::ops::init_default_operator_environment;
+use bimm_firehose_image::augmentation::AugmentImageOperation;
+use bimm_firehose_image::augmentation::control::choose_one::ChooseOneStage;
+use bimm_firehose_image::augmentation::control::with_prob::WithProbStage;
+use bimm_firehose_image::augmentation::noise::blur::BlurStage;
+use bimm_firehose_image::augmentation::noise::speckle::SpeckleStage;
+use bimm_firehose_image::augmentation::orientation::flip::HorizontalFlipStage;
+use bimm_firehose_image::burn_support::{ImageToTensorData, stack_tensor_data_column};
+use bimm_firehose_image::loader::{ImageLoader, ResizeSpec};
+use bimm_firehose_image::{ColorType, ImageShape};
 use burn::backend::{Autodiff, Cuda};
 use burn::config::Config;
 use burn::data::dataloader::{DataLoaderBuilder, Dataset};

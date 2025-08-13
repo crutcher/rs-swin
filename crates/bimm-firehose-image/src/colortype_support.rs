@@ -175,8 +175,8 @@ pub mod serialization {
 mod tests {
     use super::serialization;
     use super::*;
-    use crate::ops::image::ImageShape;
-    use crate::ops::image::test_util::generate_gradient_pattern;
+    use crate::ImageShape;
+    use crate::test_util::generate_gradient_pattern;
     use image::{ColorType, DynamicImage};
     use serde::{Deserialize, Serialize};
 

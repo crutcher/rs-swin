@@ -19,27 +19,14 @@ globwalk = { workspace = true }
 
 anyhow = { workspace = true }
 
-rand = { workspace = true, features = ["std"] }
-# itertools = { workspace = true }
 inventory = { workspace = true }
-# threadpool = { workspace = true }
 
 indoc = { workspace = true }
 
 regex = { workspace = true }
 regex-macro = { workspace = true }
 
-image = { workspace = true, features = ["jpeg", "png", "gif", "serde"] }
-
-# TODO: feature guard this dep behind a `test` feature.
-image-compare = { workspace = true }
 
 [dev-dependencies]
 burn = { workspace = true, features = ["ndarray"] }
-
-tempfile = { workspace = true }
-
-[features]
-nightly = []
-
 

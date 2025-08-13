@@ -346,13 +346,26 @@ dependencies = [
  "anyhow",
  "burn",
  "globwalk",
+ "indoc",
+ "inventory",
+ "regex 1.11.1",
+ "regex-macro",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "bimm-firehose-image"
+version = "0.2.1"
+dependencies = [
+ "anyhow",
+ "bimm-firehose",
+ "burn",
  "image",
  "image-compare",
  "indoc",
  "inventory",
  "rand 0.9.2",
- "regex 1.11.1",
- "regex-macro",
  "serde",
  "serde_json",
  "tempfile",
@@ -2016,6 +2029,7 @@ version = "0.2.1"
 dependencies = [
  "anyhow",
  "bimm-firehose",
+ "bimm-firehose-image",
  "burn",
  "clap",
  "itertools 0.14.0",
@@ -5186,9 +5200,9 @@ dependencies = [
  "anyhow",
  "bimm",
  "bimm-firehose",
+ "bimm-firehose-image",
  "burn",
  "clap",
- "globwalk",
  "rand 0.9.2",
  "serde",
 ]

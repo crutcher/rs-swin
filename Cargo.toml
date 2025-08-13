@@ -27,13 +27,14 @@ rpath = true
 
 # Patch to enable the gradient clipping cherry-pick
 # [patch.crates-io]
-# burn = { git = "https://github.com/tracel-ai/burn", rev = "250d5530c21e03909bd27f6e294dddb63ea0f6c8" }
+# burn_support = { git = "https://github.com/tracel-ai/burn", rev = "250d5530c21e03909bd27f6e294dddb63ea0f6c8" }
 
 [workspace.dependencies]
 bimm = { version = "0.2.1", path = "crates/bimm" }
 bimm-contracts = { version = "0.2.1", path = "crates/bimm-contracts" }
 bimm-contracts-macros = { version = "0.2.1", path = "crates/bimm-contracts-macros" }
 bimm-firehose = { version = "0.2.1", path = "crates/bimm-firehose" }
+bimm-firehose-image = { version = "0.2.1", path = "crates/bimm-firehose-image" }
 
 burn = { version = "^0.18.0" }
 
@@ -49,7 +50,6 @@ regex = { version = "^1.11.1" }
 regex-macro = { version = "^0.3.0" }
 anyhow = { version = "^1.0.99" }
 itertools = { version = "^0.14.0" }
-threadpool = { version = "^1.8.1" }
 
 image = { version = "^0.25.6" }
 

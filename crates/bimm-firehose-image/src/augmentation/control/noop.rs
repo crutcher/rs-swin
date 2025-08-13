@@ -1,8 +1,8 @@
-use crate::define_image_aug_plugin;
-use crate::ops::image::augmentation::{
+use crate::augmentation::{
     AugmentationStage, AugmentationStageConfig, ImageAugContext, PluginBuilder,
     WithAugmentationStageBuilder,
 };
+use crate::define_image_aug_plugin;
 use image::DynamicImage;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

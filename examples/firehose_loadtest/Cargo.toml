@@ -9,6 +9,7 @@ license.workspace = true
 anyhow = { workspace = true }
 burn = { workspace = true, features = ["train", "autodiff", "cuda", "fusion", "vision", "dataset"] }
 bimm-firehose = { workspace = true }
+bimm-firehose-image = { workspace = true }
 rs-cinic-10-index = { version = "^0.2.0" }
 itertools = { workspace = true }
 

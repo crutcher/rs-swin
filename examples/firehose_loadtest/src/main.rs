@@ -1,21 +1,20 @@
+use bimm_firehose::core::operations::executor::FirehoseBatchExecutor;
 use bimm_firehose::core::schema::{ColumnSchema, FirehoseTableSchema};
-use bimm_firehose::ops::image::ImageShape;
-use bimm_firehose::ops::image::burn::stack_tensor_data_column;
-use bimm_firehose::ops::image::loader::{ColorType, ImageLoader, ResizeSpec};
+use bimm_firehose::core::{FirehoseRowBatch, FirehoseRowWriter};
+use bimm_firehose::ops::init_default_operator_environment;
+use bimm_firehose_image::ImageShape;
+use bimm_firehose_image::augmentation::AugmentImageOperation;
+use bimm_firehose_image::augmentation::control::with_prob::WithProbStage;
+use bimm_firehose_image::augmentation::orientation::flip::HorizontalFlipStage;
+use bimm_firehose_image::burn_support::ImageToTensorData;
+use bimm_firehose_image::burn_support::stack_tensor_data_column;
+use bimm_firehose_image::loader::{ColorType, ImageLoader, ResizeSpec};
 use burn::backend::Cuda;
+use burn::prelude::Tensor;
+use clap::Parser;
 use itertools::Itertools;
 use rs_cinic_10_index::Cinic10Index;
 use std::sync::Arc;
-
-use bimm_firehose::core::operations::executor::FirehoseBatchExecutor;
-use bimm_firehose::core::{FirehoseRowBatch, FirehoseRowWriter};
-use bimm_firehose::ops::image::augmentation::AugmentImageOperation;
-use bimm_firehose::ops::image::augmentation::control::with_prob::WithProbStage;
-use bimm_firehose::ops::image::augmentation::orientation::flip::HorizontalFlipStage;
-use bimm_firehose::ops::image::burn::ImageToTensorData;
-use bimm_firehose::ops::init_default_operator_environment;
-use burn::prelude::Tensor;
-use clap::Parser;
 use std::time::Instant;
 
 #[derive(Parser, Debug)]

@@ -1,12 +1,12 @@
-use crate::core::operations::factory::SimpleConfigOperatorFactory;
-use crate::core::operations::operator::FirehoseOperator;
-use crate::core::operations::planner::OperationPlan;
-use crate::core::operations::signature::{FirehoseOperatorSignature, ParameterSpec};
-use crate::core::rows::FirehoseRowTransaction;
-use crate::core::{FirehoseRowReader, FirehoseRowWriter, FirehoseValue};
-use crate::define_firehose_operator;
-use crate::ops::image::{ImageShape, colortype_support};
+use crate::{ImageShape, colortype_support};
 use anyhow::Context;
+use bimm_firehose::core::operations::factory::SimpleConfigOperatorFactory;
+use bimm_firehose::core::operations::operator::FirehoseOperator;
+use bimm_firehose::core::operations::planner::OperationPlan;
+use bimm_firehose::core::operations::signature::{FirehoseOperatorSignature, ParameterSpec};
+use bimm_firehose::core::rows::FirehoseRowTransaction;
+use bimm_firehose::core::{FirehoseRowReader, FirehoseRowWriter, FirehoseValue};
+use bimm_firehose::define_firehose_operator;
 pub use image::imageops::FilterType;
 pub use image::{ColorType, DynamicImage};
 use serde::{Deserialize, Serialize};
@@ -179,13 +179,16 @@ impl FirehoseOperator for ImageLoader {
 mod tests {
     use super::*;
 
-    use crate::ops::init_default_operator_environment;
-
-    use crate::core::operations::executor::{FirehoseBatchExecutor, SequentialBatchExecutor};
-    use crate::core::schema::{ColumnSchema, FirehoseTableSchema};
-    use crate::core::{FirehoseRowBatch, FirehoseRowReader, FirehoseRowWriter, FirehoseValue};
-    use crate::ops::image::test_util::{assert_image_close, generate_gradient_pattern};
+    use crate::test_util::{assert_image_close, generate_gradient_pattern};
     use anyhow::Context;
+    use bimm_firehose::core::operations::executor::{
+        FirehoseBatchExecutor, SequentialBatchExecutor,
+    };
+    use bimm_firehose::core::schema::{ColumnSchema, FirehoseTableSchema};
+    use bimm_firehose::core::{
+        FirehoseRowBatch, FirehoseRowReader, FirehoseRowWriter, FirehoseValue,
+    };
+    use bimm_firehose::ops::init_default_operator_environment;
     use image::DynamicImage;
     use std::sync::Arc;
 

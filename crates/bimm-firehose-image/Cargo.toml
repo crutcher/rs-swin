@@ -1,0 +1,34 @@
+[package]
+name = "bimm-firehose-image"
+edition.workspace = true
+version.workspace = true
+repository.workspace = true
+license.workspace = true
+documentation = "https://docs.rs/bimm-firehose-image/latest/"
+description = "bimm-firehose image processing support"
+
+[lints]
+workspace = true
+
+[dependencies]
+burn = { workspace = true, features = ["dataset", "vision"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+bimm-firehose = { workspace = true }
+
+anyhow = { workspace = true }
+
+rand = { workspace = true, features = ["std"] }
+inventory = { workspace = true }
+
+indoc = { workspace = true }
+
+image = { workspace = true, features = ["jpeg", "png", "gif", "serde"] }
+
+# TODO: feature guard this dep behind a `test` feature.
+image-compare = { workspace = true }
+
+[dev-dependencies]
+burn = { workspace = true, features = ["dataset", "vision", "ndarray"] }
+
+tempfile = { workspace = true }

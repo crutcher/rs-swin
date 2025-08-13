@@ -1,8 +1,8 @@
-use crate::define_image_aug_plugin;
-use crate::ops::image::augmentation::{
+use crate::augmentation::{
     AugmentationStage, AugmentationStageConfig, ImageAugContext, PluginBuilder,
     WithAugmentationStageBuilder,
 };
+use crate::define_image_aug_plugin;
 use anyhow::bail;
 use image::DynamicImage;
 use rand::Rng;
@@ -86,7 +86,7 @@ impl ChooseOneStage {
     {
         self.with_choice(
             weight,
-            Arc::new(crate::ops::image::augmentation::control::noop::NoOpStage {}),
+            Arc::new(crate::augmentation::control::noop::NoOpStage {}),
         )
     }
 }
