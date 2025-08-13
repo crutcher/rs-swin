@@ -4,8 +4,11 @@ edition.workspace = true
 version.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage = "https://github.com/crutcher/bimm/tree/main/crates/bimm-contracts"
 documentation = "https://docs.rs/bimm-contracts/latest/"
-description = "Runtime contracts for the bimm framework"
+description = "Runtime shape/geometry contracts for the burn framework."
+keywords = ["burn", "contracts", "testing", "shape", "tensor"]
+categories = ["development-tools::debugging"]
 
 [lints]
 workspace = true
