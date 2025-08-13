@@ -11,8 +11,9 @@ description = "Runtime contracts for the bimm framework"
 workspace = true
 
 [dependencies]
+bimm-contracts-macros = { version = "0.2.1", path = "../bimm-contracts-macros", optional = true }
+
 burn = { workspace = true }
-bimm-contracts-macros = { workspace = true, optional = true }
 
 [dev-dependencies]
 burn = { workspace = true, features = ["ndarray"] }
