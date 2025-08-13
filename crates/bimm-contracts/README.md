@@ -3,26 +3,6 @@
 ![Crates.io Version](https://img.shields.io/crates/v/bimm-contracts)
 [![docs.rs](https://img.shields.io/docsrs/bimm-contracts)](https://docs.rs/bimm-contracts/latest/)
 
-#### Recent Changes
-
-* **0.2.5**
-  * full support for ``"dim_label" = EXPR`` patterns in contracts.
-* **0.2.4**
-  * no_std support.
-* **0.2.3**
-  * Extensive documentation.
-  * Renamed `ShapeContract::maybe_*` to `ShapeContract::try_*`
-* **0.2.0**
-  * bumped `burn` dependency to `0.18.0`.
-* **0.1.9**
-   * Improved docs and examples.
-   * Internal refactoring for labeled DimMatchers (not supported by macro yet).
-* **0.1.8**
-   * Added `shape_contract!` macro for easier contract definition.
-* **0.1.7**
-   * Removed `assert_shape_every_n` in favor of `run_every_nth!` macro.
-   * Improved isolation of `run_every_nth!`.
-
 ## Overview
 
 This is a `no_std` inline contract programming library for tensor geometry
@@ -35,6 +15,13 @@ The goal of this library is to make in-line geometry contracts:
 * Easy to Read, Write, and Use,
 * Performant at Runtime (so they can always be enabled),
 * Verbose and Helpful in their error messages.
+
+#### Recent Changes
+
+* **0.2.5**
+  * full support for ``"dim_label" = EXPR`` patterns in contracts.
+* **0.2.4**
+  * no_std support.
 
 ## API
 
