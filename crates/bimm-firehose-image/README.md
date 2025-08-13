@@ -16,8 +16,6 @@ use bimm_firehose_image::augmentation::orientation::flip::HorizontalFlipStage;
 use bimm_firehose_image::burn_support::{ImageToTensorData, stack_tensor_data_column};
 use bimm_firehose_image::loader::{ImageLoader, ResizeSpec};
 use bimm_firehose_image::{ColorType, ImageShape};
-use bimm_firehose_schema::{AugmentColumn, AugmentSchema, FirehoseEnv};
-use bimm_firehose_utils::FirehoseError;
 use std::sync::Arc;
 
 const PATH_COLUMN: &str = "path";
