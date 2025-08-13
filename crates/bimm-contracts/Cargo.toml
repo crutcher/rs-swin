@@ -11,7 +11,7 @@ description = "Runtime contracts for the bimm framework"
 workspace = true
 
 [dependencies]
-bimm-contracts-macros = { version = "0.2.1", path = "../bimm-contracts-macros" }
+bimm-contracts-macros = { version = "0.2.2", path = "../bimm-contracts-macros" }
 
 burn = { workspace = true }
 
