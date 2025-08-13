@@ -148,7 +148,8 @@ impl<B: Backend> PatchMerging<B> {
         &self,
         x: Tensor<B, 3>,
     ) -> Tensor<B, 3> {
-        static INPUT_CONTRACT: ShapeContract = shape_contract!("batch", "height" * "width", "d_in");
+        static INPUT_CONTRACT: ShapeContract =
+            shape_contract!["batch", "flat" = "height" * "width", "d_in"];
         let [b, h, w] = INPUT_CONTRACT.unpack_shape(
             &x,
             &["batch", "height", "width"],
@@ -166,7 +167,7 @@ impl<B: Backend> PatchMerging<B> {
         let x = self.norm.forward(x);
         run_every_nth!({
             static OUTPUT_CONTRACT: ShapeContract =
-                shape_contract!("batch", "half_height" * "half_width", "d_out");
+                shape_contract!["batch", "flat" = "half_height" * "half_width", "d_out"];
             OUTPUT_CONTRACT.assert_shape(
                 &x,
                 &[
@@ -204,7 +205,8 @@ pub fn collate_patches<B: Backend, K>(
 where
     K: BasicOps<B>,
 {
-    static INPUT_CONTRACT: ShapeContract = shape_contract!("batch", "height" * "width", "channels");
+    static INPUT_CONTRACT: ShapeContract =
+        shape_contract!["batch", "flat" = "height" * "width", "channels"];
     let [b, h, w, c] = INPUT_CONTRACT.unpack_shape(
         &x,
         &["batch", "height", "width", "channels"],
@@ -252,7 +254,7 @@ where
     let w2 = w / 2;
 
     static INPUT_CONTRACT: ShapeContract =
-        shape_contract!("batch", "half_height" * "half_width", "channels");
+        shape_contract!["batch", "half_height" * "half_width", "channels"];
     let [b, c] = INPUT_CONTRACT.unpack_shape(
         &x,
         &["batch", "channels"],

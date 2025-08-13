@@ -316,7 +316,7 @@ impl ShapeContract {
 /// # Example
 /// ```rust.norun
 /// use bimm_contracts::{ShapeContract, shape_contract};
-/// static CONTRACT: ShapeContract = shape_contract!(_, "x" + "y", ..., "z" ^ 2);
+/// static CONTRACT: ShapeContract = shape_contract![_, "x" + "y", ..., "z" ^ 2];
 /// ```
 #[proc_macro]
 pub fn shape_contract(input: TokenStream) -> TokenStream {

@@ -182,7 +182,7 @@ impl<B: Backend> WindowAttention<B> {
         x: Tensor<B, 3>,
         mask: Option<Tensor<B, 3>>,
     ) -> Tensor<B, 3> {
-        static CONTRACT: ShapeContract = shape_contract!("b_nw", "n", "c");
+        static CONTRACT: ShapeContract = shape_contract!["b_nw", "n", "c"];
         let [b_nw, n, c] = CONTRACT.unpack_shape(&x.shape().dims, &["b_nw", "n", "c"], &[]);
 
         // n = ws * ws
@@ -257,7 +257,7 @@ impl<B: Backend> WindowAttention<B> {
         let attn = softmax(attn, 3);
         run_every_nth!({
             static CONTRACT: ShapeContract =
-                shape_contract!("b_nw", "num_heads", "Wh" * "Ww", "Wh" * "Ww");
+                shape_contract!["b_nw", "num_heads", "Wh" * "Ww", "Wh" * "Ww"];
             CONTRACT.assert_shape(
                 &attn,
                 &[
@@ -433,8 +433,11 @@ mod tests {
         );
 
         let res = attn_mod.forward(input, None);
-        static CONTRACT: ShapeContract =
-            shape_contract!("batch" * "num_windows", "window_size" ^ 2, "channels");
+        static CONTRACT: ShapeContract = shape_contract![
+            "bn" = "batch" * "num_windows",
+            "window_size" ^ 2,
+            "channels"
+        ];
         CONTRACT.assert_shape(
             &res,
             &[

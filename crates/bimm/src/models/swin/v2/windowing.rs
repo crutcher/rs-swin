@@ -22,12 +22,12 @@ pub fn window_partition<B: Backend, K>(
 where
     K: BasicOps<B>,
 {
-    static CONTRACT: ShapeContract = shape_contract!(
+    static CONTRACT: ShapeContract = shape_contract![
         "batch",
         "h_wins" * "window_size",
         "w_wins" * "window_size",
         "channels"
-    );
+    ];
     let [b, h_wins, w_wins, c] = CONTRACT.unpack_shape(
         &tensor,
         &["batch", "h_wins", "w_wins", "channels"],
@@ -61,12 +61,12 @@ pub fn window_reverse<B: Backend, K>(
 where
     K: BasicOps<B>,
 {
-    static CONTRACT: ShapeContract = shape_contract!(
+    static CONTRACT: ShapeContract = shape_contract![
         "batch" * "h_wins" * "w_wins",
         "window_size",
         "window_size",
         "channels"
-    );
+    ];
 
     let h_wins = h / window_size;
     let w_wins = w / window_size;

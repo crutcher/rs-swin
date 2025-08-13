@@ -88,7 +88,7 @@ from a shape contract pattern:
 
 ```rust
 use bimm_contracts::{ShapeContract, shape_contract};
-static CONTRACT: ShapeContract = shape_contract!(_, "x" + "y", ..., "z" ^ 2);
+static CONTRACT: ShapeContract = shape_contract![_, "x" + "y", ..., "z" ^ 2];
 ```
 
 A shape pattern is made of one or more dimension matcher terms:

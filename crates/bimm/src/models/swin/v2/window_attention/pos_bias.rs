@@ -148,15 +148,18 @@ impl<B: Backend> OffsetGridRelativePositionBias<B> {
         let lookup_table = self.cbp.forward(self.rel_coords_table.clone());
         run_every_nth!({
             // 2*h-1, 2*w-1, heads
-            static CONTRACT: ShapeContract =
-                shape_contract!("two" * "height" - "clip", "two" * "width" - "clip", "heads");
+            static CONTRACT: ShapeContract = shape_contract![
+                "height" = "two" * "win_height" - "clip",
+                "width" = "two" * "win_width" - "clip",
+                "heads"
+            ];
             CONTRACT.assert_shape(
                 &lookup_table.dims(),
                 &[
                     ("two", 2),
                     ("clip", 1),
-                    ("height", self.window_height()),
-                    ("width", self.window_width()),
+                    ("win_height", self.window_height()),
+                    ("win_width", self.window_width()),
                     ("heads", self.num_heads()),
                 ],
             );
@@ -178,7 +181,7 @@ impl<B: Backend> OffsetGridRelativePositionBias<B> {
         let x = sigmoid(rpb).mul_scalar(2.0 * self.base);
         run_every_nth!({
             static CONTRACT: ShapeContract =
-                shape_contract!("heads", "height" * "width", "height" * "width");
+                shape_contract!["heads", "flat" = "height" * "width", "height" * "width"];
             CONTRACT.assert_shape(
                 &x.dims(),
                 &[
@@ -340,7 +343,8 @@ mod tests {
         let table = rpb.forward();
         // heads, h*w, h*w
 
-        static CONTRACT: ShapeContract = shape_contract!("heads", "h" * "w", "h" * "w");
+        static CONTRACT: ShapeContract =
+            shape_contract!["heads", "flat" = "h" * "w", "flat" = "h" * "w"];
         CONTRACT.assert_shape(
             &table.dims(),
             &[

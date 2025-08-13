@@ -129,13 +129,13 @@ impl<B: Backend> BlockMlp<B> {
         x: Tensor<B, D>,
     ) -> Tensor<B, D> {
         run_every_nth!({
-            static INPUT_CONTRACT: ShapeContract = shape_contract!(..., "in");
+            static INPUT_CONTRACT: ShapeContract = shape_contract![..., "in"];
             INPUT_CONTRACT.assert_shape(&x, &[("in", self.d_input())]);
         });
 
         let x = self.fc1.forward(x);
         run_every_nth!({
-            static F_CONTRACT: ShapeContract = shape_contract!(..., "h");
+            static F_CONTRACT: ShapeContract = shape_contract![..., "h"];
             F_CONTRACT.assert_shape(&x, &[("h", self.d_hidden())]);
         });
 
@@ -145,7 +145,7 @@ impl<B: Backend> BlockMlp<B> {
 
         let x = self.fc2.forward(x);
         run_every_nth!({
-            static OUTPUT_CONTRACT: ShapeContract = shape_contract!(..., "out");
+            static OUTPUT_CONTRACT: ShapeContract = shape_contract![..., "out"];
             OUTPUT_CONTRACT.assert_shape(&x, &[("out", self.d_output())]);
         });
 
@@ -535,7 +535,7 @@ impl<B: Backend> ShiftedWindowTransformerBlock<B> {
         x: Tensor<B, 3>,
     ) -> Tensor<B, 3> {
         let [h, w] = self.input_resolution;
-        static CONTRACT: ShapeContract = shape_contract!("batch", "height" * "width", "channels");
+        static CONTRACT: ShapeContract = shape_contract!["batch", "height" * "width", "channels"];
         let env = [("height", h), ("width", w)];
         let [b, c] = CONTRACT.unpack_shape(&x, &["batch", "channels"], &env);
 

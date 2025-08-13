@@ -545,7 +545,7 @@ impl<B: Backend> SwinTransformerV2<B> {
         input: Tensor<B, 4>,
     ) -> Tensor<B, 2> {
         static INPUT_CONTRACT: ShapeContract =
-            shape_contract!("batch", "d_input", "height", "width");
+            shape_contract!["batch", "d_input", "height", "width"];
         let [batch] = INPUT_CONTRACT.unpack_shape(
             &input,
             &["batch"],
@@ -559,7 +559,7 @@ impl<B: Backend> SwinTransformerV2<B> {
         let x = self.apply_patching(input);
         run_every_nth!({
             static PATCH_CONTRACT: ShapeContract =
-                shape_contract!("batch", "num_patches", "d_embed");
+                shape_contract!["batch", "num_patches", "d_embed"];
             PATCH_CONTRACT.assert_shape(
                 &x,
                 &[
@@ -573,14 +573,14 @@ impl<B: Backend> SwinTransformerV2<B> {
         let x = self.aggregate_grid(x);
         run_every_nth!({
             static AGGREGATE_CONTRACT: ShapeContract =
-                shape_contract!("batch", "grid_output_features");
+                shape_contract!["batch", "grid_output_features"];
             AGGREGATE_CONTRACT
                 .assert_shape(&x, &[("grid_output_features", self.grid_output_features)]);
         });
 
         let x = self.apply_head(x);
         run_every_nth!({
-            static OUTPUT_CONTRACT: ShapeContract = shape_contract!("batch", "num_classes");
+            static OUTPUT_CONTRACT: ShapeContract = shape_contract!["batch", "num_classes"];
             OUTPUT_CONTRACT
                 .assert_shape(&x, &[("batch", batch), ("num_classes", self.num_classes())]);
         });

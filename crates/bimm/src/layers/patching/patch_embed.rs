@@ -188,7 +188,7 @@ impl<B: Backend> PatchEmbed<B> {
     ) -> Tensor<B, 3> {
         run_every_nth!({
             static INPUT_CONTRACT: ShapeContract =
-                shape_contract!("batch", "d_input", "height", "width");
+                shape_contract!["batch", "d_input", "height", "width"];
             INPUT_CONTRACT.assert_shape(
                 &x,
                 &[
@@ -203,7 +203,7 @@ impl<B: Backend> PatchEmbed<B> {
         let x = self.projection.forward(x);
         run_every_nth!({
             static PROJ_CONTRACT: ShapeContract =
-                shape_contract!("batch", "d_output", "patches_height", "patches_width");
+                shape_contract!["batch", "d_output", "patches_height", "patches_width"];
             PROJ_CONTRACT.assert_shape(
                 &x,
                 &[
@@ -219,7 +219,7 @@ impl<B: Backend> PatchEmbed<B> {
         let x = x.swap_dims(1, 2);
         run_every_nth!({
             static FLATTEN_CONTRACT: ShapeContract =
-                shape_contract!("batch", "num_patches", "d_output");
+                shape_contract!["batch", "num_patches", "d_output"];
             FLATTEN_CONTRACT.assert_shape(
                 &x,
                 &[
@@ -236,7 +236,7 @@ impl<B: Backend> PatchEmbed<B> {
         };
         run_every_nth!({
             static OUTPUT_CONTRACT: ShapeContract =
-                shape_contract!("batch", "num_patches", "d_output");
+                shape_contract!["batch", "num_patches", "d_output"];
             OUTPUT_CONTRACT.assert_shape(
                 &x,
                 &[

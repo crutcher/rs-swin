@@ -278,7 +278,7 @@ impl<B: Backend> StochasticDepthTransformerBlockSequence<B> {
         &self,
         x: Tensor<B, 3>,
     ) -> Tensor<B, 3> {
-        static CONTRACT: ShapeContract = shape_contract!("batch", "height" * "width", "channels");
+        static CONTRACT: ShapeContract = shape_contract!["batch", "height" * "width", "channels"];
         let [h, w] = self.input_resolution();
         let env = [("height", h), ("width", w)];
 
