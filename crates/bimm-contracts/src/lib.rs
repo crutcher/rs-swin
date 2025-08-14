@@ -15,6 +15,11 @@
 //! * Performant at Runtime (so they can always be enabled),
 //! * Verbose and Helpful in their error messages.
 //!
+//! ## Features
+//!
+//! - ``burn``: Shape support for [burn](https://burn.dev) types:
+//!    - `&Tensor`, `&Shape`, `Shape`.
+//!
 //! ## API
 //!
 //! The primary public API of this library is:
@@ -224,6 +229,7 @@ pub mod expressions;
 pub mod macros;
 pub mod math;
 pub mod shape_argument;
+pub mod support;
 
 pub use bindings::StackEnvironment;
 pub use contracts::{DimMatcher, ShapeContract};

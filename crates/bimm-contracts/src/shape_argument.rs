@@ -1,40 +1,11 @@
 //! # Utility crate for [`ShapeArgument`] for passing shapes in a type-safe manner.
 
 use alloc::vec::Vec;
-#[cfg(feature = "burn_support")]
-use burn::prelude::{Backend, Shape, Tensor};
-#[cfg(feature = "burn_support")]
-use burn::tensor::BasicOps;
 
 /// A trait that provides a method to extract the shape from various types.
 pub trait ShapeArgument {
     /// Extracts the shape from the implementing type as a vector.
     fn get_shape_vec(self) -> Vec<usize>;
-}
-
-#[cfg(feature = "burn_support")]
-impl ShapeArgument for &Shape {
-    fn get_shape_vec(self) -> Vec<usize> {
-        self.dims.clone()
-    }
-}
-
-#[cfg(feature = "burn_support")]
-impl ShapeArgument for Shape {
-    fn get_shape_vec(self) -> Vec<usize> {
-        self.dims
-    }
-}
-
-#[cfg(feature = "burn_support")]
-impl<B, const D: usize, K> ShapeArgument for &Tensor<B, D, K>
-where
-    B: Backend,
-    K: BasicOps<B>,
-{
-    fn get_shape_vec(self) -> Vec<usize> {
-        self.shape().dims.clone()
-    }
 }
 
 impl<const D: usize> ShapeArgument for &[usize; D] {
@@ -95,6 +66,7 @@ impl ShapeArgument for &Vec<i32> {
 mod tests {
     use super::*;
     use alloc::vec;
+    use alloc::vec::Vec;
 
     #[test]
     fn test_shape_argument() {
@@ -138,20 +110,6 @@ mod tests {
 
             let vec_ref: &Vec<u32> = &vec;
             assert_eq!(&vec_ref.get_shape_vec(), &expected);
-        }
-
-        #[cfg(feature = "burn_support")]
-        {
-            let shape = Shape::from([2, 3, 4]);
-            assert_eq!(&shape.clone().get_shape_vec(), &expected);
-
-            let shape_ref: &Shape = &shape;
-            assert_eq!(&shape_ref.get_shape_vec(), &expected);
-
-            let tensor: Tensor<burn::backend::NdArray, 2> =
-                Tensor::zeros([2, 2], &Default::default());
-            let tensor_ref = &tensor;
-            assert_eq!(&tensor_ref.get_shape_vec(), &[2, 2]);
         }
     }
 }

@@ -16,8 +16,15 @@ The goal of this library is to make in-line geometry contracts:
 * Performant at Runtime (so they can always be enabled),
 * Verbose and Helpful in their error messages.
 
+## Features
+
+- `burn`: Shape support for [burn](https://burn.dev) types:
+  - `&Tensor`, `&Shape`, `Shape`.
+
 #### Recent Changes
 
+* **0.2.6**
+  * Modularized framework features, made `features=["burn"]` non-default.
 * **0.2.5**
   * full support for ``"dim_label" = EXPR`` patterns in contracts.
 * **0.2.4**
