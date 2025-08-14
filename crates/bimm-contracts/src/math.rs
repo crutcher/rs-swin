@@ -32,6 +32,7 @@ pub fn maybe_iroot(
 }
 
 /// Inner for `maybe_iroot`
+#[inline(always)]
 fn pos_maybe_iroot(
     value: usize,
     exp: usize,

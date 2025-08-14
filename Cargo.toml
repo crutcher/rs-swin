@@ -13,6 +13,7 @@ edition = "2024"
 version = "0.2.6"
 repository = "https://github.com/crutcher/bimm"
 license = "MIT"
+rust-version = "1.88.0"
 
 [workspace.lints.rust]
 warnings = "deny"

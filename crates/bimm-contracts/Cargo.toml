@@ -1,5 +1,6 @@
 [package]
 name = "bimm-contracts"
+rust-version.workspace = true
 edition.workspace = true
 version.workspace = true
 license.workspace = true
@@ -9,6 +10,9 @@ documentation = "https://docs.rs/bimm-contracts/latest/"
 description = "Runtime shape/geometry contracts for the burn framework."
 keywords = ["burn", "contracts", "testing", "shape", "no_std"]
 categories = ["development-tools::debugging"]
+
+[package.metadata.docs.rs]
+all-features = true
 
 [lints]
 workspace = true

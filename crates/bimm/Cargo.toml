@@ -1,5 +1,6 @@
 [package]
 name = "bimm"
+rust-version.workspace = true
 edition.workspace = true
 version.workspace = true
 license.workspace = true

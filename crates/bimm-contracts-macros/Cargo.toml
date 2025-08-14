@@ -1,5 +1,6 @@
 [package]
 name = "bimm-contracts-macros"
+rust-version.workspace = true
 edition.workspace = true
 version.workspace = true
 repository.workspace = true

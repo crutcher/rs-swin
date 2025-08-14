@@ -1,4 +1,6 @@
 #![no_std]
+#![forbid(unsafe_code)]
+#![deny(unused_must_use)]
 #![warn(missing_docs)]
 //! # bimm-contracts
 //!
@@ -213,7 +215,6 @@
 //! ```
 
 extern crate alloc;
-extern crate core;
 
 pub use bimm_contracts_macros::shape_contract;
 
