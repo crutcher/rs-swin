@@ -1907,26 +1907,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "enum-ordinalize"
-version = "4.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fea0dcfa4e54eeb516fe454635a95753ddd39acda650ce703031c6973e315dd5"
-dependencies = [
- "enum-ordinalize-derive",
-]
-
-[[package]]
-name = "enum-ordinalize-derive"
-version = "4.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d28318a75d4aead5c4db25382e8ef717932d0346600cacae6357eb5941bc5ff"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "equator"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2023,19 +2003,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e6853b52649d4ac5c0bd02320cddc5ba956bdb407c4b75a2c6b75bf51500f8c"
 dependencies = [
  "simd-adler32",
-]
-
-[[package]]
-name = "firehose_loadtest"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "bimm-firehose",
- "bimm-firehose-image",
- "burn",
- "clap",
- "itertools 0.14.0",
- "rs-cinic-10-index",
 ]
 
 [[package]]
@@ -4662,21 +4629,6 @@ dependencies = [
  "byteorder",
  "rmp",
  "serde",
-]
-
-[[package]]
-name = "rs-cinic-10-index"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "446dc98d59d0e9f625f1bcfbeec7ce9c89e2f6fcba2039b20873c7d16cd76547"
-dependencies = [
- "anyhow",
- "csv",
- "enum-ordinalize",
- "image",
- "serde",
- "strum 0.27.2",
- "strum_macros 0.27.2",
 ]
 
 [[package]]
