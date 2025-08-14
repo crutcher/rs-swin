@@ -1,3 +1,5 @@
+//! # Evaluation Key/Value bindings.
+
 use alloc::vec::Vec;
 
 /// A trait for looking up parameters in a stack-like environment.

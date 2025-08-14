@@ -1,3 +1,5 @@
+//! Support macros.
+
 /// A macro to run a block of code or an expression every nth time it is called.
 ///
 /// Runs the first 10 times, then doubles the period on each subsequent call,

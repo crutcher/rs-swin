@@ -28,6 +28,10 @@ criterion = { workspace = true }
 name = "contracts"
 harness = false
 
+[[bench]]
+name = "math"
+harness = false
+
 [features]
 default = ["burn_support"]
 burn_support = ["burn"]

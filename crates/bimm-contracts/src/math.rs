@@ -1,3 +1,5 @@
+//! # Mathematical utilities.
+
 /// Find the exact integer nth root if it exists.
 ///
 /// ## Arguments
@@ -12,20 +14,42 @@ pub fn maybe_iroot(
     value: isize,
     exp: usize,
 ) -> Option<isize> {
+    if exp == 1 {
+        return Some(value);
+    }
+    if exp == 0 {
+        return Some(1);
+    }
+    let (value, coeff) = if value >= 0 {
+        (value, 1)
+    } else if exp % 2 == 1 {
+        (-value, -1)
+    } else {
+        // No real root for negative value with even exponent
+        return None;
+    };
+    pos_maybe_iroot(value as usize, exp).map(|v| coeff * (v as isize))
+}
+
+/// Inner for `maybe_iroot`
+fn pos_maybe_iroot(
+    value: usize,
+    exp: usize,
+) -> Option<usize> {
+    if exp == 1 {
+        return Some(value);
+    }
+    if exp == 0 {
+        return Some(1);
+    }
     match value {
-        0 => {
-            if exp == 0 {
-                Some(1)
-            } else {
-                Some(0)
-            }
-        }
+        0 => Some(0),
         1 => Some(1),
-        v if v > 1 => {
+        _ => {
             let exp = exp as u32;
 
             // Bisecting over the exclusive candidate range (lower, upper).
-            let mut lower = 1isize;
+            let mut lower = 1usize;
 
             let mut upper = value.isqrt();
             if exp == 2 && value == upper.pow(2) {
@@ -61,15 +85,6 @@ pub fn maybe_iroot(
                 }
             }
         }
-        v => {
-            // Negative values: only possible for odd exponents
-            if exp % 2 == 1 {
-                // For odd n, (-x)^n = -(x^n), so we can find the positive root and negate
-                maybe_iroot(-v, exp).map(|root| -root)
-            } else {
-                None // No real root for negative value with even exponent
-            }
-        }
     }
 }
 
@@ -78,7 +93,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_maybe_int_root() {
+    fn test_maybe_iroot() {
         assert_eq!(maybe_iroot(0, 0), Some(1));
         assert_eq!(maybe_iroot(0, 2), Some(0));
 
@@ -88,6 +103,10 @@ mod tests {
         assert_eq!(maybe_iroot(4, 2), Some(2));
         assert_eq!(maybe_iroot(8, 3), Some(2));
         assert_eq!(maybe_iroot(27, 3), Some(3));
+
+        // exp == 1 should return the value itself
+        assert_eq!(maybe_iroot(5, 1), Some(5));
+        assert_eq!(maybe_iroot(-7, 1), Some(-7));
 
         assert_eq!(maybe_iroot(-8, 3), Some(-2));
         assert_eq!(maybe_iroot(-16, 4), None);

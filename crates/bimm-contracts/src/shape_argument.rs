@@ -1,3 +1,5 @@
+//! # Utility crate for [`ShapeArgument`] for passing shapes in a type-safe manner.
+
 use alloc::vec::Vec;
 #[cfg(feature = "burn_support")]
 use burn::prelude::{Backend, Shape, Tensor};

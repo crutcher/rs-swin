@@ -1,3 +1,38 @@
+//! # Shape Contracts.
+//!
+//! `bimm-contracts` is built around the [`ShapeContract`] interface.
+//! - A [`ShapeContract`] is a sequence of [`DimMatcher`]s.
+//! - A [`DimMatcher`] matches one or more dimensions of a shape:
+//!   - [`DimMatcher::Any`] matches any dimension size.
+//!   - [`DimMatcher::Ellipsis`] matches a variable number of dimensions (ellipsis).
+//!   - [`DimMatcher::Expr`] matches a dimension expression that must match a specific value.
+//!
+//! A [`ShapeContract`] should usually be constructed using the [`crate::shape_contract`] macro.
+//!
+//! ## Example
+//!
+//! ```rust
+//! use bimm_contracts::{shape_contract, ShapeContract};
+//!
+//! static CONTRACT : ShapeContract = shape_contract![
+//!    ...,
+//!    "height" = "h_wins" * "window",
+//!    "width" = "w_wins" * "window",
+//!    "channels",
+//! ];
+//!
+//! let shape = [1, 2, 3, 2 * 8, 3 * 8, 4];
+//!
+//! // Assert the shape, given the bindings.
+//! let [h_wins, w_wins] = CONTRACT.unpack_shape(
+//!     &shape,
+//!     &["h_wins", "w_wins"],
+//!     &[("window", 8)]
+//! );
+//! assert_eq!(h_wins, 2);
+//! assert_eq!(w_wins, 3);
+//! ```
+
 use crate::bindings::{MutableStackEnvironment, MutableStackMap, StackEnvironment, StackMap};
 use crate::expressions::{DimExpr, TryMatchResult};
 use crate::shape_argument::ShapeArgument;

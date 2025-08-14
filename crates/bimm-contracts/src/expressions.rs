@@ -1,3 +1,12 @@
+//! # Dimension Expressions.
+//!
+//! A [`DimExpr`] is an algebraic constraint pattern matching a dimension.
+//! - [`DimExpr::Param`] matches a binding by name.
+//! - [`DimExpr::Negate`] matches the negation of an inner expression.
+//! - [`DimExpr::Pow`] matches an exponential power of an inner expression.
+//! - [`DimExpr::Sum`] matches the sum of a series of inner expressions.
+//! - [`DimExpr::Prod`] matches the product of a series of inner expressions.
+
 use crate::bindings::StackMap;
 use crate::math::maybe_iroot;
 use alloc::string::{String, ToString};
