@@ -2,7 +2,7 @@ use crate::models::swin::v2::swin_block::{
     ShiftedWindowTransformerBlock, ShiftedWindowTransformerBlockConfig,
     ShiftedWindowTransformerBlockMeta,
 };
-use bimm_contracts::{ShapeContract, run_every_nth, shape_contract};
+use bimm_contracts::{assert_shape_contract_periodically, define_shape_contract};
 use burn::config::Config;
 use burn::module::Module;
 use burn::prelude::{Backend, Tensor};
@@ -278,18 +278,18 @@ impl<B: Backend> StochasticDepthTransformerBlockSequence<B> {
         &self,
         x: Tensor<B, 3>,
     ) -> Tensor<B, 3> {
-        static CONTRACT: ShapeContract = shape_contract!["batch", "height" * "width", "channels"];
         let [h, w] = self.input_resolution();
         let env = [("height", h), ("width", w)];
 
-        run_every_nth!(CONTRACT.assert_shape(&x, &env));
+        define_shape_contract!(CONTRACT, ["batch", "height" * "width", "channels"]);
+        assert_shape_contract_periodically!(CONTRACT, &x, &env);
 
         let mut x = x;
         for block in &self.blocks {
             x = block.forward(x);
         }
 
-        run_every_nth!(CONTRACT.assert_shape(&x, &env));
+        assert_shape_contract_periodically!(CONTRACT, &x, &env);
 
         x
     }

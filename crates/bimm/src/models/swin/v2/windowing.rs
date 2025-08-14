@@ -1,6 +1,6 @@
 //! Windowing operations for Swin Transformer v2
 
-use bimm_contracts::{ShapeContract, shape_contract};
+use bimm_contracts::unpack_shape_contract;
 use burn::prelude::{Backend, Tensor};
 use burn::tensor::BasicOps;
 
@@ -22,16 +22,16 @@ pub fn window_partition<B: Backend, K>(
 where
     K: BasicOps<B>,
 {
-    static CONTRACT: ShapeContract = shape_contract![
-        "batch",
-        "h_wins" * "window_size",
-        "w_wins" * "window_size",
-        "channels"
-    ];
-    let [b, h_wins, w_wins, c] = CONTRACT.unpack_shape(
+    let [b, h_wins, w_wins, c] = unpack_shape_contract!(
+        [
+            "batch",
+            "h_wins" * "window_size",
+            "w_wins" * "window_size",
+            "channels"
+        ],
         &tensor,
         &["batch", "h_wins", "w_wins", "channels"],
-        &[("window_size", window_size)],
+        &[("window_size", window_size)]
     );
 
     tensor
@@ -61,17 +61,16 @@ pub fn window_reverse<B: Backend, K>(
 where
     K: BasicOps<B>,
 {
-    static CONTRACT: ShapeContract = shape_contract![
-        "batch" * "h_wins" * "w_wins",
-        "window_size",
-        "window_size",
-        "channels"
-    ];
-
     let h_wins = h / window_size;
     let w_wins = w / window_size;
 
-    let [b, c] = CONTRACT.unpack_shape(
+    let [b, c] = unpack_shape_contract!(
+        [
+            "batch" * "h_wins" * "w_wins",
+            "window_size",
+            "window_size",
+            "channels"
+        ],
         &windows,
         &["batch", "channels"],
         &[

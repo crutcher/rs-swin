@@ -1,4 +1,4 @@
-use bimm_contracts::{ShapeContract, run_every_nth, shape_contract};
+use bimm_contracts::assert_shape_contract_periodically;
 use burn::config::Config;
 use burn::module::Module;
 use burn::nn::conv::{Conv2d, Conv2dConfig};
@@ -186,66 +186,55 @@ impl<B: Backend> PatchEmbed<B> {
         &self,
         x: Tensor<B, 4>,
     ) -> Tensor<B, 3> {
-        run_every_nth!({
-            static INPUT_CONTRACT: ShapeContract =
-                shape_contract!["batch", "d_input", "height", "width"];
-            INPUT_CONTRACT.assert_shape(
-                &x,
-                &[
-                    ("d_input", self.d_input()),
-                    ("height", self.input_height()),
-                    ("width", self.input_width()),
-                ],
-            );
-        });
+        assert_shape_contract_periodically!(
+            ["batch", "d_input", "height", "width"],
+            &x,
+            &[
+                ("d_input", self.d_input()),
+                ("height", self.input_height()),
+                ("width", self.input_width()),
+            ]
+        );
+
         let batch = x.dims()[0];
 
         let x = self.projection.forward(x);
-        run_every_nth!({
-            static PROJ_CONTRACT: ShapeContract =
-                shape_contract!["batch", "d_output", "patches_height", "patches_width"];
-            PROJ_CONTRACT.assert_shape(
-                &x,
-                &[
-                    ("batch", batch),
-                    ("d_output", self.d_output()),
-                    ("patches_height", self.patches_height()),
-                    ("patches_width", self.patches_width()),
-                ],
-            );
-        });
+        assert_shape_contract_periodically!(
+            ["batch", "d_output", "patches_height", "patches_width"],
+            &x,
+            &[
+                ("batch", batch),
+                ("d_output", self.d_output()),
+                ("patches_height", self.patches_height()),
+                ("patches_width", self.patches_width()),
+            ],
+        );
 
         let x = x.flatten(2, 3);
         let x = x.swap_dims(1, 2);
-        run_every_nth!({
-            static FLATTEN_CONTRACT: ShapeContract =
-                shape_contract!["batch", "num_patches", "d_output"];
-            FLATTEN_CONTRACT.assert_shape(
-                &x,
-                &[
-                    ("batch", batch),
-                    ("num_patches", self.num_patches()),
-                    ("d_output", self.d_output()),
-                ],
-            );
-        });
+        assert_shape_contract_periodically!(
+            ["batch", "num_patches", "d_output"],
+            &x,
+            &[
+                ("batch", batch),
+                ("num_patches", self.num_patches()),
+                ("d_output", self.d_output()),
+            ],
+        );
 
         let x = match self.norm {
             None => x,
             Some(ref norm) => norm.forward(x),
         };
-        run_every_nth!({
-            static OUTPUT_CONTRACT: ShapeContract =
-                shape_contract!["batch", "num_patches", "d_output"];
-            OUTPUT_CONTRACT.assert_shape(
-                &x,
-                &[
-                    ("batch", batch),
-                    ("num_patches", self.num_patches()),
-                    ("d_output", self.d_output()),
-                ],
-            );
-        });
+        assert_shape_contract_periodically!(
+            ["batch", "num_patches", "d_output"],
+            &x,
+            &[
+                ("batch", batch),
+                ("num_patches", self.num_patches()),
+                ("d_output", self.d_output()),
+            ],
+        );
 
         x
     }

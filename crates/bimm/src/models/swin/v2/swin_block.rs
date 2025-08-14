@@ -10,7 +10,7 @@ use burn::prelude::{Backend, Tensor};
 use burn::tensor::BasicOps;
 
 use crate::layers::drop::path::{DropPath, DropPathConfig};
-use bimm_contracts::{ShapeContract, run_every_nth, shape_contract};
+use bimm_contracts::{assert_shape_contract_periodically, define_shape_contract};
 
 /// Common meta-interface for `BlockMlp` config.
 pub trait BlockMlpMeta {
@@ -128,26 +128,29 @@ impl<B: Backend> BlockMlp<B> {
         &self,
         x: Tensor<B, D>,
     ) -> Tensor<B, D> {
-        run_every_nth!({
-            static INPUT_CONTRACT: ShapeContract = shape_contract![..., "in"];
-            INPUT_CONTRACT.assert_shape(&x, &[("in", self.d_input())]);
-        });
+        assert_shape_contract_periodically!(
+            [..., "in"],
+            &x,
+            &[("in", self.d_input())]
+        );
 
         let x = self.fc1.forward(x);
-        run_every_nth!({
-            static F_CONTRACT: ShapeContract = shape_contract![..., "h"];
-            F_CONTRACT.assert_shape(&x, &[("h", self.d_hidden())]);
-        });
+        assert_shape_contract_periodically!(
+            [..., "h"],
+            &x,
+            &[("h", self.d_hidden())]
+        );
 
         let x = self.act.forward(x);
 
         let x = self.drop.forward(x);
 
         let x = self.fc2.forward(x);
-        run_every_nth!({
-            static OUTPUT_CONTRACT: ShapeContract = shape_contract![..., "out"];
-            OUTPUT_CONTRACT.assert_shape(&x, &[("out", self.d_output())]);
-        });
+        assert_shape_contract_periodically!(
+            [..., "out"],
+            &x,
+            &[("out", self.d_output())]
+        );
 
         self.drop.forward(x)
     }
@@ -535,8 +538,9 @@ impl<B: Backend> ShiftedWindowTransformerBlock<B> {
         x: Tensor<B, 3>,
     ) -> Tensor<B, 3> {
         let [h, w] = self.input_resolution;
-        static CONTRACT: ShapeContract = shape_contract!["batch", "height" * "width", "channels"];
         let env = [("height", h), ("width", w)];
+
+        define_shape_contract!(CONTRACT, ["batch", "height" * "width", "channels"]);
         let [b, c] = CONTRACT.unpack_shape(&x, &["batch", "channels"], &env);
 
         let x = self.with_skip(x, |x| {
@@ -550,11 +554,11 @@ impl<B: Backend> ShiftedWindowTransformerBlock<B> {
         });
         // b, h * w, c
 
-        run_every_nth!(CONTRACT.assert_shape(&x, &env));
+        assert_shape_contract_periodically!(CONTRACT, &x, &env);
 
         let x = self.with_skip(x, |x| self.norm2.forward(self.block_mlp.forward(x)));
 
-        run_every_nth!(CONTRACT.assert_shape(&x, &env));
+        assert_shape_contract_periodically!(CONTRACT, &x, &env);
 
         x
     }

@@ -1,5 +1,5 @@
 use crate::models::swin::v2::windowing::{window_partition, window_reverse};
-use bimm_contracts::{ShapeContract, run_every_nth, shape_contract};
+use bimm_contracts::{assert_shape_contract_periodically, unpack_shape_contract};
 use burn::config::Config;
 use burn::module::Module;
 use burn::nn::{LayerNorm, LayerNormConfig, Linear, LinearConfig};
@@ -148,16 +148,15 @@ impl<B: Backend> PatchMerging<B> {
         &self,
         x: Tensor<B, 3>,
     ) -> Tensor<B, 3> {
-        static INPUT_CONTRACT: ShapeContract =
-            shape_contract!["batch", "flat" = "height" * "width", "d_in"];
-        let [b, h, w] = INPUT_CONTRACT.unpack_shape(
+        let [b, h, w] = unpack_shape_contract!(
+            ["batch", "flat" = "height" * "width", "d_in"],
             &x,
             &["batch", "height", "width"],
             &[
                 ("height", self.input_height()),
                 ("width", self.input_width()),
                 ("d_in", self.d_input()),
-            ],
+            ]
         );
 
         let x = collate_patches(x, h, w);
@@ -165,19 +164,16 @@ impl<B: Backend> PatchMerging<B> {
         let x = self.reduction.forward(x);
 
         let x = self.norm.forward(x);
-        run_every_nth!({
-            static OUTPUT_CONTRACT: ShapeContract =
-                shape_contract!["batch", "flat" = "half_height" * "half_width", "d_out"];
-            OUTPUT_CONTRACT.assert_shape(
-                &x,
-                &[
-                    ("batch", b),
-                    ("half_height", self.output_height()),
-                    ("half_width", self.output_width()),
-                    ("d_out", self.d_output()),
-                ],
-            );
-        });
+        assert_shape_contract_periodically!(
+            ["batch", "flat" = "half_height" * "half_width", "d_out"],
+            &x,
+            &[
+                ("batch", b),
+                ("half_height", self.output_height()),
+                ("half_width", self.output_width()),
+                ("d_out", self.d_output()),
+            ]
+        );
 
         x
     }
@@ -205,12 +201,11 @@ pub fn collate_patches<B: Backend, K>(
 where
     K: BasicOps<B>,
 {
-    static INPUT_CONTRACT: ShapeContract =
-        shape_contract!["batch", "flat" = "height" * "width", "channels"];
-    let [b, h, w, c] = INPUT_CONTRACT.unpack_shape(
+    let [b, h, w, c] = unpack_shape_contract!(
+        ["batch", "flat" = "height" * "width", "channels"],
         &x,
         &["batch", "height", "width", "channels"],
-        &[("height", h), ("width", w)],
+        &[("height", h), ("width", w)]
     );
 
     let h2 = h / 2;
@@ -253,12 +248,11 @@ where
     let h2 = h / 2;
     let w2 = w / 2;
 
-    static INPUT_CONTRACT: ShapeContract =
-        shape_contract!["batch", "half_height" * "half_width", "channels"];
-    let [b, c] = INPUT_CONTRACT.unpack_shape(
+    let [b, c] = unpack_shape_contract!(
+        ["batch", "half_height" * "half_width", "channels"],
         &x,
         &["batch", "channels"],
-        &[("half_height", h2), ("half_width", w2)],
+        &[("half_height", h2), ("half_width", w2)]
     );
 
     let c = c / 4;

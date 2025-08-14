@@ -1,12 +1,11 @@
 use crate::models::swin::v2::window_attention::{
     window_attention_relative_position_index, window_log1p_relative_offset_grid,
 };
+use bimm_contracts::assert_shape_contract_periodically;
 use burn::config::Config;
 use burn::module::Module;
 use burn::nn;
 use burn::prelude::{Backend, Int, Tensor};
-// use burn_support::tensor::BasicOps;
-use bimm_contracts::{ShapeContract, run_every_nth, shape_contract};
 use burn::tensor::activation::sigmoid;
 
 /// Common introspection interface for relative position bias modules.
@@ -146,24 +145,21 @@ impl<B: Backend> OffsetGridRelativePositionBias<B> {
         let hw = h * w;
 
         let lookup_table = self.cbp.forward(self.rel_coords_table.clone());
-        run_every_nth!({
-            // 2*h-1, 2*w-1, heads
-            static CONTRACT: ShapeContract = shape_contract![
+        assert_shape_contract_periodically!(
+            [
                 "height" = "two" * "win_height" - "clip",
                 "width" = "two" * "win_width" - "clip",
                 "heads"
-            ];
-            CONTRACT.assert_shape(
-                &lookup_table.dims(),
-                &[
-                    ("two", 2),
-                    ("clip", 1),
-                    ("win_height", self.window_height()),
-                    ("win_width", self.window_width()),
-                    ("heads", self.num_heads()),
-                ],
-            );
-        });
+            ],
+            &lookup_table.dims(),
+            &[
+                ("two", 2),
+                ("clip", 1),
+                ("win_height", self.window_height()),
+                ("win_width", self.window_width()),
+                ("heads", self.num_heads()),
+            ],
+        );
 
         let rpb_table = lookup_table.reshape([-1, self.num_heads as i32]);
         // 2*((h-1) * (w-1)), heads
@@ -179,18 +175,15 @@ impl<B: Backend> OffsetGridRelativePositionBias<B> {
         // heads, h*w, h*w
 
         let x = sigmoid(rpb).mul_scalar(2.0 * self.base);
-        run_every_nth!({
-            static CONTRACT: ShapeContract =
-                shape_contract!["heads", "flat" = "height" * "width", "height" * "width"];
-            CONTRACT.assert_shape(
-                &x.dims(),
-                &[
-                    ("heads", self.num_heads()),
-                    ("height", self.window_height()),
-                    ("width", self.window_width()),
-                ],
-            );
-        });
+        assert_shape_contract_periodically!(
+            ["heads", "flat" = "height" * "width", "height" * "width"],
+            &x.dims(),
+            &[
+                ("heads", self.num_heads()),
+                ("height", self.window_height()),
+                ("width", self.window_width()),
+            ],
+        );
 
         x
     }
@@ -287,7 +280,7 @@ mod tests {
     use crate::models::swin::v2::window_attention::{
         window_attention_relative_position_index, window_log1p_relative_offset_grid,
     };
-    use bimm_contracts::{ShapeContract, shape_contract};
+    use bimm_contracts::assert_shape_contract;
     use burn::backend::NdArray;
 
     #[test]
@@ -343,10 +336,9 @@ mod tests {
         let table = rpb.forward();
         // heads, h*w, h*w
 
-        static CONTRACT: ShapeContract =
-            shape_contract!["heads", "flat" = "h" * "w", "flat" = "h" * "w"];
-        CONTRACT.assert_shape(
-            &table.dims(),
+        assert_shape_contract!(
+            ["heads", "flat" = "h" * "w", "flat" = "h" * "w"],
+            &table,
             &[
                 ("heads", num_heads),
                 ("h", window_shape[0]),

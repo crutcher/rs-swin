@@ -22,11 +22,45 @@
 //!
 //! ## API
 //!
-//! The primary public API of this library is:
-//! * [`shape_contract`] - a macro for defining shape contracts.
-//! * [`run_every_nth`] - a macro for running code on an incrementally lengthening schedule.
-//! * [`ShapeContract::assert_shape`] - assert a contract.
-//! * [`ShapeContract::unpack_shape`] - assert a contract, and unpack geometry components.
+//! Users will primarily use the macros:
+//! - [`unpack_shape_contract`],
+//! - [`assert_shape_contract`], and
+//! - [`assert_shape_contract_periodically`].
+//!
+//! For example:
+//! ```rust,no_run
+//! use bimm_contracts::unpack_shape_contract;
+//!
+//! let shape = [12, 3 * 4, 5 * 4, 3];
+//!
+//! // In release builds, this has an benchmark of ~160ns:
+//! let [b, h_wins, w_wins, c] = unpack_shape_contract!(
+//!     [
+//!         "batch",
+//!         "height" = "h_wins" * "window_size",
+//!         "width" = "w_wins" * "window_size",
+//!         "channels"
+//!     ],
+//!     &shape,
+//!     &["batch", "h_wins", "w_wins", "channels"],
+//!     &[("window_size", 4)],
+//! );
+//!
+//! assert_eq!(b, 12);
+//! assert_eq!(h_wins, 3);
+//! assert_eq!(w_wins, 4);
+//! assert_eq!(c, 3);
+//! ```
+//!
+//! In turn, these macros wrap the layer 2 api:
+//! * [`shape_contract`] - a macro for defining shape contracts from expressions.
+//! * [`define_shape_contract`] - a macro for defining a static contract.
+//! * [`ShapeContract`] - the constructed contract type.
+//!   * [`ShapeContract::assert_shape`] - assert a contract.
+//!   * [`ShapeContract::unpack_shape`] - assert a contract, and unpack geometry components.
+//! * [`run_periodically`] - a macro for running code on an incrementally lengthening schedule.
+//!
+//! ### `ShapeArgument` Support
 //!
 //! The shape methods take a [`ShapeArgument`] parameter; with implementations for:
 //! * ``&[usize]``, ``&[usize; D]``,
@@ -98,6 +132,79 @@
 //! MulOp =>      '*'
 //! ```
 //!
+//! ## Usage Example
+//!
+//! ```rust,no_run
+//! use burn::prelude::{Tensor, Backend};
+//! use burn::tensor::BasicOps;
+//! use bimm_contracts::{unpack_shape_contract, assert_shape_contract_periodically};
+//!
+//! /// Window Partition
+//! ///
+//! /// ## Parameters
+//! ///
+//! /// - `tensor`: Input tensor of shape (B, h_wins * window_size, w_wins * window_size, C).
+//! /// - `window_size`: Window size.
+//! ///
+//! /// ## Returns
+//! ///
+//! /// Output tensor of shape (B * h_windows * w_windows, window_size, window_size, C).
+//! ///
+//! /// ## Panics
+//! ///
+//! /// Panics if the input tensor does not have 4 dimensions.
+//! pub fn window_partition<B: Backend, K>(
+//!     tensor: Tensor<B, 4, K>,
+//!     window_size: usize,
+//! ) -> Tensor<B, 4, K>
+//! where
+//!     K: BasicOps<B>,
+//! {
+//!     // In release builds, this has an benchmark of ~160ns:
+//!     let [b, h_wins, w_wins, c] = unpack_shape_contract!(
+//!         [
+//!             "batch",
+//!             "height" = "h_wins" * "window_size",
+//!             "width" = "w_wins" * "window_size",
+//!             "channels"
+//!         ],
+//!         &tensor,
+//!         &["batch", "h_wins", "w_wins", "channels"],
+//!         &[("window_size", window_size)],
+//!     );
+//!
+//!     let tensor = tensor
+//!         .reshape([b, h_wins, window_size, w_wins, window_size, c])
+//!         .swap_dims(2, 3)
+//!         .reshape([b * h_wins * w_wins, window_size, window_size, c]);
+//!
+//!     // Run an amortized check on the output shape.
+//!     //
+//!     // `run_periodically!{}` runs the first 10 times,
+//!     // then on an incrementally lengthening schedule,
+//!     // until it reaches its default period of 1000.
+//!     //
+//!     // Due to amortization, in release builds, this averages ~4ns:
+//!     assert_shape_contract_periodically!(
+//!         [
+//!             "batch" * "h_wins" * "w_wins",
+//!             "window_size",
+//!             "window_size",
+//!             "channels"
+//!         ],
+//!         &tensor,
+//!         &[
+//!             ("batch", b),
+//!             ("h_wins", h_wins),
+//!             ("w_wins", w_wins),
+//!             ("window_size", window_size),
+//!             ("channels", c),
+//!         ]
+//!     );
+//!
+//!     tensor
+//! }
+//! ```
 //! ## Error Messages
 //!
 //! Error messages are verbose and helpful.
@@ -142,82 +249,6 @@
 //!               {"window": 5, "color": 3}"#
 //!         },
 //!     );
-//! }
-//! ```
-//!
-//! ## Usage Example
-//!
-//! ```rust,no_run
-//! use burn::prelude::{Tensor, Backend};
-//! use burn::tensor::BasicOps;
-//! use bimm_contracts::{ShapeContract, shape_contract, run_every_nth};
-//!
-//! /// Window Partition
-//! ///
-//! /// ## Parameters
-//! ///
-//! /// - `tensor`: Input tensor of shape (B, h_wins * window_size, w_wins * window_size, C).
-//! /// - `window_size`: Window size.
-//! ///
-//! /// ## Returns
-//! ///
-//! /// Output tensor of shape (B * h_windows * w_windows, window_size, window_size, C).
-//! ///
-//! /// ## Panics
-//! ///
-//! /// Panics if the input tensor does not have 4 dimensions.
-//! pub fn window_partition<B: Backend, K>(
-//!     tensor: Tensor<B, 4, K>,
-//!     window_size: usize,
-//! ) -> Tensor<B, 4, K>
-//! where
-//!     K: BasicOps<B>,
-//! {
-//!     static INPUT_CONTRACT: ShapeContract = shape_contract![
-//!         "batch",
-//!         "height" = "h_wins" * "window_size",
-//!         "width" = "w_wins" * "window_size",
-//!         "channels"
-//!     ];
-//!     // In release builds, this has an benchmark of ~160ns:
-//!     let [b, h_wins, w_wins, c] = INPUT_CONTRACT.unpack_shape(
-//!         &tensor,
-//!         &["batch", "h_wins", "w_wins", "channels"],
-//!         &[("window_size", window_size)],
-//!     );
-//!
-//!     let tensor = tensor
-//!         .reshape([b, h_wins, window_size, w_wins, window_size, c])
-//!         .swap_dims(2, 3)
-//!         .reshape([b * h_wins * w_wins, window_size, window_size, c]);
-//!
-//!     // Run an amortized check on the output shape.
-//!     //
-//!     // `run_every_nth!{}` runs the first 10 times,
-//!     // then on an incrementally lengthening schedule,
-//!     // until it reaches its default period of 1000.
-//!     //
-//!     // Due to amortization, in release builds, this averages ~4ns:
-//!     run_every_nth!({
-//!         static OUTPUT_CONTRACT: ShapeContract = shape_contract![
-//!             "batch" * "h_wins" * "w_wins",
-//!             "window_size",
-//!             "window_size",
-//!             "channels"
-//!         ];
-//!         OUTPUT_CONTRACT.assert_shape(
-//!             &tensor,
-//!             &[
-//!                 ("batch", b),
-//!                 ("h_wins", h_wins),
-//!                 ("w_wins", w_wins),
-//!                 ("window_size", window_size),
-//!                 ("channels", c),
-//!             ]
-//!         );
-//!     });
-//!
-//!     tensor
 //! }
 //! ```
 

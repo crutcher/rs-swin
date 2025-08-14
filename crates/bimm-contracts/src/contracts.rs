@@ -223,12 +223,12 @@ impl<'a> ShapeContract<'a> {
     /// ## Example
     ///
     /// ```rust
-    /// use bimm_contracts::{shape_contract, run_every_nth, ShapeContract};
+    /// use bimm_contracts::{shape_contract, run_periodically, ShapeContract};
     ///
     /// let shape = [1, 2, 3, 2 * 8, 3 * 8, 4];
     ///
     /// // Run under backoff amortization.
-    /// run_every_nth! {{
+    /// run_periodically! {{
     ///     // Statically allocated contract.
     ///     static CONTRACT : ShapeContract = shape_contract![
     ///        ...,
@@ -273,7 +273,7 @@ impl<'a> ShapeContract<'a> {
     /// ## Example
     ///
     /// ```rust
-    /// use bimm_contracts::{shape_contract, run_every_nth, ShapeContract};
+    /// use bimm_contracts::{shape_contract, run_periodically, ShapeContract};
     ///
     /// let shape = [1, 2, 3, 2 * 8, 3 * 8, 4];
     ///
@@ -330,7 +330,7 @@ impl<'a> ShapeContract<'a> {
     /// ## Example
     ///
     /// ```rust
-    /// use bimm_contracts::{shape_contract, run_every_nth, ShapeContract};
+    /// use bimm_contracts::{shape_contract, run_periodically, ShapeContract};
     ///
     /// let shape = [1, 2, 3, 2 * 8, 3 * 8, 4];
     ///
@@ -388,7 +388,7 @@ impl<'a> ShapeContract<'a> {
     /// ## Example
     ///
     /// ```rust
-    /// use bimm_contracts::{shape_contract, run_every_nth, ShapeContract};
+    /// use bimm_contracts::{shape_contract, run_periodically, ShapeContract};
     ///
     /// let shape = [1, 2, 3, 2 * 8, 3 * 8, 4];
     ///

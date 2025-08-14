@@ -75,7 +75,7 @@ This includes:
   amortizing the cost of checks over multiple calls.
 
 ```rust
-use bimm_contracts::{ShapeContract, shape_contract, run_every_nth};
+use bimm_contracts::{ShapeContract, shape_contract, run_periodically};
 
 pub fn window_partition<B: Backend, K>(
     tensor: Tensor<B, 4, K>,
@@ -103,7 +103,7 @@ where
 
     // Run this check periodically on a doubling schedule,
     // up to the default of every 1000th call.
-    run_every_nth!({
+    run_periodically!({
         // I'd normally not use a contract here, as the shape is already
         // very clear from the above operations; but this is an example
         // of low-overhead periodic shape checking.

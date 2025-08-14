@@ -6,7 +6,7 @@ pub use attention_mask::*;
 pub use pos_bias::*;
 pub use pos_grid::*;
 
-use bimm_contracts::{ShapeContract, run_every_nth, shape_contract};
+use bimm_contracts::{assert_shape_contract_periodically, unpack_shape_contract};
 use burn::config::Config;
 use burn::module::{Module, Param, ParamId};
 use burn::nn::{Dropout, DropoutConfig, Linear, LinearConfig};
@@ -182,8 +182,7 @@ impl<B: Backend> WindowAttention<B> {
         x: Tensor<B, 3>,
         mask: Option<Tensor<B, 3>>,
     ) -> Tensor<B, 3> {
-        static CONTRACT: ShapeContract = shape_contract!["b_nw", "n", "c"];
-        let [b_nw, n, c] = CONTRACT.unpack_shape(&x.shape().dims, &["b_nw", "n", "c"], &[]);
+        let [b_nw, n, c] = unpack_shape_contract!(["b_nw", "n", "c"], &x);
 
         // n = ws * ws
 
@@ -255,19 +254,16 @@ impl<B: Backend> WindowAttention<B> {
 
         // (b_nw, num_heads, Wh*Ww, Wh*Ww)
         let attn = softmax(attn, 3);
-        run_every_nth!({
-            static CONTRACT: ShapeContract =
-                shape_contract!["b_nw", "num_heads", "Wh" * "Ww", "Wh" * "Ww"];
-            CONTRACT.assert_shape(
-                &attn,
-                &[
-                    ("b_nw", b_nw),
-                    ("num_heads", self.num_heads()),
-                    ("Wh", self.window_shape()[0]),
-                    ("Ww", self.window_shape()[1]),
-                ],
-            );
-        });
+        assert_shape_contract_periodically!(
+            ["b_nw", "num_heads", "Wh" * "Ww", "Wh" * "Ww"],
+            &attn,
+            &[
+                ("b_nw", b_nw),
+                ("num_heads", self.num_heads()),
+                ("Wh", self.window_shape()[0]),
+                ("Ww", self.window_shape()[1]),
+            ],
+        );
 
         attn
     }
@@ -372,7 +368,7 @@ impl WindowAttentionConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bimm_contracts::shape_contract;
+    use bimm_contracts::assert_shape_contract;
     use burn::backend::NdArray;
     use burn::prelude::Tensor;
     use burn::tensor::Distribution;
@@ -433,12 +429,12 @@ mod tests {
         );
 
         let res = attn_mod.forward(input, None);
-        static CONTRACT: ShapeContract = shape_contract![
-            "bn" = "batch" * "num_windows",
-            "window_size" ^ 2,
-            "channels"
-        ];
-        CONTRACT.assert_shape(
+        assert_shape_contract!(
+            [
+                "bn" = "batch" * "num_windows",
+                "window_size" ^ 2,
+                "channels"
+            ],
             &res,
             &[
                 ("batch", b),

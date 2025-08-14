@@ -5,7 +5,7 @@ use crate::models::swin::v2::block_sequence::{
     StochasticDepthTransformerBlockSequenceMeta,
 };
 use crate::models::swin::v2::patch_merge::{PatchMerging, PatchMergingConfig};
-use bimm_contracts::{ShapeContract, run_every_nth, shape_contract};
+use bimm_contracts::{assert_shape_contract_periodically, unpack_shape_contract};
 use burn::config::Config;
 use burn::module::{Module, Param};
 use burn::nn::pool::{AdaptiveAvgPool1d, AdaptiveAvgPool1dConfig};
@@ -544,46 +544,41 @@ impl<B: Backend> SwinTransformerV2<B> {
         &self,
         input: Tensor<B, 4>,
     ) -> Tensor<B, 2> {
-        static INPUT_CONTRACT: ShapeContract =
-            shape_contract!["batch", "d_input", "height", "width"];
-        let [batch] = INPUT_CONTRACT.unpack_shape(
+        let [batch] = unpack_shape_contract!(
+            ["batch", "d_input", "height", "width"],
             &input,
             &["batch"],
             &[
                 ("d_input", self.d_input()),
                 ("height", self.input_height()),
                 ("width", self.input_width()),
-            ],
+            ]
         );
 
         let x = self.apply_patching(input);
-        run_every_nth!({
-            static PATCH_CONTRACT: ShapeContract =
-                shape_contract!["batch", "num_patches", "d_embed"];
-            PATCH_CONTRACT.assert_shape(
-                &x,
-                &[
-                    ("num_patches", self.patch_embed.num_patches()),
-                    ("d_embed", self.d_embed()),
-                ],
-            );
-        });
+        assert_shape_contract_periodically!(
+            ["batch", "num_patches", "d_embed"],
+            &x,
+            &[
+                ("num_patches", self.patch_embed.num_patches()),
+                ("d_embed", self.d_embed()),
+            ]
+        );
 
         let x = self.apply_stack(x);
         let x = self.aggregate_grid(x);
-        run_every_nth!({
-            static AGGREGATE_CONTRACT: ShapeContract =
-                shape_contract!["batch", "grid_output_features"];
-            AGGREGATE_CONTRACT
-                .assert_shape(&x, &[("grid_output_features", self.grid_output_features)]);
-        });
+        assert_shape_contract_periodically!(
+            ["batch", "grid_output_features"],
+            &x,
+            &[("grid_output_features", self.grid_output_features)]
+        );
 
         let x = self.apply_head(x);
-        run_every_nth!({
-            static OUTPUT_CONTRACT: ShapeContract = shape_contract!["batch", "num_classes"];
-            OUTPUT_CONTRACT
-                .assert_shape(&x, &[("batch", batch), ("num_classes", self.num_classes())]);
-        });
+        assert_shape_contract_periodically!(
+            ["batch", "num_classes"],
+            &x,
+            &[("batch", batch), ("num_classes", self.num_classes())]
+        );
 
         x
     }

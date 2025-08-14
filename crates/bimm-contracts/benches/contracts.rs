@@ -1,4 +1,4 @@
-use bimm_contracts::{DimExpr, DimMatcher, ShapeContract, run_every_nth};
+use bimm_contracts::{DimExpr, DimMatcher, ShapeContract, run_periodically};
 use criterion::{Criterion, criterion_group, criterion_main};
 
 static PATTERN: ShapeContract = ShapeContract::new(&[
@@ -84,7 +84,7 @@ fn bench_assert_shape_every_nth(c: &mut Criterion) {
 
     group.bench_function("assert_shape_every_nth", |b| {
         b.iter(|| {
-            run_every_nth!(PATTERN.assert_shape(&shape, &env));
+            run_periodically!(PATTERN.assert_shape(&shape, &env));
         })
     });
     group.finish();
