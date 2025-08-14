@@ -15,6 +15,11 @@
 //! * Performant at Runtime (so they can always be enabled),
 //! * Verbose and Helpful in their error messages.
 //!
+//! ## Features
+//!
+//! - ``burn``: Shape support for [burn](https://burn.dev) types:
+//!    - `&Tensor`, `&Shape`, `Shape`.
+//!
 //! ## API
 //!
 //! The primary public API of this library is:
@@ -24,15 +29,17 @@
 //! * [`ShapeContract::unpack_shape`] - assert a contract, and unpack geometry components.
 //!
 //! The shape methods take a [`ShapeArgument`] parameter; with implementations for:
-//! * ``burn::prelude::Shape``,
-//! * ``&burn::prelude::Shape``,
-//! * ``&burn::prelude::Tensor``,
 //! * ``&[usize]``, ``&[usize; D]``,
 //! * ``&[u32]``, ``&[u32; D]``,
 //! * ``&[i32]``, ``&[i32; D]``,
 //! * ``&Vec<usize>``,
 //! * ``&Vec<u32>``,
-//! * ``&Vec<i32>``,
+//! * ``&Vec<i32>``
+//!
+//! With ``features = ["burn"]``:
+//! * ``burn::prelude::Shape``,
+//! * ``&burn::prelude::Shape``,
+//! * ``&burn::prelude::Tensor``
 //!
 //! ## Speed and Stack Design
 //!
@@ -224,6 +231,7 @@ pub mod expressions;
 pub mod macros;
 pub mod math;
 pub mod shape_argument;
+pub mod support;
 
 pub use bindings::StackEnvironment;
 pub use contracts::{DimMatcher, ShapeContract};

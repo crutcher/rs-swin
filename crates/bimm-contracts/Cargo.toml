@@ -37,6 +37,6 @@ name = "math"
 harness = false
 
 [features]
-default = ["burn_support"]
-burn_support = ["burn"]
+default = ["burn"]
+burn = ["dep:burn"]
 std = []
