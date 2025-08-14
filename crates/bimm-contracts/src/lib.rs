@@ -29,15 +29,17 @@
 //! * [`ShapeContract::unpack_shape`] - assert a contract, and unpack geometry components.
 //!
 //! The shape methods take a [`ShapeArgument`] parameter; with implementations for:
-//! * ``burn::prelude::Shape``,
-//! * ``&burn::prelude::Shape``,
-//! * ``&burn::prelude::Tensor``,
 //! * ``&[usize]``, ``&[usize; D]``,
 //! * ``&[u32]``, ``&[u32; D]``,
 //! * ``&[i32]``, ``&[i32; D]``,
 //! * ``&Vec<usize>``,
 //! * ``&Vec<u32>``,
-//! * ``&Vec<i32>``,
+//! * ``&Vec<i32>``
+//!
+//! With ``features = ["burn"]``:
+//! * ``burn::prelude::Shape``,
+//! * ``&burn::prelude::Shape``,
+//! * ``&burn::prelude::Tensor``
 //!
 //! ## Speed and Stack Design
 //!

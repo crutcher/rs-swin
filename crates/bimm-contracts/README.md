@@ -16,11 +16,6 @@ The goal of this library is to make in-line geometry contracts:
 * Performant at Runtime (so they can always be enabled),
 * Verbose and Helpful in their error messages.
 
-## Features
-
-- `burn`: Shape support for [burn](https://burn.dev) types:
-  - `&Tensor`, `&Shape`, `Shape`.
-
 #### Recent Changes
 
 * **0.2.6**
@@ -29,6 +24,25 @@ The goal of this library is to make in-line geometry contracts:
   * full support for ``"dim_label" = EXPR`` patterns in contracts.
 * **0.2.4**
   * no_std support.
+
+## Features
+
+- `burn`: Shape support for [burn](https://burn.dev) types:
+  - `&Tensor`, `&Shape`, `Shape`.
+
+## ToDo
+
+I'm particularly interested in PRs which provide:
+
+- Potential combined static-def + runtime call `unpack_shape!` and `assert_shape!` macros.
+- Explore `ShapeArgument` interface to build an abstract reference-based index type;
+  to avoid a stack `Vec<usize>` allocation.
+- Add framework support for additional tensor types.
+- Potential re-work of `shape_contract!`'s macro parser's:
+  - For grammar issues,
+  - For error reporting,
+  - To firm up case testing.
+- Speed tuning of the solver's fast-path.
 
 ## API
 
@@ -39,15 +53,17 @@ The primary public API of this library is:
 * `ShapeContract::unpack_shape` - assert a contract, and unpack geometry components.
 
 The shape methods take a `ShapeArgument` parameter; with implementations for:
-* ``burn::prelude::Shape``,
-* ``&burn::prelude::Shape``,
-* ``&burn::prelude::Tensor``,
 * ``&[usize]``, ``&[usize; D]``,
 * ``&[u32]``, ``&[u32; D]``,
 * ``&[i32]``, ``&[i32; D]``,
 * ``&Vec<usize>``,
 * ``&Vec<u32>``,
 * ``&Vec<i32>``,
+
+With `features = ["burn"]`:
+* ``burn::prelude::Shape``,
+* ``&burn::prelude::Shape``,
+* ``&burn::prelude::Tensor``
 
 ## Speed and Stack Design
 
