@@ -67,7 +67,7 @@ use bimm_contracts::unpack_shape_contract;
 
 let shape = [12, 3 * 4, 5 * 4, 3];
 
-// In release builds, this has an benchmark of ~160ns:
+// In release builds, this has a benchmark of ~160ns:
 let [b, h_wins, w_wins, c] = unpack_shape_contract!(
     [
         "batch",
@@ -194,7 +194,7 @@ pub fn window_partition<B: Backend, K>(
 where
     K: BasicOps<B>,
 {
-    // In release builds, this has an benchmark of ~170ns:
+    // In release builds, this has a benchmark of ~170ns:
     let [b, h_wins, w_wins, c] = unpack_shape_contract!(
         [
             "batch",

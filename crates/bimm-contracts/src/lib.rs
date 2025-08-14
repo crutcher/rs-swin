@@ -33,7 +33,7 @@
 //!
 //! let shape = [12, 3 * 4, 5 * 4, 3];
 //!
-//! // In release builds, this has an benchmark of ~160ns:
+//! // In release builds, this has a benchmark of ~160ns:
 //! let [b, h_wins, w_wins, c] = unpack_shape_contract!(
 //!     [
 //!         "batch",
@@ -160,7 +160,7 @@
 //! where
 //!     K: BasicOps<B>,
 //! {
-//!     // In release builds, this has an benchmark of ~160ns:
+//!     // In release builds, this has a benchmark of ~160ns:
 //!     let [b, h_wins, w_wins, c] = unpack_shape_contract!(
 //!         [
 //!             "batch",
