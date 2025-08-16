@@ -3,7 +3,6 @@
 use crate::utility::expect_probability;
 use burn::prelude::{Backend, Bool, Int, Tensor};
 use burn::tensor::Distribution;
-use burn::tensor::grid::{GridIndexing, meshgrid};
 use burn::tensor::module::max_pool2d;
 use std::cmp::min;
 
@@ -120,83 +119,34 @@ impl DropBlockOptions {
     }
 }
 
-/// The valid block map.
-#[inline(always)]
-fn valid_block_map<B: Backend>(
-    block_size: usize,
+/// Clip Mask
+#[allow(unused)]
+fn clip_mask<B: Backend>(
     h: usize,
     w: usize,
+    kernel: usize,
     device: &B::Device,
-) -> Tensor<B, 4, Bool> {
-    let cbs = min(block_size, min(h, w));
-
-    // FIXME: this reverses the `timm` implementation; (H, W) vs (W, H); find the bug.
-    let [h_i, w_i]: [Tensor<B, 2, Int>; 2] = meshgrid(
-        &[
-            Tensor::arange(0..(h as i64), device),
-            Tensor::arange(0..(w as i64), device),
-        ],
-        GridIndexing::Matrix,
+) -> Tensor<B, 2, Bool> {
+    assert!(
+        kernel <= h && kernel <= w,
+        "kernel={kernel} must be <= h={h} and <= w={w}"
     );
-    let wa = w_i.clone().greater_equal_elem((cbs / 2) as i64);
-    let wb = w_i.clone().lower_elem((w - ((cbs - 1) / 2)) as i64);
-    let ha = h_i.clone().greater_equal_elem((cbs / 2) as i64);
-    let hb = h_i.clone().lower_elem((h - ((cbs - 1) / 2)) as i64);
 
-    let m = wa.bool_and(wb)
-        .bool_and(ha)
-        .bool_and(hb)
-        .reshape([1, 1, h, w]);
+    let start = kernel / 2;
+    let end = (kernel - 1) / 2;
 
-    println!("vbm: {m:?}");
-
-    m
+    let mask: Tensor<B, 2, Int> = Tensor::zeros([h, w], device);
+    let mut mask = mask.bool();
+    mask.inplace(|t| t.slice_fill([start..h - end, start..w - end], true));
+    mask
 }
 
 #[inline(always)]
-fn fuzz_block_mask<B: Backend>(
-    block_mask: Tensor<B, 4>,
-    gamma: f32,
-    noise: Tensor<B, 4>,
-) -> Tensor<B, 4, Bool> {
-    (2.0 - gamma - block_mask + noise).greater_equal_elem(1.0)
-}
-
-#[inline(always)]
-fn pool_block_mask<B: Backend>(
+fn pool_block_seeds<B: Backend>(
     block_mask: Tensor<B, 4>,
     cbs: usize,
 ) -> Tensor<B, 4> {
-    -max_pool2d(
-        -block_mask,
-        [cbs, cbs],
-        [1, 1],
-        [cbs / 2, cbs / 2],
-        [1, 1],
-    )
-}
-
-fn drop_block_mask<B: Backend>(
-    noise: Tensor<B, 4>,
-    options: &DropBlockOptions,
-) -> Tensor<B, 4> {
-    let [h, w] = noise.shape().dims[2..4].try_into().unwrap();
-    let device = &noise.device();
-    let dtype = noise.dtype();
-
-    let cbs = options.clipped_block_size(h, w);
-    let gamma = options.clipped_gamma(h, w);
-
-    // Restrict blocks to the feature map.
-    let block_mask = valid_block_map(options.block_size, h, w, device)
-        .float()
-        .cast(dtype);
-    let block_mask = fuzz_block_mask(block_mask, gamma, noise)
-        .float()
-        .cast(dtype);
-    let block_mask = pool_block_mask(block_mask, cbs);
-
-    block_mask
+    -max_pool2d(-block_mask, [cbs, cbs], [1, 1], [cbs / 2, cbs / 2], [1, 1])
 }
 
 /// `DropBlock`
@@ -207,28 +157,44 @@ pub fn drop_block<B: Backend>(
     options: &DropBlockOptions,
 ) -> Tensor<B, 4> {
     let [b, c, h, w] = tensor.shape().dims.to_vec().try_into().unwrap();
+    let cbs = options.clipped_block_size(h, w);
     let device = &tensor.device();
     let dtype = tensor.dtype();
 
-    let make_noise = || -> Tensor<B, 4> {
-        Tensor::random(
+    let gamma_noise = Tensor::random(
+        [if options.batchwise { 1 } else { b }, c, h, w],
+        Distribution::Uniform(0.0, 1.0),
+        device,
+    )
+    .add_scalar(1.0 - options.clipped_gamma(h, w))
+    .cast(dtype);
+
+    let seeds = clip_mask(h, w, cbs, device)
+        .unsqueeze_dims::<4>(&[0, 1])
+        .float()
+        .lower(gamma_noise)
+        .float()
+        .cast(dtype);
+
+    let block_mask = pool_block_seeds(seeds, cbs);
+
+    let tensor = tensor * block_mask.clone();
+
+    if options.with_noise {
+        let normal_noise = Tensor::random(
             [if options.batchwise { 1 } else { b }, c, h, w],
-            Distribution::Uniform(0.0, 1.0),
+            Distribution::Normal(0.0, 1.0),
             device,
         )
-            .cast(dtype)
-    };
+        .cast(dtype);
 
-    let block_mask = drop_block_mask(make_noise(), options);
-
-    let scale: Tensor<B, 4> = if options.with_noise {
-        make_noise().cast(tensor.dtype()) * (1.0 - block_mask.clone())
+        tensor + normal_noise * (1.0 - block_mask)
     } else {
-        ((block_mask.shape().num_elements() as f64) / block_mask.clone().sum().add_scalar(1e-7))
-            .unsqueeze()
-    };
+        let numel = block_mask.shape().num_elements() as f64;
+        let normalize_scale = numel / block_mask.sum().add_scalar(1e-7).cast(dtype);
 
-    tensor * block_mask * scale
+        tensor * normalize_scale.unsqueeze()
+    }
 }
 
 #[cfg(test)]
@@ -297,99 +263,51 @@ mod tests {
     }
 
     #[test]
-    fn test_valid_block_map() {
+    fn test_clip_mask_odd() {
         type B = NdArray;
         let device = Default::default();
 
         let h = 7;
         let w = 9;
-        let c = 1;
+        let kernel = 3;
 
-        let block_map: Tensor<B, 4, Bool> = valid_block_map(
-            5, // block size
-            7, // height
-            9, // width
-            &device,
-        );
-
-        block_map.clone().squeeze_dims::<2>(&[0, 1]).to_data().assert_eq(
+        let mask = clip_mask::<B>(h, w, kernel, &device);
+        mask.to_data().assert_eq(
             &TensorData::from([
                 [O, O, O, O, O, O, O, O, O],
-                [O, O, O, O, O, O, O, O, O],
-                [O, O, X, X, X, X, X, O, O],
-                [O, O, X, X, X, X, X, O, O],
-                [O, O, X, X, X, X, X, O, O],
-                [O, O, O, O, O, O, O, O, O],
+                [O, X, X, X, X, X, X, X, O],
+                [O, X, X, X, X, X, X, X, O],
+                [O, X, X, X, X, X, X, X, O],
+                [O, X, X, X, X, X, X, X, O],
+                [O, X, X, X, X, X, X, X, O],
                 [O, O, O, O, O, O, O, O, O],
             ]),
             true,
         );
-
-        let noise: Tensor<B, 4> = Tensor::random(
-            [1, c, h, w],
-            Distribution::Uniform(0.0, 1.0),
-            &device,
-        );
-
-        let cbs = 5;
-        let fbm = fuzz_block_mask(block_map.clone().float(), 1.0, noise);
-        println!("fbm: {:?}", fbm);
-
-        let pbm = pool_block_mask(block_map.clone().float(), cbs);
-        println!("pbm: {:?}", pbm);
     }
 
     #[test]
-    fn test_indices() {
+    fn test_clip_mask_even() {
         type B = NdArray;
         let device = Default::default();
-
-        let h = 7;
-        let w = 10;
-
-        let [w_i, h_i]: [Tensor<B, 2, Int>; 2] = meshgrid(
-            &[
-                Tensor::arange(0..(w as i64), &device),
-                Tensor::arange(0..(h as i64), &device),
-            ],
-            GridIndexing::Matrix,
-        );
-
-        println!("w_i: {:?}", w_i);
-        println!("h_i: {:?}", h_i);
-    }
-
-    #[test]
-    fn test_drop_block_mask() {
-        type B = NdArray;
-        let device = Default::default();
-
-        let options = DropBlockOptions::default()
-            .with_block_size(5);
 
         let h = 7;
         let w = 9;
-        let c = 1;
+        let kernel = 2;
 
-        let noise: Tensor<B, 4> = Tensor::random(
-            [1, c, h, w],
-            Distribution::Uniform(0.0, 1.0),
-            &device,
-        );
-
-        let mask = drop_block_mask(noise, &options);
+        let mask = clip_mask::<B>(h, w, kernel, &device);
         println!("mask: {:?}", mask);
-        mask.clone().squeeze_dims::<2>(&[0, 1]).to_data().assert_eq(
+        mask.to_data().assert_eq(
             &TensorData::from([
-                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                [0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [O, O, O, O, O, O, O, O, O],
+                [O, X, X, X, X, X, X, X, X],
+                [O, X, X, X, X, X, X, X, X],
+                [O, X, X, X, X, X, X, X, X],
+                [O, X, X, X, X, X, X, X, X],
+                [O, X, X, X, X, X, X, X, X],
+                [O, X, X, X, X, X, X, X, X],
             ]),
-            false,
+            true,
         );
     }
 }
