@@ -1,3 +1,4 @@
+//! # Utility Support Functions
 use anyhow::bail;
 use num_traits::Float;
 use std::fmt::Debug;
@@ -11,6 +12,7 @@ use std::fmt::Debug;
 /// ## Returns
 ///
 /// An `anyhow::Result<prob>`
+#[inline]
 pub fn try_probability<F: Float + Debug>(prob: F) -> anyhow::Result<F> {
     if prob < F::zero() || prob > F::one() {
         bail!("probability must be in [0.0, 1.0]: {prob:?}");
@@ -31,6 +33,7 @@ pub fn try_probability<F: Float + Debug>(prob: F) -> anyhow::Result<F> {
 /// ## Panics
 ///
 /// On range error.
+#[inline]
 pub fn expect_probability<F: Float + Debug>(prob: F) -> F {
     match try_probability(prob) {
         Ok(prob) => prob,
