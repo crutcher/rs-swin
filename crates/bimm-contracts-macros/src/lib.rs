@@ -1,8 +1,10 @@
 #![warn(missing_docs)]
+#![allow(dead_code)]
 //! `proc_macro` support for BIMM Contracts.
 
 extern crate alloc;
 
+use crate::DimMatcher::Ellipsis;
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec;
@@ -10,6 +12,7 @@ use alloc::vec::Vec;
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
+use std::collections::HashSet;
 use syn::Result as SynResult;
 use syn::parse::{Parse, ParseStream};
 use syn::{LitStr, Token, parse_macro_input};
@@ -81,6 +84,36 @@ enum ExprNode {
     Prod(Vec<ExprNode>),
 }
 
+impl ExprNode {
+    /// Depth-first traversal of the expression graph.
+    ///
+    /// ## Arguments
+    ///
+    /// - `func`: A mutable closure that takes a reference to an `ExprNode`.
+    fn visit<F>(
+        &self,
+        func: &mut F,
+    ) where
+        F: FnMut(&ExprNode),
+    {
+        match self {
+            ExprNode::Param(_) => (),
+            ExprNode::Negate(expr) => {
+                expr.visit(func);
+            }
+            ExprNode::Pow(base, _) => {
+                base.visit(func);
+            }
+            ExprNode::Sum(terms) | ExprNode::Prod(terms) => {
+                for term in terms.iter() {
+                    term.visit(func);
+                }
+            }
+        }
+        (*func)(self);
+    }
+}
+
 /// Represents a matcher for a dimension in a shape contract.
 #[derive(Debug, Clone, PartialEq)]
 enum DimMatcher {
@@ -99,6 +132,32 @@ enum DimMatcher {
     },
 }
 
+impl DimMatcher {
+    /// Collect all unique keys under a `DimMatcher`.
+    fn unique_keys(&self) -> HashSet<String> {
+        let mut keys = HashSet::new();
+        match self {
+            DimMatcher::Any { label } | Ellipsis { label } => {
+                if let Some(label) = label {
+                    keys.insert(label.clone());
+                }
+                keys
+            }
+            DimMatcher::Expr { label, expr } => {
+                if let Some(label) = label {
+                    keys.insert(label.clone());
+                }
+                expr.visit(&mut |node| {
+                    if let ExprNode::Param(key) = node {
+                        keys.insert(key.clone());
+                    }
+                });
+                keys
+            }
+        }
+    }
+}
+
 /// Represents a shape contract, which consists of multiple dimension matchers.
 ///
 /// The `shape_contract!` macro allows you to define a shape contract
@@ -107,6 +166,24 @@ enum DimMatcher {
 struct ShapeContract {
     /// The terms of the shape contract, each represented by a `DimMatcher`.
     pub terms: Vec<DimMatcher>,
+}
+
+impl ShapeContract {
+    /// Collect all unique keys in a contract.
+    fn unique_keys(&self) -> HashSet<String> {
+        let mut keys = HashSet::new();
+        for term in self.terms.iter() {
+            keys.extend(term.unique_keys());
+        }
+        keys
+    }
+
+    /// Return a sorted list of unique keys in the contract.
+    fn sorted_keys(&self) -> Vec<String> {
+        let mut keys = self.unique_keys().into_iter().collect::<Vec<_>>();
+        keys.sort();
+        keys
+    }
 }
 
 /// Custom parser for shape contract syntax.
@@ -282,10 +359,11 @@ impl DimMatcher {
 impl ShapeContract {
     fn to_tokens(&self) -> TokenStream2 {
         let term_tokens: Vec<_> = self.terms.iter().map(|t| t.to_tokens()).collect();
+        let slot_map = self.sorted_keys();
+        let slot_tokens: Vec<_> = slot_map.iter().map(|s| quote! { #s }).collect();
         quote! {
-            bimm_contracts::ShapeContract::new(&[
-                #(#term_tokens),*
-            ])
+            bimm_contracts::ShapeContract::new(&[#(#term_tokens),*])
+                .with_slots(&[#(#slot_tokens),*])
         }
     }
 }
@@ -448,6 +526,17 @@ mod tests {
             r#""any" = _, "x", ..., "y" + ("z" * "w") ^ 2"#.parse().unwrap();
         let input = syn::parse2::<ContractSyntax>(tokens).unwrap();
         let contract = input.contract;
+
+        assert_eq!(
+            contract.sorted_keys(),
+            vec![
+                "any".to_string(),
+                "w".to_string(),
+                "x".to_string(),
+                "y".to_string(),
+                "z".to_string()
+            ]
+        );
 
         assert_eq!(contract.terms.len(), 4);
         assert_eq!(

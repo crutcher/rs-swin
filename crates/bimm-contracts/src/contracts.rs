@@ -144,6 +144,9 @@ pub struct ShapeContract<'a> {
     /// The terms in the pattern.
     pub terms: &'a [DimMatcher<'a>],
 
+    /// The slot map for the pattern, if any.
+    slot_map: Option<&'a [&'a str]>,
+
     /// The position of the ellipsis in the pattern, if any.
     pub ellipsis_pos: Option<usize>,
 }
@@ -205,7 +208,24 @@ impl<'a> ShapeContract<'a> {
 
         ShapeContract {
             terms,
+            slot_map: None,
             ellipsis_pos,
+        }
+    }
+
+    /// Add a slot map to the contract.
+    pub const fn with_slots(
+        self,
+        slot_map: &'a [&'a str],
+    ) -> Self {
+        // TODO: Verify that the slot map is valid.
+        // 1. Implement visit for the matchers/expressions.
+        // 2. Verify that the slots match the pattern.
+
+        ShapeContract {
+            terms: self.terms,
+            slot_map: Some(slot_map),
+            ellipsis_pos: self.ellipsis_pos,
         }
     }
 
