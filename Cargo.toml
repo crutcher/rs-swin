@@ -22,9 +22,6 @@ warnings = "deny"
 double_must_use = "allow"
 doc_markdown = "warn"
 
-[profile.test]
-# Ensure proc-macros can find dependencies in RustRover tests.
-rpath = true
 
 # Patch to enable the gradient clipping cherry-pick
 # [patch.crates-io]
@@ -33,12 +30,12 @@ rpath = true
 [workspace.dependencies]
 burn = { version = "^0.18.0" }
 
-bimm-contracts = { version = "^0.4.0"}
+bimm-contracts = { version = "^0.4.1"}
 
 # Burn coupled-dependencies
 globwalk = { version = "^0.9.1" }
 serde = { version = "^1.0.219" }
-serde_json = { version = "^1.0.142" }
+serde_json = { version = "^1.0.143" }
 
 clap = { version = "^4.5.45"}
 
@@ -55,7 +52,7 @@ inventory = { version = "^0.3.20" }
 # Test and/or Examples dependencies
 # criterion = { version = "^0.7.0" }
 hamcrest = { version = "^0.1.5" }
-image-compare = { version = "^0.4.2" }
+image-compare = { version = "^0.5.0" }
 indoc = { version = "^2.0.6" }
 num-traits = { version = "^0.2.19" }
 tempfile = { version = "^3.20.0" }

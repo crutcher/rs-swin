@@ -27,5 +27,6 @@ num-traits = { workspace = true }
 hamcrest = { workspace = true }
 
 [features]
-nightly = []
+default = []
+std = []
 

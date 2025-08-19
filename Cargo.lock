@@ -318,9 +318,9 @@ dependencies = [
 
 [[package]]
 name = "bimm-contracts"
-version = "0.4.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "faf298417b33ba302d854d3114a410f371fcd2f5520e4292eb5efc9303eb573b"
+checksum = "0f13d65fdc453729aee7b84900ba8c3d6101ed30110bd3bc4f9f97de37ffbfb5"
 dependencies = [
  "bimm-contracts-macros",
  "burn",
@@ -328,9 +328,9 @@ dependencies = [
 
 [[package]]
 name = "bimm-contracts-macros"
-version = "0.4.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8659a3080872688a80915ab01bf30f6afd62b8819e0664a9b1e84bdf28369c1b"
+checksum = "5c51d120bb1a382e58c87a90ef67e2b5c9a11e8162c21fe0c06d4dbbdf5b5507"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2927,9 +2927,9 @@ dependencies = [
 
 [[package]]
 name = "image-compare"
-version = "0.4.2"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6bf712e96694f43e33b8394265e4d4bc06998c3648718148e4584d80dc3b3165"
+checksum = "176623a137baf75908084aff53578d6336cbd932bffaf12fabe26b343eb13338"
 dependencies = [
  "image",
  "itertools 0.14.0",
@@ -4775,9 +4775,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.142"
+version = "1.0.143"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "030fedb782600dcbd6f02d479bf0d817ac3bb40d644745b769d6a96bc3afc5a7"
+checksum = "d401abef1d108fbd9cbaebc3e46611f4b1021f714a0597a71f41ee463f5f4a5a"
 dependencies = [
  "itoa",
  "memchr",

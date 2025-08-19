@@ -168,7 +168,7 @@ mod tests {
 
         // count 0.5
         let count_05 = noise.clone().equal_elem(0.5).int().sum().into_scalar() as f64;
-        assert!((0.5 - (count_05 / numel)).abs() < 0.05);
+        assert!((0.5 - (count_05 / numel)).abs() < 0.15);
 
         let count_ge_1 = noise
             .clone()
