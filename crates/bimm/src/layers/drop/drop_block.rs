@@ -2,17 +2,21 @@
 //!
 //! Based upon [DropBlock (Ghiasi et al., 2018)](https://arxiv.org/pdf/1810.12890.pdf);
 //! inspired also by the `python-image-models` implementation.
+
 use crate::utility::burn::kernels;
 use crate::utility::burn::noise::NoiseConfig;
 use crate::utility::burn::shape::shape_to_ranges;
 use crate::utility::probability::expect_probability;
 use bimm_contracts::unpack_shape_contract;
+use burn::config::Config;
+use burn::module::{Content, Module, ModuleDisplay, ModuleDisplayDefault};
 use burn::prelude::{Backend, Tensor};
 use burn::tensor::module::max_pool2d;
 use burn::tensor::{DType, Distribution};
+use serde::{Deserialize, Serialize};
 
 /// Configuration for `DropBlock`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct DropBlockOptions {
     /// The drop probability.
     pub drop_prob: f64,
@@ -23,15 +27,26 @@ pub struct DropBlockOptions {
     /// The gamma scale.
     pub gamma_scale: f64,
 
-    /// The noise configuration.
-    pub noise_cfg: Option<NoiseConfig>,
-
     /// Whether to drop batchwise.
     pub batchwise: bool,
 
     /// Permit partial blocks at the edges, faster.
     pub partial_edge_blocks: bool,
+
+    /// The noise configuration.
+    pub noise_cfg: Option<NoiseConfig>,
 }
+
+impl ModuleDisplayDefault for DropBlockOptions {
+    fn content(
+        &self,
+        _content: Content,
+    ) -> Option<Content> {
+        None
+    }
+}
+
+impl ModuleDisplay for DropBlockOptions {}
 
 impl Default for DropBlockOptions {
     fn default() -> Self {
@@ -264,6 +279,11 @@ pub fn drop_block_2d<B: Backend>(
     tensor: Tensor<B, 4>,
     options: &DropBlockOptions,
 ) -> Tensor<B, 4> {
+    if options.drop_prob == 0.0 {
+        // This is a no-op.
+        return tensor;
+    }
+
     let [b, c, h, w] = tensor.shape().dims();
     let kernel = options.clipped_kernel([h, w]);
 
@@ -295,12 +315,64 @@ pub fn drop_block_2d<B: Backend>(
     }
 }
 
+/// Config for [`DropBlock2dConfig`] modules.
+#[derive(Config, Debug)]
+pub struct DropBlock2dConfig {
+    /// The options for the drop block algorithm.
+    #[config(default = "DropBlockOptions::default()")]
+    pub options: DropBlockOptions,
+}
+
+impl DropBlock2dConfig {
+    /// Initialize a [`DropBlock2d`] module.
+    pub fn init(&self) -> DropBlock2d {
+        DropBlock2d {
+            options: self.options.clone(),
+        }
+    }
+}
+
+/// `DropBlock2d`
+///
+/// A module that applies drop block (when training).
+///
+/// Based upon [DropBlock (Ghiasi et al., 2018)](https://arxiv.org/pdf/1810.12890.pdf);
+/// inspired also by the `python-image-models` implementation.
+#[derive(Module, Clone, Debug)]
+pub struct DropBlock2d {
+    /// The options for the drop block algorithm.
+    pub options: DropBlockOptions,
+}
+
+impl DropBlock2d {
+    /// When training, applies `drop_block_2d` to the tensor;
+    /// otherwise, is a no-op pass-through.
+    ///
+    /// # Arguments
+    ///
+    /// - `tensor` - the input.
+    ///
+    /// # Returns
+    ///
+    /// A tensor of the same shape, type, and device.
+    pub fn forward<B: Backend>(
+        &self,
+        tensor: Tensor<B, 4>,
+    ) -> Tensor<B, 4> {
+        if B::ad_enabled() {
+            drop_block_2d(tensor.clone(), &self.options)
+        } else {
+            tensor
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     use crate::utility::burn::noise::NoiseConfig;
-    use burn::backend::NdArray;
+    use burn::backend::{Autodiff, NdArray};
     use burn::prelude::TensorData;
 
     #[test]
@@ -398,6 +470,26 @@ mod tests {
     }
 
     #[test]
+    fn test_drop_block_2d_no_op() {
+        type B = NdArray;
+        let device = Default::default();
+
+        let shape = [2, 3, 7, 9];
+        let tensor: Tensor<B, 4> = Tensor::ones(shape, &device);
+
+        let drop_prob = 0.0;
+
+        let drop = drop_block_2d(
+            tensor.clone(),
+            &DropBlockOptions::default()
+                .with_drop_prob(drop_prob)
+                .with_kernel([2, 3]),
+        );
+
+        drop.to_data().assert_eq(&tensor.to_data(), false);
+    }
+
+    #[test]
     fn test_drop_block_2d_with_norm() {
         type B = NdArray;
         let device = Default::default();
@@ -425,7 +517,6 @@ mod tests {
 
         let total = drop.sum().into_scalar() as f64;
         let norm = total / numel as f64;
-        println!("norm: {}", norm);
         assert!((norm - 1.0).abs() < 0.01);
     }
 
@@ -459,5 +550,59 @@ mod tests {
         let drop_ratio = drop_count as f64 / numel as f64;
 
         assert!((drop_ratio - drop_prob).abs() < 0.15);
+    }
+
+    #[test]
+    fn test_module_inference() {
+        type B = NdArray;
+        let device = Default::default();
+
+        let config = DropBlock2dConfig::new();
+
+        let module = config.init();
+
+        let shape = [2, 3, 7, 9];
+        let tensor: Tensor<B, 4> = Tensor::ones(shape, &device);
+
+        assert_eq!(B::ad_enabled(), false);
+        let result = module.forward(tensor.clone());
+
+        // Not under training; so a no-op.
+        result.to_data().assert_eq(&tensor.to_data(), false);
+    }
+
+    #[test]
+    fn test_module_training() {
+        type B = Autodiff<NdArray>;
+        let device = Default::default();
+
+        let drop_prob = 0.1;
+
+        let config = DropBlock2dConfig::new().with_options(
+            DropBlockOptions::default()
+                .with_drop_prob(drop_prob)
+                .with_kernel([2, 3]),
+        );
+
+        let module = config.init();
+
+        let shape = [2, 3, 7, 9];
+        let tensor: Tensor<B, 4> = Tensor::ones(shape, &device);
+
+        assert_eq!(B::ad_enabled(), true);
+        let drop = module.forward(tensor.clone());
+
+        // Count all 1.0; which are the non-dropped values.
+        let numel = drop.shape().num_elements();
+
+        // They've all been rescaled upwards.
+        let keep_count = drop.clone().greater_elem(1.0).int().sum().into_scalar() as usize;
+        let drop_count = numel - keep_count;
+        let drop_ratio = drop_count as f64 / numel as f64;
+        assert!((drop_ratio - drop_prob).abs() < 0.15);
+
+        let total = drop.sum().into_scalar() as f64;
+        let norm = total / numel as f64;
+        assert!((norm - 1.0).abs() < 0.01);
     }
 }

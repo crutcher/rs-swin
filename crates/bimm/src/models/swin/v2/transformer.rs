@@ -1,4 +1,4 @@
-use crate::layers::drop::path::rate_table::DropPathRateDepthTable;
+use crate::layers::drop::rate_table::DropPathRateDepthTable;
 use crate::layers::patching::patch_embed::{PatchEmbed, PatchEmbedConfig, PatchEmbedMeta};
 use crate::models::swin::v2::block_sequence::{
     StochasticDepthTransformerBlockSequence, StochasticDepthTransformerBlockSequenceConfig,
