@@ -1,8 +1,8 @@
 //! # Support for Convolution Kernels
 
+use crate::utility::zspace::expect_point_bounds_check;
 use burn::prelude::{Backend, Tensor};
 use burn::tensor::Numeric;
-use crate::utility::zspace::expect_point_bounds_check;
 
 /// Build a filter of kernel midpoints.
 ///
@@ -26,7 +26,8 @@ pub fn conv2d_kernel_midpoint_filter<B: Backend, K>(
     kernel: [usize; 2],
     device: &B::Device,
 ) -> Tensor<B, 2, K>
-where K: Numeric<B>
+where
+    K: Numeric<B>,
 {
     expect_point_bounds_check(&kernel, &[0; 2], &shape);
     let region = [
@@ -38,8 +39,8 @@ where K: Numeric<B>
 
 #[cfg(test)]
 mod tests {
-    use burn::backend::NdArray;
     use super::*;
+    use burn::backend::NdArray;
     use burn::prelude::{Device, TensorData};
 
     #[test]

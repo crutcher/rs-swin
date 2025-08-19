@@ -2,14 +2,14 @@
 //!
 //! Based upon [DropBlock (Ghiasi et al., 2018)](https://arxiv.org/pdf/1810.12890.pdf);
 //! inspired also by the `python-image-models` implementation.
+use crate::utility::burn::kernels;
+use crate::utility::burn::noise::NoiseConfig;
 use crate::utility::burn::shape::shape_to_ranges;
 use crate::utility::probability::expect_probability;
 use bimm_contracts::unpack_shape_contract;
 use burn::prelude::{Backend, Tensor};
 use burn::tensor::module::max_pool2d;
 use burn::tensor::{DType, Distribution};
-use crate::utility::burn::kernels;
-use crate::utility::burn::noise::NoiseConfig;
 
 /// Configuration for `DropBlock`.
 #[derive(Debug, Clone)]
@@ -92,7 +92,6 @@ impl DropBlockOptions {
         Self { kernel, ..self }
     }
 
-
     /// Set the gamma scale.
     pub fn with_gamma_scale(
         self,
@@ -109,7 +108,8 @@ impl DropBlockOptions {
         self,
         noise_cfg: N,
     ) -> Self
-    where N: Into<Option<NoiseConfig>>,
+    where
+        N: Into<Option<NoiseConfig>>,
     {
         Self {
             noise_cfg: noise_cfg.into(),
@@ -299,9 +299,9 @@ pub fn drop_block_2d<B: Backend>(
 mod tests {
     use super::*;
 
+    use crate::utility::burn::noise::NoiseConfig;
     use burn::backend::NdArray;
     use burn::prelude::TensorData;
-    use crate::utility::burn::noise::NoiseConfig;
 
     #[test]
     fn test_drop_block_options() {
@@ -363,47 +363,38 @@ mod tests {
                 [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
             ],
             &device,
-        ).unsqueeze_dims::<4>(&[0, 1]);
+        )
+        .unsqueeze_dims::<4>(&[0, 1]);
 
         // No partial edge blocks.
-        let drop_filter = drop_block_2d_drop_filter_(
-            selected_blocks.clone(),
-            [2, 3],
+        let drop_filter = drop_block_2d_drop_filter_(selected_blocks.clone(), [2, 3], false);
+        drop_filter.squeeze_dims::<2>(&[0, 1]).to_data().assert_eq(
+            &TensorData::from([
+                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0],
+                [0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0],
+                [0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            ]),
             false,
         );
-        drop_filter.squeeze_dims::<2>(&[0, 1])
-            .to_data()
-            .assert_eq(
-                &TensorData::from([
-                    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                    [0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                    [0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                    [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0],
-                    [0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0],
-                    [0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0],
-                    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                    ]),
-                false);
 
         // Partial edge blocks.
-        let drop_filter = drop_block_2d_drop_filter_(
-            selected_blocks.clone(),
-            [2, 3],
-            true,
+        let drop_filter = drop_block_2d_drop_filter_(selected_blocks.clone(), [2, 3], true);
+        drop_filter.squeeze_dims::<2>(&[0, 1]).to_data().assert_eq(
+            &TensorData::from([
+                [0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0],
+                [0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0],
+                [0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0],
+                [0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            ]),
+            false,
         );
-        drop_filter.squeeze_dims::<2>(&[0, 1])
-            .to_data()
-            .assert_eq(
-                &TensorData::from([
-                    [0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0],
-                    [0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                    [0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                    [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0],
-                    [0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0],
-                    [0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0],
-                    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                ]),
-                false);
     }
 
     #[test]
