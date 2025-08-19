@@ -578,8 +578,11 @@ mod tests {
 
         let drop_prob = 0.1;
 
-        let config = DropBlock2dConfig::new()
-            .with_options(DropBlockOptions::default().with_drop_prob(drop_prob).with_kernel([2, 3]));
+        let config = DropBlock2dConfig::new().with_options(
+            DropBlockOptions::default()
+                .with_drop_prob(drop_prob)
+                .with_kernel([2, 3]),
+        );
 
         let module = config.init();
 
