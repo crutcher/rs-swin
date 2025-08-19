@@ -1,10 +1,69 @@
 //! # `DropBlock` Layers
 
-use crate::utility::expect_probability;
-use burn::prelude::{Backend, Bool, Int, Tensor};
-use burn::tensor::Distribution;
+use crate::layers::drop::path::zspace::expect_point_bounds_check;
+use crate::utility::probability::expect_probability;
+use burn::prelude::{Backend, Bool, Int, Shape, Tensor};
 use burn::tensor::module::max_pool2d;
-use std::cmp::min;
+use burn::tensor::{Distribution, RangesArg};
+use std::cmp::{min};
+use std::ops::Range;
+
+/// Clip Range.
+#[derive(Debug, Clone)]
+pub struct ClampConfig {
+    /// The minimum value.
+    min: Option<f32>,
+
+    /// The maximum value.
+    max: Option<f32>,
+}
+
+impl ClampConfig {
+    /// Apply the clamp.
+    pub fn clamp<B: Backend, const D: usize>(
+        &self,
+        tensor: Tensor<B, D>,
+    ) -> Tensor<B, D> {
+        match (self.min, self.max) {
+            (Some(min), Some(max)) => tensor.clamp(min, max),
+            (Some(min), None) => tensor.clamp_min(min),
+            (None, Some(max)) => tensor.clamp_max(max),
+            (None, None) => tensor,
+        }
+    }
+}
+
+/// Noise Configuration.
+#[derive(Debug, Clone)]
+pub struct NoiseConfig {
+    /// The noise distribution.
+    distribution: Distribution,
+
+    /// The noise clip range.
+    clamp: Option<ClampConfig>,
+}
+
+impl NoiseConfig {
+    /// Generate noise.
+    pub fn noise<B: Backend, const D: usize, S>(
+        &self,
+        shape: S,
+        device: &B::Device,
+    ) -> Tensor<B, D>
+    where S: Into<Shape>,
+    {
+        let noise = Tensor::random(
+            shape.into(),
+            self.distribution,
+            device,
+        );
+        match &self.clamp {
+            None => noise,
+            Some(clamp_cfg) => clamp_cfg.clamp(noise),
+        }
+    }
+
+}
 
 /// Configuration for `DropBlock`.
 #[derive(Debug, Clone)]
@@ -18,8 +77,8 @@ pub struct DropBlockOptions {
     /// The gamma scale.
     pub gamma_scale: f32,
 
-    /// Whether to use noise.
-    pub with_noise: bool,
+    /// The noise configuration.
+    pub noise_cfg: Option<NoiseConfig>,
 
     /// Whether to drop batchwise.
     pub batchwise: bool,
@@ -31,7 +90,7 @@ impl Default for DropBlockOptions {
             drop_prob: 0.1,
             block_size: 7,
             gamma_scale: 1.0,
-            with_noise: false,
+            noise_cfg: None,
             batchwise: false,
         }
     }
@@ -71,9 +130,12 @@ impl DropBlockOptions {
     /// Set whether to use noise.
     pub fn with_noise(
         self,
-        with_noise: bool,
+        noise: Option<NoiseConfig>,
     ) -> Self {
-        Self { with_noise, ..self }
+        Self {
+            noise_cfg: noise,
+            ..self
+        }
     }
 
     /// Set whether to drop batchwise.
@@ -119,34 +181,48 @@ impl DropBlockOptions {
     }
 }
 
-/// Clip Mask
-#[allow(unused)]
-fn clip_mask<B: Backend>(
-    h: usize,
-    w: usize,
-    kernel: usize,
-    device: &B::Device,
-) -> Tensor<B, 2, Bool> {
-    assert!(
-        kernel <= h && kernel <= w,
-        "kernel={kernel} must be <= h={h} and <= w={w}"
-    );
-
-    let start = kernel / 2;
-    let end = (kernel - 1) / 2;
-
-    let mask: Tensor<B, 2, Int> = Tensor::zeros([h, w], device);
-    let mut mask = mask.bool();
-    mask.inplace(|t| t.slice_fill([start..h - end, start..w - end], true));
-    mask
-}
-
-#[inline(always)]
-fn pool_block_seeds<B: Backend>(
-    block_mask: Tensor<B, 4>,
-    cbs: usize,
+/// `DropBlock`
+///
+/// See: See [DropBlock (Ghiasi, et all, 2018)](https://arxiv.org/pdf/1810.12890.pdf)
+pub fn drop_block_selection<B: Backend>(
+    tensor: Tensor<B, 4>,
+    selection: Tensor<B, 4>,
+    options: &DropBlockOptions,
 ) -> Tensor<B, 4> {
-    -max_pool2d(-block_mask, [cbs, cbs], [1, 1], [cbs / 2, cbs / 2], [1, 1])
+    let dtype = tensor.dtype();
+    let device = &tensor.device();
+
+    let [b, c, h, w] = tensor.shape().dims.to_vec().try_into().unwrap();
+
+    // TODO: gamma is being miscalculated / I don't understand the expected usage.
+    // Double check the source paper for the expected gamma value.
+    //
+    // Since drop_prob is meant to mean the probability of dropping (keeping?)
+    // a pixel, but pixels are dropped by blocks, and blocks overlap,
+    // gamma needs to be a function of the drop_prob, the number of blocks,
+    // and the block size.
+    //
+    // Should gamma be the keep-a-seed prob, or the drop-a-seed prob?
+
+    let block_bias = drop_filter_2d(selection, [options.block_size; 2], false);
+    println!("block_bias:\n{:?}", block_bias);
+
+    let tensor = tensor * block_bias.clone();
+
+    if let Some(noise_cfg) = &options.noise_cfg {
+        let normal_noise = noise_cfg.noise(
+            [if options.batchwise { 1 } else { b }, c, h, w],
+            device,
+        ).cast(dtype);
+
+        tensor + normal_noise * (1.0 - block_bias)
+    } else {
+        // TODO: scale normalization config?
+        let numel = block_bias.shape().num_elements() as f64;
+        let normalize_scale = numel / block_bias.sum().add_scalar(1e-7).cast(dtype);
+
+        tensor * normalize_scale.unsqueeze()
+    }
 }
 
 /// `DropBlock`
@@ -157,29 +233,23 @@ pub fn drop_block<B: Backend>(
     options: &DropBlockOptions,
 ) -> Tensor<B, 4> {
     let [b, c, h, w] = tensor.shape().dims.to_vec().try_into().unwrap();
-    let cbs = options.clipped_block_size(h, w);
     let device = &tensor.device();
     let dtype = tensor.dtype();
 
-    let gamma_noise = Tensor::random(
+    let gamma = options.drop_prob;
+
+    let noise: Tensor<B, 4> = Tensor::random(
         [if options.batchwise { 1 } else { b }, c, h, w],
-        Distribution::Uniform(0.0, 1.0),
+        Distribution::Bernoulli(gamma as f64),
         device,
     )
-    .add_scalar(1.0 - options.clipped_gamma(h, w))
     .cast(dtype);
 
-    let seeds = clip_mask(h, w, cbs, device)
-        .unsqueeze_dims::<4>(&[0, 1])
-        .float()
-        .lower(gamma_noise)
-        .float()
-        .cast(dtype);
+    let tensor = drop_block_selection(tensor, noise, options);
 
-    let block_mask = pool_block_seeds(seeds, cbs);
+    tensor
 
-    let tensor = tensor * block_mask.clone();
-
+    /*
     if options.with_noise {
         let normal_noise = Tensor::random(
             [if options.batchwise { 1 } else { b }, c, h, w],
@@ -188,12 +258,140 @@ pub fn drop_block<B: Backend>(
         )
         .cast(dtype);
 
-        tensor + normal_noise * (1.0 - block_mask)
+        tensor + normal_noise * (1.0 - block_bias)
     } else {
-        let numel = block_mask.shape().num_elements() as f64;
-        let normalize_scale = numel / block_mask.sum().add_scalar(1e-7).cast(dtype);
+        let numel = block_bias.shape().num_elements() as f64;
+        let normalize_scale = numel / block_bias.sum().add_scalar(1e-7).cast(dtype);
 
         tensor * normalize_scale.unsqueeze()
+    }
+     */
+}
+
+
+/// Sub-Region Mask.
+///
+/// Constructs a `shape` based `Bool` mask, and marks the selected region `true`.
+///
+/// # Arguments
+///
+/// - `shape`: the shape of the mask.
+/// - `region`: the subregion to mark; must be entirely within the `shape`.
+/// - `device`: the device to construct the mask on.
+///
+/// # Returns
+///
+/// A new `Tensor<B, D, Bool>` mask.
+#[inline]
+pub fn sub_region_mask<B: Backend, S, const D: usize, R: RangesArg<D>>(
+    shape: S,
+    region: R,
+    device: &B::Device,
+) -> Tensor<B, D, Bool>
+where
+    S: Into<Shape>,
+{
+    let shape = shape.into();
+    assert_eq!(
+        shape.num_dims(),
+        D,
+        "Shape dims ({}) != region dims ({})",
+        shape.num_dims(),
+        D
+    );
+
+    // TODO: Construct directly as Bool when supported upstream.
+    let mut mask = Tensor::<B, D, Int>::zeros(shape, device).bool();
+    mask.inplace(|t| t.slice_fill(region, true));
+    mask
+}
+
+/// Construct a kernel midpoint mask for regions of shape `kernel_shape`.
+///
+/// # Argument
+///
+/// - `shape`: the mask shape.
+/// - `kernel_shape`: the shape of the kernel.
+/// ` `device`: the device to construct the mask on.
+#[inline]
+pub fn kernel_midpoint_mask<B: Backend, S1, S2, const D: usize>(
+    shape: S1,
+    kernel_shape: S2,
+    device: &B::Device,
+) -> Tensor<B, D, Bool>
+where
+    B: Backend,
+    S1: Into<Shape>,
+    S2: Into<Shape>,
+{
+    let shape = shape.into();
+    let kernel_shape = kernel_shape.into();
+    expect_point_bounds_check(&kernel_shape.dims, &[0; D], &shape.dims);
+
+    let region: [Range<usize>; D] = (0..D)
+        .into_iter()
+        .map(|i| {
+            let start = kernel_shape.dims[i] / 2;
+            let end = (kernel_shape.dims[i] - 1) / 2;
+            start..shape.dims[i] - end
+        })
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap();
+
+    sub_region_mask(shape, region, device)
+}
+
+/// Returns a tensor with values (0,0, 1.0):
+/// * 0.0 where a pixel should be dropped, and
+/// * 1.0 where a pixel should be kept.
+pub fn drop_filter_2d<B: Backend>(
+    selection: Tensor<B, 4>,
+    kernel_shape: [usize; 2],
+    inverse: bool,
+) -> Tensor<B, 4> {
+    let mask: Tensor<B, 2, Bool> = kernel_midpoint_mask(
+        &selection.shape().dims[2..],
+        kernel_shape.clone(),
+        &selection.device(),
+    );
+    let mask: Tensor<B, 4, Bool> = mask.unsqueeze_dims::<4>(&[0, 1]);
+
+    // keep seeds with prob gamma.
+    let drop_seeds = mask.float() * selection;
+
+    let [h, w] = kernel_shape;
+
+    // TODO: Native bool mask convolution would add speed here.
+    let mut drop_coverage = max_pool2d(
+        drop_seeds,
+        kernel_shape.clone(),
+        [1, 1],
+        [h / 2, w / 2],
+        [1, 1],
+    );
+
+    // Clip even-kernel padding artifacts.
+    if (h % 2) == 0 || (w % 2) == 0 {
+        let mut ranges: [Range<usize>; 4] = drop_coverage
+            .shape()
+            .dims
+            .iter()
+            .map(|s| 0..*s)
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
+        ranges[2].start = ((h % 2) == 0) as usize;
+        ranges[3].start = ((w % 2) == 0) as usize;
+
+        drop_coverage = drop_coverage.slice(ranges);
+    }
+
+
+    if inverse {
+        drop_coverage
+    } else {
+        drop_coverage.neg().add_scalar(1)
     }
 }
 
@@ -209,12 +407,121 @@ mod tests {
     const O: bool = false;
 
     #[test]
+    fn test_sub_region_mask() {
+        let shape = [4, 5];
+
+        type B = NdArray;
+        let device = Default::default();
+
+        let mask: Tensor<B, 2, Bool> = sub_region_mask(shape, [.., ..], &device);
+        mask.to_data().assert_eq(
+            &TensorData::from([
+                [X, X, X, X, X],
+                [X, X, X, X, X],
+                [X, X, X, X, X],
+                [X, X, X, X, X],
+            ]),
+            true,
+        );
+
+        let mask: Tensor<B, 2, Bool> = sub_region_mask(shape, [1.., 2..], &device);
+        mask.to_data().assert_eq(
+            &TensorData::from([
+                [O, O, O, O, O],
+                [O, O, X, X, X],
+                [O, O, X, X, X],
+                [O, O, X, X, X],
+            ]),
+            true,
+        );
+
+        let mask: Tensor<B, 2, Bool> = sub_region_mask(shape, [1..3, 2..4], &device);
+        mask.to_data().assert_eq(
+            &TensorData::from([
+                [O, O, O, O, O],
+                [O, O, X, X, O],
+                [O, O, X, X, O],
+                [O, O, O, O, O],
+            ]),
+            true,
+        );
+    }
+
+    #[test]
+    fn test_seed_origin_mask() {
+        let shape = [7, 9];
+        let kernel_shape = [2, 3];
+
+        type B = NdArray;
+        let device = Default::default();
+
+        let mask: Tensor<B, 2, Bool> = kernel_midpoint_mask(shape, kernel_shape, &device);
+        mask.to_data().assert_eq(
+            &TensorData::from([
+                [O, O, O, O, O, O, O, O, O],
+                [O, X, X, X, X, X, X, X, O],
+                [O, X, X, X, X, X, X, X, O],
+                [O, X, X, X, X, X, X, X, O],
+                [O, X, X, X, X, X, X, X, O],
+                [O, X, X, X, X, X, X, X, O],
+                [O, X, X, X, X, X, X, X, O],
+            ]),
+            true,
+        );
+    }
+
+    #[test]
+    fn test_drop_block() {
+        type B = NdArray;
+        let device = Default::default();
+
+        let input: Tensor<B, 4> = Tensor::<B, 2>::from_data(
+            [
+                [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            ],
+            &device,
+        )
+        .unsqueeze_dims::<4>(&[0, 1]);
+
+        let selection: Tensor<B, 4> = Tensor::<B, 2>::from_data(
+            [
+                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            ],
+            &device,
+        )
+        .unsqueeze_dims::<4>(&[0, 1]);
+
+        let drop = drop_block_selection(
+            input,
+            selection,
+            &DropBlockOptions::default()
+                .with_noise(Some(NoiseConfig {
+                    distribution: Distribution::Normal(0.0, 1.0),
+                    clamp: Some(ClampConfig {
+                        min: Some(0.1),
+                        max: Some(0.7),
+                    }),
+                }))
+                .with_block_size(2)
+                .with_drop_prob(0.1),
+        );
+
+        println!("drop:\n{:?}", drop.squeeze_dims::<2>(&[0, 1]));
+    }
+
+    #[test]
     fn test_drop_block_options() {
         let options = DropBlockOptions::default();
         assert_eq!(options.drop_prob, 0.1);
         assert_eq!(options.block_size, 7);
         assert_eq!(options.gamma_scale, 1.0);
-        assert_eq!(options.with_noise, false);
+        assert!(options.noise_cfg.is_none());
         assert_eq!(options.batchwise, false);
 
         let options = options.with_drop_prob(0.2);
@@ -225,9 +532,6 @@ mod tests {
 
         let options = options.with_gamma_scale(0.5);
         assert_eq!(options.gamma_scale, 0.5);
-
-        let options = options.with_noise(true);
-        assert_eq!(options.with_noise, true);
 
         let options = options.with_batchwise(true);
         assert_eq!(options.batchwise, true);
@@ -260,54 +564,5 @@ mod tests {
             / (((w - options.block_size + 1) * (h * options.block_size + 1)) as f32);
 
         assert_that!(options.clipped_gamma(10, 12), close_to(expected, 1e-5));
-    }
-
-    #[test]
-    fn test_clip_mask_odd() {
-        type B = NdArray;
-        let device = Default::default();
-
-        let h = 7;
-        let w = 9;
-        let kernel = 3;
-
-        let mask = clip_mask::<B>(h, w, kernel, &device);
-        mask.to_data().assert_eq(
-            &TensorData::from([
-                [O, O, O, O, O, O, O, O, O],
-                [O, X, X, X, X, X, X, X, O],
-                [O, X, X, X, X, X, X, X, O],
-                [O, X, X, X, X, X, X, X, O],
-                [O, X, X, X, X, X, X, X, O],
-                [O, X, X, X, X, X, X, X, O],
-                [O, O, O, O, O, O, O, O, O],
-            ]),
-            true,
-        );
-    }
-
-    #[test]
-    fn test_clip_mask_even() {
-        type B = NdArray;
-        let device = Default::default();
-
-        let h = 7;
-        let w = 9;
-        let kernel = 2;
-
-        let mask = clip_mask::<B>(h, w, kernel, &device);
-        println!("mask: {:?}", mask);
-        mask.to_data().assert_eq(
-            &TensorData::from([
-                [O, O, O, O, O, O, O, O, O],
-                [O, X, X, X, X, X, X, X, X],
-                [O, X, X, X, X, X, X, X, X],
-                [O, X, X, X, X, X, X, X, X],
-                [O, X, X, X, X, X, X, X, X],
-                [O, X, X, X, X, X, X, X, X],
-                [O, X, X, X, X, X, X, X, X],
-            ]),
-            true,
-        );
     }
 }

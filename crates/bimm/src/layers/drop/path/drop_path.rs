@@ -8,7 +8,7 @@
 //! Inspired by the python implementation from the timm library:
 //! <https://github.com/huggingface/pytorch-image-models/blob/main/timm/layers/drop.py>
 
-use crate::utility;
+use crate::utility::probability;
 use burn::config::Config;
 use burn::module::Module;
 use burn::prelude::{Backend, Tensor};
@@ -68,7 +68,7 @@ fn _drop_path_sample<B: Backend, const D: usize>(
     scale_by_keep: bool,
     sample: fn([usize; D], f64, &B::Device) -> Tensor<B, D>,
 ) -> Tensor<B, D> {
-    utility::expect_probability(drop_prob);
+    probability::expect_probability(drop_prob);
 
     if !training || drop_prob == 0.0 {
         return x;
@@ -132,7 +132,7 @@ impl DropPathConfig {
     #[must_use]
     pub fn init(&self) -> DropPath {
         DropPath {
-            drop_prob: utility::expect_probability(self.drop_prob),
+            drop_prob: probability::expect_probability(self.drop_prob),
             scale_by_keep: self.scale_by_keep,
         }
     }
