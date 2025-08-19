@@ -8,10 +8,12 @@
 //! the description and containment testing of these regions.
 use crate::utility::results::expect_unwrap;
 use anyhow::bail;
+use burn::prelude::Shape;
 use std::cmp::Ordering;
 use std::fmt::Debug;
+use std::ops::Range;
 
-/// Z-space PartialOrd
+/// Z-space `PartialOrd`
 ///
 /// Compares the partial ordering of two slices (of equal length)
 /// by z-space tuple dominance.
@@ -71,10 +73,10 @@ pub fn try_point_bounds_check<T>(
 where
     T: PartialOrd + Debug,
 {
-    if match zspace_partial_cmp(start, point) {
-        Some(Ordering::Less) | Some(Ordering::Equal) => false,
-        _ => true,
-    } || zspace_partial_cmp(point, end) != Some(Ordering::Less)
+    if !matches!(
+        zspace_partial_cmp(start, point),
+        Some(Ordering::Less) | Some(Ordering::Equal)
+    ) || zspace_partial_cmp(point, end) != Some(Ordering::Less)
     {
         bail!("{point:?} is not in [ {start:?}, {end:?} )");
     }
@@ -91,6 +93,17 @@ pub fn expect_point_bounds_check<T>(
     T: PartialOrd + Debug,
 {
     expect_unwrap(try_point_bounds_check(point, start, end))
+}
+
+/// Construct an array of `Range<usize>` covering the `Shape`.
+pub fn shape_to_ranges<const D: usize>(shape: Shape) -> [Range<usize>; D] {
+    shape
+        .dims::<D>()
+        .iter()
+        .map(|d| 0..*d)
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap()
 }
 
 #[cfg(test)]

@@ -1,21 +1,20 @@
 //! # `DropBlock` Layers
 
-use crate::layers::drop::path::zspace::expect_point_bounds_check;
+use crate::layers::drop::path::zspace::{expect_point_bounds_check, shape_to_ranges};
 use crate::utility::probability::expect_probability;
-use burn::prelude::{Backend, Bool, Int, Shape, Tensor};
+use bimm_contracts::unpack_shape_contract;
+use burn::prelude::{Backend, Shape, Tensor};
+use burn::tensor::Distribution;
 use burn::tensor::module::max_pool2d;
-use burn::tensor::{Distribution, RangesArg};
-use std::cmp::{min};
-use std::ops::Range;
 
 /// Clip Range.
 #[derive(Debug, Clone)]
 pub struct ClampConfig {
     /// The minimum value.
-    min: Option<f32>,
+    min: Option<f64>,
 
     /// The maximum value.
-    max: Option<f32>,
+    max: Option<f64>,
 }
 
 impl ClampConfig {
@@ -50,48 +49,48 @@ impl NoiseConfig {
         shape: S,
         device: &B::Device,
     ) -> Tensor<B, D>
-    where S: Into<Shape>,
+    where
+        S: Into<Shape>,
     {
-        let noise = Tensor::random(
-            shape.into(),
-            self.distribution,
-            device,
-        );
+        let noise = Tensor::random(shape.into(), self.distribution, device);
         match &self.clamp {
             None => noise,
             Some(clamp_cfg) => clamp_cfg.clamp(noise),
         }
     }
-
 }
 
 /// Configuration for `DropBlock`.
 #[derive(Debug, Clone)]
 pub struct DropBlockOptions {
     /// The drop probability.
-    pub drop_prob: f32,
+    pub drop_prob: f64,
 
     /// The block size.
-    pub block_size: usize,
+    pub kernel: [usize; 2],
 
     /// The gamma scale.
-    pub gamma_scale: f32,
+    pub gamma_scale: f64,
 
     /// The noise configuration.
     pub noise_cfg: Option<NoiseConfig>,
 
     /// Whether to drop batchwise.
     pub batchwise: bool,
+
+    /// Permit partial blocks at the edges, faster.
+    pub messy: bool,
 }
 
 impl Default for DropBlockOptions {
     fn default() -> Self {
         Self {
             drop_prob: 0.1,
-            block_size: 7,
+            kernel: [7; 2],
             gamma_scale: 1.0,
             noise_cfg: None,
             batchwise: false,
+            messy: false,
         }
     }
 }
@@ -100,7 +99,7 @@ impl DropBlockOptions {
     /// Set the drop probability.
     pub fn with_drop_prob(
         self,
-        drop_prob: f32,
+        drop_prob: f64,
     ) -> Self {
         Self {
             drop_prob: expect_probability(drop_prob),
@@ -113,13 +112,21 @@ impl DropBlockOptions {
         self,
         block_size: usize,
     ) -> Self {
-        Self { block_size, ..self }
+        self.with_kernel([block_size; 2])
+    }
+
+    /// Sets the kernel size.
+    pub fn with_kernel(
+        self,
+        kernel: [usize; 2],
+    ) -> Self {
+        Self { kernel, ..self }
     }
 
     /// Set the gamma scale.
     pub fn with_gamma_scale(
         self,
-        gamma_scale: f32,
+        gamma_scale: f64,
     ) -> Self {
         Self {
             gamma_scale,
@@ -146,252 +153,144 @@ impl DropBlockOptions {
         Self { batchwise, ..self }
     }
 
-    /// The clipped block size.
+    /// Compute the correct gamma for the options and shape.
     ///
     /// ## Arguments
     ///
-    /// - `h`: the height.
-    /// - `w`: the width.
+    /// - `shape`: the shape of the target tensor.
     #[inline]
-    pub fn clipped_block_size(
+    pub fn gamma(
         &self,
-        h: usize,
-        w: usize,
-    ) -> usize {
-        min(self.block_size, min(h, w))
-    }
+        shape: [usize; 2],
+    ) -> f64 {
+        let [h, w] = shape;
+        let [kh, kw] = self.kernel;
 
-    /// Compute the clipped gamma value for a ``(h, w)`` pair.
-    ///
-    /// ## Arguments
-    ///
-    /// - `h`: the height.
-    /// - `w`: the width.
-    #[inline]
-    pub fn clipped_gamma(
-        &self,
-        h: usize,
-        w: usize,
-    ) -> f32 {
-        let total_size = (h * w) as f32;
-        let clipped_block_size = self.clipped_block_size(h, w) as f32;
+        let total_size = (h * w) as f64;
+
         (self.gamma_scale * self.drop_prob * total_size)
-            / clipped_block_size.powi(2)
-            / (((w - self.block_size + 1) * (h * self.block_size + 1)) as f32)
+            / ((kh * kw) as f64)
+            / (((h - kh + 1) * (w * kw + 1)) as f64)
     }
 }
 
-/// `DropBlock`
+/// Build a filter of kernel midpoints.
 ///
-/// See: See [DropBlock (Ghiasi, et all, 2018)](https://arxiv.org/pdf/1810.12890.pdf)
-pub fn drop_block_selection<B: Backend>(
-    tensor: Tensor<B, 4>,
-    selection: Tensor<B, 4>,
-    options: &DropBlockOptions,
-) -> Tensor<B, 4> {
-    let dtype = tensor.dtype();
-    let device = &tensor.device();
-
-    let [b, c, h, w] = tensor.shape().dims.to_vec().try_into().unwrap();
-
-    // TODO: gamma is being miscalculated / I don't understand the expected usage.
-    // Double check the source paper for the expected gamma value.
-    //
-    // Since drop_prob is meant to mean the probability of dropping (keeping?)
-    // a pixel, but pixels are dropped by blocks, and blocks overlap,
-    // gamma needs to be a function of the drop_prob, the number of blocks,
-    // and the block size.
-    //
-    // Should gamma be the keep-a-seed prob, or the drop-a-seed prob?
-
-    let block_bias = drop_filter_2d(selection, [options.block_size; 2], false);
-    println!("block_bias:\n{:?}", block_bias);
-
-    let tensor = tensor * block_bias.clone();
-
-    if let Some(noise_cfg) = &options.noise_cfg {
-        let normal_noise = noise_cfg.noise(
-            [if options.batchwise { 1 } else { b }, c, h, w],
-            device,
-        ).cast(dtype);
-
-        tensor + normal_noise * (1.0 - block_bias)
-    } else {
-        // TODO: scale normalization config?
-        let numel = block_bias.shape().num_elements() as f64;
-        let normalize_scale = numel / block_bias.sum().add_scalar(1e-7).cast(dtype);
-
-        tensor * normalize_scale.unsqueeze()
-    }
-}
-
-/// `DropBlock`
+/// `1.0` at midpoints of kernels of size ``(h, w)``;
+/// `0.0` everywhere else.
 ///
-/// See: See [DropBlock (Ghiasi, et all, 2018)](https://arxiv.org/pdf/1810.12890.pdf)
-pub fn drop_block<B: Backend>(
-    tensor: Tensor<B, 4>,
-    options: &DropBlockOptions,
-) -> Tensor<B, 4> {
-    let [b, c, h, w] = tensor.shape().dims.to_vec().try_into().unwrap();
-    let device = &tensor.device();
-    let dtype = tensor.dtype();
-
-    let gamma = options.drop_prob;
-
-    let noise: Tensor<B, 4> = Tensor::random(
-        [if options.batchwise { 1 } else { b }, c, h, w],
-        Distribution::Bernoulli(gamma as f64),
-        device,
-    )
-    .cast(dtype);
-
-    let tensor = drop_block_selection(tensor, noise, options);
-
-    tensor
-
-    /*
-    if options.with_noise {
-        let normal_noise = Tensor::random(
-            [if options.batchwise { 1 } else { b }, c, h, w],
-            Distribution::Normal(0.0, 1.0),
-            device,
-        )
-        .cast(dtype);
-
-        tensor + normal_noise * (1.0 - block_bias)
-    } else {
-        let numel = block_bias.shape().num_elements() as f64;
-        let normalize_scale = numel / block_bias.sum().add_scalar(1e-7).cast(dtype);
-
-        tensor * normalize_scale.unsqueeze()
-    }
-     */
-}
-
-
-/// Sub-Region Mask.
+/// This predicts the kernel midpoints that ``conv2d`` (and related kernel functions)
+/// would place a kernel.
 ///
-/// Constructs a `shape` based `Bool` mask, and marks the selected region `true`.
-///
-/// # Arguments
-///
-/// - `shape`: the shape of the mask.
-/// - `region`: the subregion to mark; must be entirely within the `shape`.
-/// - `device`: the device to construct the mask on.
-///
-/// # Returns
-///
-/// A new `Tensor<B, D, Bool>` mask.
-#[inline]
-pub fn sub_region_mask<B: Backend, S, const D: usize, R: RangesArg<D>>(
-    shape: S,
-    region: R,
-    device: &B::Device,
-) -> Tensor<B, D, Bool>
-where
-    S: Into<Shape>,
-{
-    let shape = shape.into();
-    assert_eq!(
-        shape.num_dims(),
-        D,
-        "Shape dims ({}) != region dims ({})",
-        shape.num_dims(),
-        D
-    );
-
-    // TODO: Construct directly as Bool when supported upstream.
-    let mut mask = Tensor::<B, D, Int>::zeros(shape, device).bool();
-    mask.inplace(|t| t.slice_fill(region, true));
-    mask
-}
-
-/// Construct a kernel midpoint mask for regions of shape `kernel_shape`.
+/// The *midpoint* of a kernel is computed as ``size / 2``:
+/// * the midpoint of odd kernels is the middle: `mid(3) == 1`
+/// * the midpoint of even kernels is the first point in the second half: `mid(4) == 2`
 ///
 /// # Argument
 ///
 /// - `shape`: the mask shape.
-/// - `kernel_shape`: the shape of the kernel.
-/// ` `device`: the device to construct the mask on.
+/// - `kernel`: the shape of the kernel.
+/// - `device`: the device to construct the mask on.
 #[inline]
-pub fn kernel_midpoint_mask<B: Backend, S1, S2, const D: usize>(
-    shape: S1,
-    kernel_shape: S2,
+pub fn conv2d_kernel_midpoint_filter<B: Backend>(
+    shape: [usize; 2],
+    kernel: [usize; 2],
     device: &B::Device,
-) -> Tensor<B, D, Bool>
-where
-    B: Backend,
-    S1: Into<Shape>,
-    S2: Into<Shape>,
-{
-    let shape = shape.into();
-    let kernel_shape = kernel_shape.into();
-    expect_point_bounds_check(&kernel_shape.dims, &[0; D], &shape.dims);
-
-    let region: [Range<usize>; D] = (0..D)
-        .into_iter()
-        .map(|i| {
-            let start = kernel_shape.dims[i] / 2;
-            let end = (kernel_shape.dims[i] - 1) / 2;
-            start..shape.dims[i] - end
-        })
-        .collect::<Vec<_>>()
-        .try_into()
-        .unwrap();
-
-    sub_region_mask(shape, region, device)
+) -> Tensor<B, 2> {
+    expect_point_bounds_check(&kernel, &[0; 2], &shape);
+    let region = [
+        (kernel[0] / 2)..shape[0] - ((kernel[0] - 1) / 2),
+        (kernel[1] / 2)..shape[1] - ((kernel[1] - 1) / 2),
+    ];
+    Tensor::zeros(shape, device).slice_fill(region, true)
 }
 
-/// Returns a tensor with values (0,0, 1.0):
-/// * 0.0 where a pixel should be dropped, and
-/// * 1.0 where a pixel should be kept.
-pub fn drop_filter_2d<B: Backend>(
-    selection: Tensor<B, 4>,
+/// Convert drop block gamma noise to a selection filter.
+///
+/// This is a deterministic internal component of `drop_block`.
+///
+/// # Arguments
+///
+/// * `selected_blocks` - Input selection noise;
+///   `1.0` at the midpoints of selected blocks to drop,
+///   `0.0` everywhere else. Expected to be gamma noise.
+/// * `kernel_shape` - the shape of the kernel.
+/// * `messy` - permit partial blocks at the edges, faster.
+pub fn drop_block_2d_selection_filter<B: Backend>(
+    selected_blocks: Tensor<B, 4>,
     kernel_shape: [usize; 2],
-    inverse: bool,
+    messy: bool,
 ) -> Tensor<B, 4> {
-    let mask: Tensor<B, 2, Bool> = kernel_midpoint_mask(
-        &selection.shape().dims[2..],
-        kernel_shape.clone(),
-        &selection.device(),
-    );
-    let mask: Tensor<B, 4, Bool> = mask.unsqueeze_dims::<4>(&[0, 1]);
+    let [_, _, h, w] = unpack_shape_contract!(["b", "c", "h", "w"], &selected_blocks);
+    let [kh, kw] = kernel_shape;
 
-    // keep seeds with prob gamma.
-    let drop_seeds = mask.float() * selection;
-
-    let [h, w] = kernel_shape;
-
-    // TODO: Native bool mask convolution would add speed here.
-    let mut drop_coverage = max_pool2d(
-        drop_seeds,
-        kernel_shape.clone(),
-        [1, 1],
-        [h / 2, w / 2],
-        [1, 1],
+    assert!(
+        kh <= h && kw <= w,
+        "Kernel size ({}, {}) is larger than input size ({}, {})",
+        kh,
+        kw,
+        h,
+        w
     );
 
-    // Clip even-kernel padding artifacts.
-    if (h % 2) == 0 || (w % 2) == 0 {
-        let mut ranges: [Range<usize>; 4] = drop_coverage
-            .shape()
-            .dims
-            .iter()
-            .map(|s| 0..*s)
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap();
-        ranges[2].start = ((h % 2) == 0) as usize;
-        ranges[3].start = ((w % 2) == 0) as usize;
+    let dtype = selected_blocks.dtype();
+    let device = &selected_blocks.device();
 
-        drop_coverage = drop_coverage.slice(ranges);
+    let mut selection = selected_blocks;
+
+    if !messy {
+        selection = selection
+            * conv2d_kernel_midpoint_filter([h, w], kernel_shape, device)
+                .unsqueeze_dims::<4>(&[0, 1])
+                .cast(dtype);
     }
 
+    selection = max_pool2d(selection, kernel_shape, [1, 1], [kh / 2, kw / 2], [1, 1]);
 
-    if inverse {
-        drop_coverage
+    // Clip even-kernel padding artifacts.
+    if (kh % 2) == 0 || (kw % 2) == 0 {
+        let mut ranges = shape_to_ranges::<4>(selection.shape());
+        ranges[2].start = ((kh % 2) == 0) as usize;
+        ranges[3].start = ((kw % 2) == 0) as usize;
+
+        selection = selection.slice(ranges);
+    }
+
+    selection
+}
+
+/// Dropblock
+pub fn drop_block_2d<B: Backend>(
+    tensor: Tensor<B, 4>,
+    options: &DropBlockOptions,
+) -> Tensor<B, 4> {
+    let [b, c, h, w] = tensor.shape().dims();
+    let kernel = &options.kernel;
+
+    let shape = tensor.shape();
+    let device = &tensor.device();
+    let dtype = tensor.dtype();
+
+    let gamma = options.gamma([h, w]);
+
+    let noise_shape = [if options.batchwise { 1 } else { b }, c, h, w];
+
+    let gamma_noise = Tensor::random(noise_shape, Distribution::Bernoulli(gamma), device);
+
+    let drop_filter: Tensor<B, 4> =
+        drop_block_2d_selection_filter(gamma_noise, *kernel, options.messy).cast(dtype);
+    let keep_filter: Tensor<B, 4> = 1.0 - drop_filter.clone();
+
+    if let Some(noise_cfg) = &options.noise_cfg {
+        let noise: Tensor<B, 4> = noise_cfg.noise(noise_shape, device);
+
+        tensor * keep_filter.expand(shape.clone()) + noise * drop_filter.expand(shape)
     } else {
-        drop_coverage.neg().add_scalar(1)
+        let count = keep_filter.shape().num_elements() as f64;
+        let total = keep_filter.clone().sum();
+        let norm_scale = count / total.add_scalar(1e-7);
+
+        tensor * keep_filter * norm_scale.expand(shape)
     }
 }
 
@@ -401,50 +300,27 @@ mod tests {
 
     use burn::backend::NdArray;
     use burn::prelude::TensorData;
-    use hamcrest::prelude::*;
-
-    const X: bool = true;
-    const O: bool = false;
 
     #[test]
-    fn test_sub_region_mask() {
-        let shape = [4, 5];
-
+    fn test_drop_block_2d() {
         type B = NdArray;
         let device = Default::default();
 
-        let mask: Tensor<B, 2, Bool> = sub_region_mask(shape, [.., ..], &device);
-        mask.to_data().assert_eq(
-            &TensorData::from([
-                [X, X, X, X, X],
-                [X, X, X, X, X],
-                [X, X, X, X, X],
-                [X, X, X, X, X],
-            ]),
-            true,
-        );
+        let shape = [1, 1, 7, 9];
 
-        let mask: Tensor<B, 2, Bool> = sub_region_mask(shape, [1.., 2..], &device);
-        mask.to_data().assert_eq(
-            &TensorData::from([
-                [O, O, O, O, O],
-                [O, O, X, X, X],
-                [O, O, X, X, X],
-                [O, O, X, X, X],
-            ]),
-            true,
-        );
+        let tensor: Tensor<B, 4> = Tensor::ones(shape, &device);
 
-        let mask: Tensor<B, 2, Bool> = sub_region_mask(shape, [1..3, 2..4], &device);
-        mask.to_data().assert_eq(
-            &TensorData::from([
-                [O, O, O, O, O],
-                [O, O, X, X, O],
-                [O, O, X, X, O],
-                [O, O, O, O, O],
-            ]),
-            true,
+        let drop = drop_block_2d(
+            tensor,
+            &DropBlockOptions::default()
+                .with_noise(Some(NoiseConfig {
+                    distribution: Distribution::Default,
+                    clamp: None,
+                }))
+                .with_drop_prob(0.1)
+                .with_block_size(2),
         );
+        println!("drop\n{:?}", drop);
     }
 
     #[test]
@@ -455,71 +331,26 @@ mod tests {
         type B = NdArray;
         let device = Default::default();
 
-        let mask: Tensor<B, 2, Bool> = kernel_midpoint_mask(shape, kernel_shape, &device);
+        let mask: Tensor<B, 2> = conv2d_kernel_midpoint_filter(shape, kernel_shape, &device);
         mask.to_data().assert_eq(
             &TensorData::from([
-                [O, O, O, O, O, O, O, O, O],
-                [O, X, X, X, X, X, X, X, O],
-                [O, X, X, X, X, X, X, X, O],
-                [O, X, X, X, X, X, X, X, O],
-                [O, X, X, X, X, X, X, X, O],
-                [O, X, X, X, X, X, X, X, O],
-                [O, X, X, X, X, X, X, X, O],
+                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0],
+                [0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0],
+                [0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0],
+                [0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0],
+                [0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0],
+                [0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0],
             ]),
-            true,
+            false,
         );
-    }
-
-    #[test]
-    fn test_drop_block() {
-        type B = NdArray;
-        let device = Default::default();
-
-        let input: Tensor<B, 4> = Tensor::<B, 2>::from_data(
-            [
-                [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-                [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-                [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-                [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-            ],
-            &device,
-        )
-        .unsqueeze_dims::<4>(&[0, 1]);
-
-        let selection: Tensor<B, 4> = Tensor::<B, 2>::from_data(
-            [
-                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                [0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-            ],
-            &device,
-        )
-        .unsqueeze_dims::<4>(&[0, 1]);
-
-        let drop = drop_block_selection(
-            input,
-            selection,
-            &DropBlockOptions::default()
-                .with_noise(Some(NoiseConfig {
-                    distribution: Distribution::Normal(0.0, 1.0),
-                    clamp: Some(ClampConfig {
-                        min: Some(0.1),
-                        max: Some(0.7),
-                    }),
-                }))
-                .with_block_size(2)
-                .with_drop_prob(0.1),
-        );
-
-        println!("drop:\n{:?}", drop.squeeze_dims::<2>(&[0, 1]));
     }
 
     #[test]
     fn test_drop_block_options() {
         let options = DropBlockOptions::default();
         assert_eq!(options.drop_prob, 0.1);
-        assert_eq!(options.block_size, 7);
+        assert_eq!(options.kernel, [7; 2]);
         assert_eq!(options.gamma_scale, 1.0);
         assert!(options.noise_cfg.is_none());
         assert_eq!(options.batchwise, false);
@@ -528,7 +359,7 @@ mod tests {
         assert_eq!(options.drop_prob, 0.2);
 
         let options = options.with_block_size(10);
-        assert_eq!(options.block_size, 10);
+        assert_eq!(options.kernel, [10; 2]);
 
         let options = options.with_gamma_scale(0.5);
         assert_eq!(options.gamma_scale, 0.5);
@@ -538,31 +369,24 @@ mod tests {
     }
 
     #[test]
-    fn test_clipped_block_size() {
-        let options = DropBlockOptions::default().with_block_size(7);
-
-        assert_eq!(options.clipped_block_size(10, 12), 7);
-        assert_eq!(options.clipped_block_size(3, 10), 3);
-        assert_eq!(options.clipped_block_size(10, 3), 3);
-    }
-
-    #[test]
-    fn test_clipped_gamma() {
+    fn test_gamma() {
         let options = DropBlockOptions::default()
             .with_drop_prob(0.1)
             .with_gamma_scale(1.2)
-            .with_block_size(7);
+            .with_kernel([2, 3]);
 
-        let h = 10;
-        let w = 12;
-        let total_size = (h * w) as f32;
+        let shape = [7, 9];
+        let [h, w] = shape;
+        let [kh, kw] = options.kernel;
 
-        let cbs = options.clipped_block_size(h, w) as f32;
+        let total_size = (h * w) as f64;
+
+        let gamma = options.gamma([h, w]);
 
         let expected = (options.gamma_scale * options.drop_prob * total_size)
-            / cbs.powi(2)
-            / (((w - options.block_size + 1) * (h * options.block_size + 1)) as f32);
+            / ((kh * kw) as f64)
+            / (((h - kh + 1) * (w * kw + 1)) as f64);
 
-        assert_that!(options.clipped_gamma(10, 12), close_to(expected, 1e-5));
+        assert_eq!(gamma, expected);
     }
 }
