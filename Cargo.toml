@@ -33,6 +33,8 @@ rpath = true
 [workspace.dependencies]
 burn = { version = "^0.18.0" }
 
+bimm-contracts = { version = "^0.4.0"}
+
 # Burn coupled-dependencies
 globwalk = { version = "^0.9.1" }
 serde = { version = "^1.0.219" }
@@ -48,13 +50,10 @@ anyhow = { version = "^1.0.99" }
 image = { version = "^0.25.6" }
 
 # macro dependencies
-proc-macro2 = { version = "^1.0.97" }
-syn = { version = "^2.0.104" }
-quote = { version = "^1.0.40" }
 inventory = { version = "^0.3.20" }
 
 # Test and/or Examples dependencies
-criterion = { version = "^0.7.0" }
+# criterion = { version = "^0.7.0" }
 hamcrest = { version = "^0.1.5" }
 image-compare = { version = "^0.4.2" }
 indoc = { version = "^2.0.6" }
