@@ -56,79 +56,15 @@ This crate provides a set of image-specific operations for `bimm-firehose`.
 Add-on crates:
 * [bimm-firehose-image](crates/bimm-firehose-image)
 
-### [bimm-contracts](crates/bimm-contracts) - a crate for static shape contracts for tensors.
+## External Related Crates
+
+### [bimm-contracts](https://github.com/crutcher/bimm-contracts) - a crate for static shape contracts for tensors.
 
 [![Crates.io Version](https://img.shields.io/crates/v/bimm-contracts)](https://crates.io/crates/bimm-contracts)
 [![docs.rs](https://img.shields.io/docsrs/bimm-contracts)](https://docs.rs/bimm-contracts/latest/bimm-contracts/)
 
 This crate provides a stand-alone library for defining and enforcing tensor shape contracts
 in-line with the Burn framework modules and methods.
-
-This includes:
-- A macro for defining shape contracts.
-- static shape contracts.
-- stack-checked (minimizing heap usage) shape assertions.
-- an interface for unpacking tensor shapes into their components,
-  allowing for parameterized dimensions; and nice error messages
-  when the shape does not match the contract.
-- a macro for running shape checks periodically,
-  amortizing the cost of checks over multiple calls.
-
-```rust
-use bimm_contracts::{ShapeContract, shape_contract, run_periodically};
-
-pub fn window_partition<B: Backend, K>(
-    tensor: Tensor<B, 4, K>,
-    window_size: usize,
-) -> Tensor<B, 4, K>
-where
-    K: BasicOps<B>,
-{
-    static INPUT_CONTRACT: ShapeContract = shape_contract![
-        "batch",
-        "height" = "h_wins" * "window_size",
-        "width" = "w_wins" * "window_size",
-        "channels"
-    ];
-    let [b, h_wins, w_wins, c] = INPUT_CONTRACT.unpack_shape(
-        &tensor,
-        &["batch", "h_wins", "w_wins", "channels"],
-        &[("window_size", window_size)],
-    );
-
-    let tensor = tensor
-        .reshape([b, h_wins, window_size, w_wins, window_size, c])
-        .swap_dims(2, 3)
-        .reshape([b * h_wins * w_wins, window_size, window_size, c]);
-
-    // Run this check periodically on a doubling schedule,
-    // up to the default of every 1000th call.
-    run_periodically!({
-        // I'd normally not use a contract here, as the shape is already
-        // very clear from the above operations; but this is an example
-        // of low-overhead periodic shape checking.
-        static OUTPUT_CONTRACT: ShapeContract = shape_contract![
-            "batch" * "h_wins" * "w_wins",
-            "window_size",
-            "window_size",
-            "channels"
-        ];
-        OUTPUT_CONTRACT.assert_shape(
-            &tensor,
-            &[
-                ("batch", b),
-                ("h_wins", h_wins),
-                ("w_wins", w_wins),
-                ("window_size", window_size),
-                ("channels", c),
-            ]
-        );
-    });
-    
-    tensor
-}
-```
-
 
 ## Contributing
 
