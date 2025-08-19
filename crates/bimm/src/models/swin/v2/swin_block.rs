@@ -9,7 +9,7 @@ use burn::nn::{Dropout, DropoutConfig, Gelu, LayerNorm, LayerNormConfig, Linear,
 use burn::prelude::{Backend, Tensor};
 use burn::tensor::BasicOps;
 
-use crate::layers::drop::path::{DropPath, DropPathConfig};
+use crate::layers::drop::path::drop_path::{DropPath, DropPathConfig};
 use bimm_contracts::{assert_shape_contract_periodically, define_shape_contract};
 
 /// Common meta-interface for `BlockMlp` config.

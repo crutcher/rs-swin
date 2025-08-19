@@ -1,0 +1,3 @@
+//! # `ResNet`
+
+pub mod block;
