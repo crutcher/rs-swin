@@ -1,2 +1,2 @@
-pub mod resnet;
+mod resnet;
 pub mod swin;
