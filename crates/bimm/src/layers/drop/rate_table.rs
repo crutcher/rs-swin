@@ -137,7 +137,7 @@ impl DropPathRateDepthTable {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::layers::drop::path::rate_table::progressive_dpr;
+    use crate::layers::drop::rate_table::progressive_dpr;
     use crate::testing::assert_close_to_vec;
     use hamcrest::prelude::*;
 
