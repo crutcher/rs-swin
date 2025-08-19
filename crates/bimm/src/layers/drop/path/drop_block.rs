@@ -1,7 +1,8 @@
 //! # `DropBlock` Layers
 
-use crate::layers::drop::path::zspace::{expect_point_bounds_check, shape_to_ranges};
+use crate::utility::burn::shape::shape_to_ranges;
 use crate::utility::probability::expect_probability;
+use crate::utility::zspace::expect_point_bounds_check;
 use bimm_contracts::unpack_shape_contract;
 use burn::prelude::{Backend, Shape, Tensor};
 use burn::tensor::module::max_pool2d;
