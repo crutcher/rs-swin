@@ -182,7 +182,7 @@ impl DropBlockOptions {
 
         (self.gamma_scale * self.drop_prob * ((h * w) as f64))
             / ((kh * kw) as f64)
-            / (((h - kh + 1) * (w * kw + 1)) as f64)
+            / (((h - kh + 1) * (w - kw + 1)) as f64)
     }
 
     /// Compute the gamma noise for the given noise batch shape.
@@ -428,7 +428,7 @@ mod tests {
 
         let expected = (options.gamma_scale * options.drop_prob * total_size)
             / ((kh * kw) as f64)
-            / (((h - kh + 1) * (w * kw + 1)) as f64);
+            / (((h - kh + 1) * (w - kw + 1)) as f64);
 
         assert_eq!(gamma, expected);
     }
