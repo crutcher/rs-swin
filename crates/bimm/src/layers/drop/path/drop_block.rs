@@ -1,65 +1,15 @@
 //! # `DropBlock` Layers
-
+//!
+//! Based upon [DropBlock (Ghiasi et al., 2018)](https://arxiv.org/pdf/1810.12890.pdf);
+//! inspired also by the `python-image-models` implementation.
 use crate::utility::burn::shape::shape_to_ranges;
 use crate::utility::probability::expect_probability;
-use crate::utility::zspace::expect_point_bounds_check;
 use bimm_contracts::unpack_shape_contract;
-use burn::prelude::{Backend, Shape, Tensor};
+use burn::prelude::{Backend, Tensor};
 use burn::tensor::module::max_pool2d;
 use burn::tensor::{DType, Distribution};
-
-/// Clip Range.
-#[derive(Debug, Clone)]
-pub struct ClampConfig {
-    /// The minimum value.
-    min: Option<f64>,
-
-    /// The maximum value.
-    max: Option<f64>,
-}
-
-impl ClampConfig {
-    /// Apply the clamp.
-    pub fn clamp<B: Backend, const D: usize>(
-        &self,
-        tensor: Tensor<B, D>,
-    ) -> Tensor<B, D> {
-        match (self.min, self.max) {
-            (Some(min), Some(max)) => tensor.clamp(min, max),
-            (Some(min), None) => tensor.clamp_min(min),
-            (None, Some(max)) => tensor.clamp_max(max),
-            (None, None) => tensor,
-        }
-    }
-}
-
-/// Noise Configuration.
-#[derive(Debug, Clone)]
-pub struct NoiseConfig {
-    /// The noise distribution.
-    distribution: Distribution,
-
-    /// The noise clip range.
-    clamp: Option<ClampConfig>,
-}
-
-impl NoiseConfig {
-    /// Generate noise.
-    pub fn noise<B: Backend, const D: usize, S>(
-        &self,
-        shape: S,
-        device: &B::Device,
-    ) -> Tensor<B, D>
-    where
-        S: Into<Shape>,
-    {
-        let noise = Tensor::random(shape.into(), self.distribution, device);
-        match &self.clamp {
-            None => noise,
-            Some(clamp_cfg) => clamp_cfg.clamp(noise),
-        }
-    }
-}
+use crate::utility::burn::kernels;
+use crate::utility::burn::noise::NoiseConfig;
 
 /// Configuration for `DropBlock`.
 #[derive(Debug, Clone)]
@@ -80,7 +30,7 @@ pub struct DropBlockOptions {
     pub batchwise: bool,
 
     /// Permit partial blocks at the edges, faster.
-    pub messy: bool,
+    pub partial_edge_blocks: bool,
 }
 
 impl Default for DropBlockOptions {
@@ -91,13 +41,21 @@ impl Default for DropBlockOptions {
             gamma_scale: 1.0,
             noise_cfg: None,
             batchwise: false,
-            messy: false,
+            partial_edge_blocks: false,
         }
     }
 }
 
 impl DropBlockOptions {
-    /// Set the drop probability.
+    /// Extend the options with the given probability.
+    ///
+    /// # Arguments
+    ///
+    /// - `drop_prob` - the probability.
+    ///
+    /// # Panics
+    ///
+    /// If the `drop_prob` is not in ``[0.0, 1.0]``.
     pub fn with_drop_prob(
         self,
         drop_prob: f64,
@@ -108,7 +66,13 @@ impl DropBlockOptions {
         }
     }
 
-    /// Set the block size.
+    /// Set the symmetric kernel block size.
+    ///
+    /// This is equivalent to `.with_kernel([block_size; 2])`
+    ///
+    /// # Arguments
+    ///
+    /// - `block_size` - the symmetric kernel size.
     pub fn with_block_size(
         self,
         block_size: usize,
@@ -117,6 +81,10 @@ impl DropBlockOptions {
     }
 
     /// Sets the kernel size.
+    ///
+    /// # Arguments
+    ///
+    /// - `kernel` - the kernel size.
     pub fn with_kernel(
         self,
         kernel: [usize; 2],
@@ -124,15 +92,6 @@ impl DropBlockOptions {
         Self { kernel, ..self }
     }
 
-    /// Clip the kernel to fit within the shape.
-    pub fn clipped_kernel(
-        &self,
-        shape: [usize; 2],
-    ) -> [usize; 2] {
-        let [h, w] = shape;
-        let [kh, kw] = self.kernel;
-        [std::cmp::min(h, kh), std::cmp::min(w, kw)]
-    }
 
     /// Set the gamma scale.
     pub fn with_gamma_scale(
@@ -146,22 +105,52 @@ impl DropBlockOptions {
     }
 
     /// Set whether to use noise.
-    pub fn with_noise(
+    pub fn with_noise<N>(
         self,
-        noise: Option<NoiseConfig>,
-    ) -> Self {
+        noise_cfg: N,
+    ) -> Self
+    where N: Into<Option<NoiseConfig>>,
+    {
         Self {
-            noise_cfg: noise,
+            noise_cfg: noise_cfg.into(),
             ..self
         }
     }
 
-    /// Set whether to drop batchwise.
+    /// Set if batchwise noise should be used.
+    ///
+    /// When `batchwise` is enabled, the entire batch shares the same noise;
+    /// otherwise, each image gets its own noise.
+    ///
+    /// Depending on the batchsize, this could be a significant speedup.
+    ///
+    /// # Arguments
+    ///
+    /// - `batchwise` - the mode.
     pub fn with_batchwise(
         self,
         batchwise: bool,
     ) -> Self {
         Self { batchwise, ..self }
+    }
+
+    /// Clip the kernel to fit within the shape.
+    ///
+    /// # Arguments
+    ///
+    /// - `shape`: the shape of the target image.
+    ///
+    /// # Returns
+    ///
+    /// The dimension-wise clipped kernel shape.
+    #[inline]
+    pub fn clipped_kernel(
+        &self,
+        shape: [usize; 2],
+    ) -> [usize; 2] {
+        let [h, w] = shape;
+        let [kh, kw] = self.kernel;
+        [std::cmp::min(h, kh), std::cmp::min(w, kw)]
     }
 
     /// Compute the adjusted gamma rate.
@@ -205,37 +194,6 @@ impl DropBlockOptions {
     }
 }
 
-/// Build a filter of kernel midpoints.
-///
-/// `1.0` at midpoints of kernels of size ``(h, w)``;
-/// `0.0` everywhere else.
-///
-/// This predicts the kernel midpoints that ``conv2d`` (and related kernel functions)
-/// would place a kernel.
-///
-/// The *midpoint* of a kernel is computed as ``size / 2``:
-/// * the midpoint of odd kernels is the middle: `mid(3) == 1`
-/// * the midpoint of even kernels is the first point in the second half: `mid(4) == 2`
-///
-/// # Argument
-///
-/// - `shape`: the mask shape.
-/// - `kernel`: the shape of the kernel.
-/// - `device`: the device to construct the mask on.
-#[inline]
-pub fn conv2d_kernel_midpoint_filter<B: Backend>(
-    shape: [usize; 2],
-    kernel: [usize; 2],
-    device: &B::Device,
-) -> Tensor<B, 2> {
-    expect_point_bounds_check(&kernel, &[0; 2], &shape);
-    let region = [
-        (kernel[0] / 2)..shape[0] - ((kernel[0] - 1) / 2),
-        (kernel[1] / 2)..shape[1] - ((kernel[1] - 1) / 2),
-    ];
-    Tensor::zeros(shape, device).slice_fill(region, true)
-}
-
 /// Convert drop block gamma noise to a selection filter.
 ///
 /// This is a deterministic internal component of `drop_block`.
@@ -246,11 +204,11 @@ pub fn conv2d_kernel_midpoint_filter<B: Backend>(
 ///   `1.0` at the midpoints of selected blocks to drop,
 ///   `0.0` everywhere else. Expected to be gamma noise.
 /// * `kernel_shape` - the shape of the kernel.
-/// * `messy` - permit partial blocks at the edges, faster.
-pub fn drop_block_2d_drop_filter_<B: Backend>(
+/// * `partial_edge_blocks` - permit partial blocks at the edges, faster.
+fn drop_block_2d_drop_filter_<B: Backend>(
     selected_blocks: Tensor<B, 4>,
     kernel_shape: [usize; 2],
-    messy: bool,
+    partial_edge_blocks: bool,
 ) -> Tensor<B, 4> {
     let [_, _, h, w] = unpack_shape_contract!(["b", "c", "h", "w"], &selected_blocks);
     let [kh, kw] = kernel_shape;
@@ -265,9 +223,9 @@ pub fn drop_block_2d_drop_filter_<B: Backend>(
 
     let mut selection = selected_blocks;
 
-    if !messy {
+    if !partial_edge_blocks {
         selection = selection
-            * conv2d_kernel_midpoint_filter([h, w], kernel_shape, device)
+            * kernels::conv2d_kernel_midpoint_filter([h, w], kernel_shape, device)
                 .unsqueeze_dims::<4>(&[0, 1])
                 .cast(dtype);
     }
@@ -318,7 +276,7 @@ pub fn drop_block_2d<B: Backend>(
     let gamma_noise = options.gamma_noise(noise_shape, device);
 
     let drop_filter: Tensor<B, 4> =
-        drop_block_2d_drop_filter_(gamma_noise, kernel, options.messy).cast(dtype);
+        drop_block_2d_drop_filter_(gamma_noise, kernel, options.partial_edge_blocks).cast(dtype);
     let keep_filter: Tensor<B, 4> = 1.0 - drop_filter.clone();
 
     if let Some(noise_cfg) = &options.noise_cfg {
@@ -328,7 +286,7 @@ pub fn drop_block_2d<B: Backend>(
 
         tensor * keep_filter.expand(t_shape.clone()) + noise.expand(t_shape)
     } else {
-        // Rescale the kept regions to normalize to 1.0.
+        // Rescale to normalize to 1.0.
         let count = keep_filter.shape().num_elements() as f32;
         let total = keep_filter.clone().cast(DType::F32).sum();
         let norm_scale = count / total.add_scalar(1e-7);
@@ -343,51 +301,7 @@ mod tests {
 
     use burn::backend::NdArray;
     use burn::prelude::TensorData;
-
-    #[test]
-    fn test_drop_block_2d() {
-        type B = NdArray;
-        let device = Default::default();
-
-        let shape = [1, 1, 7, 9];
-
-        let tensor: Tensor<B, 4> = Tensor::ones(shape, &device);
-
-        let drop = drop_block_2d(
-            tensor,
-            &DropBlockOptions::default()
-                .with_noise(Some(NoiseConfig {
-                    distribution: Distribution::Default,
-                    clamp: None,
-                }))
-                .with_drop_prob(0.1)
-                .with_block_size(2),
-        );
-        println!("drop\n{:?}", drop);
-    }
-
-    #[test]
-    fn test_seed_origin_mask() {
-        let shape = [7, 9];
-        let kernel_shape = [2, 3];
-
-        type B = NdArray;
-        let device = Default::default();
-
-        let mask: Tensor<B, 2> = conv2d_kernel_midpoint_filter(shape, kernel_shape, &device);
-        mask.to_data().assert_eq(
-            &TensorData::from([
-                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                [0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0],
-                [0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0],
-                [0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0],
-                [0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0],
-                [0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0],
-                [0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0],
-            ]),
-            false,
-        );
-    }
+    use crate::utility::burn::noise::NoiseConfig;
 
     #[test]
     fn test_drop_block_options() {
@@ -431,5 +345,128 @@ mod tests {
             / (((h - kh + 1) * (w - kw + 1)) as f64);
 
         assert_eq!(gamma, expected);
+    }
+
+    #[test]
+    fn test_drop_block_2d_drop_filter() {
+        type B = NdArray;
+        let device = Default::default();
+
+        let selected_blocks: Tensor<B, 4> = Tensor::<B, 2>::from_data(
+            [
+                [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            ],
+            &device,
+        ).unsqueeze_dims::<4>(&[0, 1]);
+
+        // No partial edge blocks.
+        let drop_filter = drop_block_2d_drop_filter_(
+            selected_blocks.clone(),
+            [2, 3],
+            false,
+        );
+        drop_filter.squeeze_dims::<2>(&[0, 1])
+            .to_data()
+            .assert_eq(
+                &TensorData::from([
+                    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                    [0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                    [0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                    [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0],
+                    [0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0],
+                    [0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+                    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                    ]),
+                false);
+
+        // Partial edge blocks.
+        let drop_filter = drop_block_2d_drop_filter_(
+            selected_blocks.clone(),
+            [2, 3],
+            true,
+        );
+        drop_filter.squeeze_dims::<2>(&[0, 1])
+            .to_data()
+            .assert_eq(
+                &TensorData::from([
+                    [0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0],
+                    [0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                    [0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                    [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0],
+                    [0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0],
+                    [0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+                    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                ]),
+                false);
+    }
+
+    #[test]
+    fn test_drop_block_2d_with_norm() {
+        type B = NdArray;
+        let device = Default::default();
+
+        let shape = [2, 3, 7, 9];
+        let tensor: Tensor<B, 4> = Tensor::ones(shape, &device);
+
+        let drop_prob = 0.1;
+
+        let drop = drop_block_2d(
+            tensor,
+            &DropBlockOptions::default()
+                .with_drop_prob(drop_prob)
+                .with_kernel([2, 3]),
+        );
+
+        // Count all 1.0; which are the non-dropped values.
+        let numel = drop.shape().num_elements();
+
+        // They've all been rescaled upwards.
+        let keep_count = drop.clone().greater_elem(1.0).int().sum().into_scalar() as usize;
+        let drop_count = numel - keep_count;
+        let drop_ratio = drop_count as f64 / numel as f64;
+        assert!((drop_ratio - drop_prob).abs() < 0.15);
+
+        let total = drop.sum().into_scalar() as f64;
+        let norm = total / numel as f64;
+        println!("norm: {}", norm);
+        assert!((norm - 1.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_drop_block_2d_with_noise() {
+        type B = NdArray;
+        let device = Default::default();
+
+        let shape = [2, 3, 7, 9];
+        let tensor: Tensor<B, 4> = Tensor::ones(shape, &device);
+
+        let drop_prob = 0.1;
+
+        let drop = drop_block_2d(
+            tensor,
+            &DropBlockOptions::default()
+                .with_noise(NoiseConfig::default())
+                .with_drop_prob(drop_prob)
+                .with_kernel([2, 3]),
+        );
+
+        // Count all 1.0; which are the non-dropped values.
+        let numel = drop.shape().num_elements();
+
+        // This should be an exact match; the Distribution::Default is [0.0, 1.0);
+        // and will never generate a 1.0.
+        let keep_count = drop.equal_elem(1.0).int().sum().into_scalar() as usize;
+
+        let drop_count = numel - keep_count;
+
+        let drop_ratio = drop_count as f64 / numel as f64;
+
+        assert!((drop_ratio - drop_prob).abs() < 0.15);
     }
 }

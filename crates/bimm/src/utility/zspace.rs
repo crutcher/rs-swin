@@ -1,5 +1,8 @@
 //! # Z-Space utilities.
 //!
+//! Z-Space is frequently used to define the semantics of n-dimensional
+//! integer coordinate systems.
+//!
 //! Z-Space refers to n-dimensional spaces indexed by integer tuples.
 //! It is Manhattan / Taxi-Cab Space, with the addition of a partial ordering.
 //!
@@ -10,10 +13,18 @@ use crate::utility::results::expect_unwrap;
 use anyhow::bail;
 use std::cmp::Ordering;
 use std::fmt::Debug;
+
 /// Z-space `PartialOrd`
 ///
 /// Compares the partial ordering of two slices (of equal length)
 /// by z-space tuple dominance.
+///
+/// For example, the following orderings would hold:
+/// * ``cmp([1, 2], [1, 2]) == Some(Ordering::Equal)``
+/// * ``cmp([0, 0], [0, 1]) == Some(Ordering::Less)``
+/// * ``cmp([1, 0], [0, 0]) == Some(Ordering::Greater)``
+/// * ``cmp([0, 0], [1, 1]) == Some(Ordering::Less)``
+/// * ``cmp([1, 0], [0, 1]) == None``
 ///
 /// # Arguments
 ///
@@ -23,6 +34,10 @@ use std::fmt::Debug;
 /// # Returns
 ///
 /// An `Option<Ordering>`, where `None` represents incomparable.
+///
+/// # Panics
+///
+/// If called on slices of unequal lengths.
 pub fn zspace_partial_cmp<T: PartialOrd>(
     a: &[T],
     b: &[T],
