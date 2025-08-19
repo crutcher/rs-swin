@@ -3,11 +3,12 @@ use crate::utility::burn::clamp::ClampConfig;
 use burn::prelude::{Backend, Shape, Tensor};
 use burn::tensor::Distribution;
 use num_traits::clamp;
+use serde::{Deserialize, Serialize};
 
 /// Noise Configuration.
 ///
 /// Carries a [`Distribution`] and an optional [`ClampConfig`].
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NoiseConfig {
     /// The noise distribution.
     pub distribution: Distribution,
