@@ -4,8 +4,8 @@ use crate::layers::drop::path::zspace::{expect_point_bounds_check, shape_to_rang
 use crate::utility::probability::expect_probability;
 use bimm_contracts::unpack_shape_contract;
 use burn::prelude::{Backend, Shape, Tensor};
-use burn::tensor::Distribution;
 use burn::tensor::module::max_pool2d;
+use burn::tensor::{DType, Distribution};
 
 /// Clip Range.
 #[derive(Debug, Clone)]
@@ -123,6 +123,16 @@ impl DropBlockOptions {
         Self { kernel, ..self }
     }
 
+    /// Clip the kernel to fit within the shape.
+    pub fn clipped_kernel(
+        &self,
+        shape: [usize; 2],
+    ) -> [usize; 2] {
+        let [h, w] = shape;
+        let [kh, kw] = self.kernel;
+        [std::cmp::min(h, kh), std::cmp::min(w, kw)]
+    }
+
     /// Set the gamma scale.
     pub fn with_gamma_scale(
         self,
@@ -153,7 +163,10 @@ impl DropBlockOptions {
         Self { batchwise, ..self }
     }
 
-    /// Compute the correct gamma for the options and shape.
+    /// Compute the adjusted gamma rate.
+    ///
+    /// Gamma is the adjusted probability that any given point is the midpoint
+    /// of a dropped block; given the desired `drop_rate`, the block size, and the input size.
     ///
     /// ## Arguments
     ///
@@ -164,13 +177,30 @@ impl DropBlockOptions {
         shape: [usize; 2],
     ) -> f64 {
         let [h, w] = shape;
-        let [kh, kw] = self.kernel;
+        let [kh, kw] = self.clipped_kernel(shape);
 
-        let total_size = (h * w) as f64;
-
-        (self.gamma_scale * self.drop_prob * total_size)
+        (self.gamma_scale * self.drop_prob * ((h * w) as f64))
             / ((kh * kw) as f64)
             / (((h - kh + 1) * (w * kw + 1)) as f64)
+    }
+
+    /// Compute the gamma noise for the given noise batch shape.
+    ///
+    /// # Args
+    ///
+    /// - `shape`: the target noise batch shape.
+    ///
+    /// # Returns
+    ///
+    /// Gamma noise, sampled at ``self.gamma([h, w])`` rate.
+    pub fn gamma_noise<B: Backend>(
+        &self,
+        noise_shape: [usize; 4],
+        device: &B::Device,
+    ) -> Tensor<B, 4> {
+        let [_, _, h, w] = noise_shape;
+        let gamma = self.gamma([h, w]);
+        Tensor::random(noise_shape, Distribution::Bernoulli(gamma), device)
     }
 }
 
@@ -216,7 +246,7 @@ pub fn conv2d_kernel_midpoint_filter<B: Backend>(
 ///   `0.0` everywhere else. Expected to be gamma noise.
 /// * `kernel_shape` - the shape of the kernel.
 /// * `messy` - permit partial blocks at the edges, faster.
-pub fn drop_block_2d_drop_filter<B: Backend>(
+pub fn drop_block_2d_drop_filter_<B: Backend>(
     selected_blocks: Tensor<B, 4>,
     kernel_shape: [usize; 2],
     messy: bool,
@@ -226,11 +256,7 @@ pub fn drop_block_2d_drop_filter<B: Backend>(
 
     assert!(
         kh <= h && kw <= w,
-        "Kernel size ({}, {}) is larger than input size ({}, {})",
-        kh,
-        kw,
-        h,
-        w
+        "Kernel size ({kh}, {kw}) is larger than input size ({h}, {w})",
     );
 
     let dtype = selected_blocks.dtype();
@@ -259,38 +285,54 @@ pub fn drop_block_2d_drop_filter<B: Backend>(
     selection
 }
 
-/// Dropblock
+/// `drop_block_2d`
+///
+/// Drops block kernels from a tensor; many options.
+///
+/// Dropped values can be resampled from a noise distribution,
+/// kept values can be re-normalized.
+/// The drop probability, block size, and several performance/quality tradeoffs
+/// can be configured.
+///
+/// Based upon [DropBlock (Ghiasi, et all, 2018)](https://arxiv.org/pdf/1810.12890.pdf);
+/// inspired also by the `python-image-models` implementation.
+///
+/// # Arguments
+///
+/// * `tensor` - the tensor to operate on.
+/// * `options` - the algorithm options.
 pub fn drop_block_2d<B: Backend>(
     tensor: Tensor<B, 4>,
     options: &DropBlockOptions,
 ) -> Tensor<B, 4> {
     let [b, c, h, w] = tensor.shape().dims();
-    let kernel = &options.kernel;
+    let kernel = options.clipped_kernel([h, w]);
 
-    let shape = tensor.shape();
+    let t_shape = tensor.shape();
     let device = &tensor.device();
     let dtype = tensor.dtype();
 
-    let gamma = options.gamma([h, w]);
-
     let noise_shape = [if options.batchwise { 1 } else { b }, c, h, w];
 
-    let gamma_noise = Tensor::random(noise_shape, Distribution::Bernoulli(gamma), device);
+    let gamma_noise = options.gamma_noise(noise_shape, device);
 
     let drop_filter: Tensor<B, 4> =
-        drop_block_2d_drop_filter(gamma_noise, *kernel, options.messy).cast(dtype);
+        drop_block_2d_drop_filter_(gamma_noise, kernel, options.messy).cast(dtype);
     let keep_filter: Tensor<B, 4> = 1.0 - drop_filter.clone();
 
     if let Some(noise_cfg) = &options.noise_cfg {
-        let noise: Tensor<B, 4> = noise_cfg.noise(noise_shape, device);
+        // Fill in the dropped regions with sampled noise.
+        let noise: Tensor<B, 4> = noise_cfg.noise(noise_shape, device).cast(dtype);
+        let noise = noise * drop_filter;
 
-        tensor * keep_filter.expand(shape.clone()) + noise * drop_filter.expand(shape)
+        tensor * keep_filter.expand(t_shape.clone()) + noise.expand(t_shape)
     } else {
-        let count = keep_filter.shape().num_elements() as f64;
-        let total = keep_filter.clone().sum();
+        // Rescale the kept regions to normalize to 1.0.
+        let count = keep_filter.shape().num_elements() as f32;
+        let total = keep_filter.clone().cast(DType::F32).sum();
         let norm_scale = count / total.add_scalar(1e-7);
 
-        tensor * keep_filter * norm_scale.expand(shape)
+        tensor * keep_filter.expand(t_shape.clone()) * norm_scale.cast(dtype).expand(t_shape)
     }
 }
 
