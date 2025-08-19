@@ -216,7 +216,7 @@ pub fn conv2d_kernel_midpoint_filter<B: Backend>(
 ///   `0.0` everywhere else. Expected to be gamma noise.
 /// * `kernel_shape` - the shape of the kernel.
 /// * `messy` - permit partial blocks at the edges, faster.
-pub fn drop_block_2d_selection_filter<B: Backend>(
+pub fn drop_block_2d_drop_filter<B: Backend>(
     selected_blocks: Tensor<B, 4>,
     kernel_shape: [usize; 2],
     messy: bool,
@@ -278,7 +278,7 @@ pub fn drop_block_2d<B: Backend>(
     let gamma_noise = Tensor::random(noise_shape, Distribution::Bernoulli(gamma), device);
 
     let drop_filter: Tensor<B, 4> =
-        drop_block_2d_selection_filter(gamma_noise, *kernel, options.messy).cast(dtype);
+        drop_block_2d_drop_filter(gamma_noise, *kernel, options.messy).cast(dtype);
     let keep_filter: Tensor<B, 4> = 1.0 - drop_filter.clone();
 
     if let Some(noise_cfg) = &options.noise_cfg {
