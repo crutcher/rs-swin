@@ -6,11 +6,11 @@ use std::fmt::Debug;
 
 /// Validate a probability in the range ``[0.0, 1.0]``.
 ///
-/// ## Arguments
+/// # Arguments
 ///
 /// - `prob`: the prob to check.
 ///
-/// ## Returns
+/// # Returns
 ///
 /// An `anyhow::Result<prob>`
 #[inline]
@@ -23,15 +23,15 @@ pub fn try_probability<F: Float + Debug>(prob: F) -> anyhow::Result<F> {
 
 /// Expect a probability to be in range ``[0.0, 1.0]``, or panic.
 ///
-/// ## Arguments
+/// # Arguments
 ///
 /// - `prob`: the prob to check.
 ///
-/// ## Returns
+/// # Returns
 ///
 /// `prob`.
 ///
-/// ## Panics
+/// # Panics
 ///
 /// On range error.
 #[inline]

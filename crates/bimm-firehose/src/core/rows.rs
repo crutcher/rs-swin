@@ -131,11 +131,11 @@ pub trait FirehoseRowReader {
 
     /// Gets the column.
     ///
-    /// ## Arguments
+    /// # Arguments
     ///
     /// - `column_name`: the name of the column.
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// An `anyhow::Result<&FirehoseValue>` reference to the column value; or an error.
     fn try_get(
@@ -148,15 +148,15 @@ pub trait FirehoseRowReader {
 
     /// Gets the column.
     ///
-    /// ## Arguments
+    /// # Arguments
     ///
     /// - `column_name`: the name of the column.
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// A reference to the column.
     ///
-    /// ## Panics
+    /// # Panics
     ///
     /// If the column is absent.
     fn expect_get(

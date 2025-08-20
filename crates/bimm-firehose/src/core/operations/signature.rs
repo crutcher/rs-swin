@@ -23,12 +23,12 @@ impl ParameterSpec {
     ///
     /// The type `T` is used to infer the data type of the parameter.
     ///
-    /// ## Parameters
+    /// # Parameters
     ///
     /// - `name`: The name of the parameter.
     /// - `T`: The type of the parameter, which is used to determine the data type description.
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// A new `ParameterSpec` instance with the specified name, data type, and required arity.
     pub fn new<T>(name: &str) -> Self {
@@ -139,13 +139,13 @@ impl FirehoseOperatorSignature {
 
     /// Internal helper to add a parameter specification to the list of inputs or outputs.
     ///
-    /// ## Parameters
+    /// # Parameters
     ///
     /// * `spec`: The parameter specification to add.
     /// * `ptype`: A string indicating the type of parameter ("input" or "output").
     /// * `specs`: The current list of parameter specifications (either inputs or outputs).
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// An `anyhow::Result<Vec<ParameterSpec>>` containing a new vector of parameter specifications with the added parameter.
     fn with_parameter(
@@ -169,11 +169,11 @@ impl FirehoseOperatorSignature {
 
     /// Extends the operator specification with an input parameter.
     ///
-    /// ## Parameters
+    /// # Parameters
     ///
     /// * `spec`: The input parameter specification to add.
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// An `Result<Self, String>` where:
     /// * `Ok(Self)`: A new `FirehoseOperatorSignature` with the input parameter added.
@@ -192,15 +192,15 @@ impl FirehoseOperatorSignature {
 
     /// Extends the operator specification with an input parameter.
     ///
-    /// ## Parameters
+    /// # Parameters
     ///
     /// * `spec`: The input parameter specification to add.
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// A new `FirehoseOperatorSignature` with the input parameter added.
     ///
-    /// ## Panics
+    /// # Panics
     ///
     /// If the input parameter name already exists in the signature,
     pub fn with_input(
@@ -215,11 +215,11 @@ impl FirehoseOperatorSignature {
 
     /// Extends the operator specification with an output parameter.
     ///
-    /// ## Parameters
+    /// # Parameters
     ///
     /// * `spec`: The output parameter specification to add.
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// An `Result<Self, String>` where:
     /// * `Ok(Self)`: A new `FirehoseOperatorSignature` with the output parameter added.
@@ -238,15 +238,15 @@ impl FirehoseOperatorSignature {
 
     /// Extends the operator specification with an output parameter.
     ///
-    /// ## Parameters
+    /// # Parameters
     ///
     /// * `spec`: The output parameter specification to add.
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// A new `FirehoseOperatorSignature` with the output parameter added.
     ///
-    /// ## Panics
+    /// # Panics
     ///
     /// If the output parameter name already exists in the signature,
     /// it will panic with an error message.

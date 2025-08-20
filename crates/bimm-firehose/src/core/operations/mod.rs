@@ -15,7 +15,7 @@ pub mod signature;
 
 /// Combined macro to define and register a firehose operator.
 ///
-/// ## Arguments
+/// # Arguments
 ///
 /// * `$name`: The name of the operator ID to define;
 ///   will create a self-referential static string constant.
@@ -35,7 +35,7 @@ macro_rules! define_firehose_operator {
 ///
 /// The id will be defined as a static string constant that refers to its own namespace path.
 ///
-/// ## Arguments
+/// # Arguments
 ///
 /// * `$name`: The name of the operator ID to define.
 ///

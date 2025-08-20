@@ -168,21 +168,34 @@ impl<B: Backend> WindowAttentionMeta for WindowAttention<B> {
 impl<B: Backend> WindowAttention<B> {
     /// Forward pass of the `WindowAttention` module.
     ///
-    /// ## Arguments
+    /// # Arguments
     ///
-    /// - `x`: Input tensor of shape (B*`num_windows`, `window_size` * `window_size`, C).
-    /// - `mask`: Optional mask tensor of shape (`num_windows`, Wh*Ww, Wh*Ww).
+    /// - `x`: Input tensor of shape ``[batch * num_windows, Wh*Ww, channels]``.
+    /// - `mask`: Optional mask tensor of shape ``[num_windows, Wh*Ww, Wh*Ww]``.
     ///
-    /// ## Returns
+    /// # Returns
     ///
-    /// - Output tensor of shape (B*`num_windows`, N=ws*ws, C).
+    /// Output tensor of shape ``[batch * num_windows, Wh*Ww, channels]``.
+    ///
+    /// # Panics
+    ///
+    /// On shape contract failure.
     #[must_use]
     pub fn forward(
         &self,
         x: Tensor<B, 3>,
         mask: Option<Tensor<B, 3>>,
     ) -> Tensor<B, 3> {
-        let [b_nw, n, c] = unpack_shape_contract!(["b_nw", "n", "c"], &x);
+        let [wh, ww] = self.window_shape();
+
+        let [b_nw, n, c] = unpack_shape_contract!(
+            ["b_nw", "n" = "wh" * "ww", "c"],
+            &x,
+            &["b_nw", "n", "c"],
+            &[("wh", wh), ("ww", ww)],
+        );
+
+        self.window_shape();
 
         // n = ws * ws
 
@@ -212,7 +225,7 @@ impl<B: Backend> WindowAttention<B> {
 
     /// Compute the attention.
     ///
-    /// ## Arguments
+    /// # Arguments
     ///
     /// - `b_nw`: Batch size times number of windows.
     /// - `n`: Number of elements in the input tensor.
@@ -220,7 +233,7 @@ impl<B: Backend> WindowAttention<B> {
     /// - `k`: Key tensor of shape (`b_nw`, `num_heads`, ws*ws, `c_per_head`).
     /// - `mask`: Optional mask tensor of shape (`num_windows`, ws*ws, ws*ws).
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// - Output attention tensor of shape (`b_nw`, `num_heads`, ws*ws, ws*ws).
     #[must_use]
@@ -270,7 +283,7 @@ impl<B: Backend> WindowAttention<B> {
 
     /// Get the learnable logit scale.
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// - Output tensor of shape (`num_heads`, 1, 1).
     #[must_use]
@@ -283,7 +296,7 @@ impl<B: Backend> WindowAttention<B> {
 
     /// Get the learnable relative position bias.
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// - Output tensor of shape (`num_heads`, Wh*Ww, Wh*Ww).
     #[inline(always)]
@@ -294,11 +307,11 @@ impl<B: Backend> WindowAttention<B> {
 
     /// Encode the attention logits with the logit scale and relative position bias.
     ///
-    /// ## Arguments
+    /// # Arguments
     ///
     /// - `attn`: Attention logits tensor of shape (`b_nw`, `num_heads`, Wh*Ww, Wh*Ww).
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// - Output tensor of shape (`b_nw`, `num_heads`, Wh*Ww, Wh*Ww).
     #[inline(always)]
@@ -314,11 +327,11 @@ impl<B: Backend> WindowAttention<B> {
 impl WindowAttentionConfig {
     /// Create a new `WindowAttentionConfig`.
     ///
-    /// ## Arguments
+    /// # Arguments
     ///
     /// - `device`: The backend device to use.
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// A new instance of `WindowAttentionConfig`.
     pub fn init<B: Backend>(

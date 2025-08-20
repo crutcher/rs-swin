@@ -12,11 +12,11 @@ pub fn ident_regex() -> &'static Regex {
 
 /// Checks if a string is a valid identifier.
 ///
-/// ## Arguments
+/// # Arguments
 ///
 /// - `s`: The string to check.
 ///
-/// ## Returns
+/// # Returns
 ///
 /// `true` if the string is a valid identifier, `false` otherwise.
 pub fn is_ident(s: &str) -> bool {
@@ -25,11 +25,11 @@ pub fn is_ident(s: &str) -> bool {
 
 /// Checks if a string is a valid identifier.
 ///
-/// ## Arguments
+/// # Arguments
 ///
 /// - `s`: The string to check.
 ///
-/// ## Returns
+/// # Returns
 ///
 /// Results in:
 /// - `Ok(())` if the string is a valid identifier,
@@ -52,11 +52,11 @@ pub fn path_ident_regex() -> &'static Regex {
 
 /// Parses a path identifier into its components.
 ///
-/// ## Arguments
+/// # Arguments
 ///
 /// - `ident`: The path identifier string to parse.
 ///
-/// ## Returns
+/// # Returns
 ///
 /// - `Ok(Vec<String>)` containing the components of the path identifier,
 /// - `Err(String)` if the identifier is invalid.

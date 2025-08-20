@@ -33,7 +33,7 @@ macro_rules! define_image_aug_plugin {
 
 /// Registers a [`AugmentationStage`].
 ///
-/// ## Arguments
+/// # Arguments
 ///
 /// - `name`: the local reference name of the plugin ID;
 ///   used by `define_image_aug_plugin!()`.
@@ -158,12 +158,12 @@ pub trait AugmentationStage: Debug + Send + Sync {
 
     /// Apply the stage to the image.
     ///
-    /// ## Arguments
+    /// # Arguments
     ///
     /// - `image`: the image to augment.
     /// - `ctx`: the `AugmentationContex` being operated in.
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// A (modified?) image.
     fn augment_image(
@@ -194,7 +194,7 @@ pub struct AugmentImageConfig {
 impl AugmentImageConfig {
     /// Converts into an `OperationPlanner`
     ///
-    /// ## Arguments
+    /// # Arguments
     ///
     /// * `seed_column`: The name of the input column containing the augmentation seed.
     /// * `source_column`: The name of the input image column.
@@ -295,7 +295,7 @@ impl AugmentImageOperation {
 
     /// Converts into an `OperationPlanner`
     ///
-    /// ## Arguments
+    /// # Arguments
     ///
     /// * `seed_column`: The name of the input column containing the augmentation seed.
     /// * `source_column`: The name of the input image column.

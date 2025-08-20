@@ -94,11 +94,11 @@ impl ImageLoader {
 
     /// Extends the `ImageLoader` with a resize specification.
     ///
-    /// ## Arguments
+    /// # Arguments
     ///
     /// * `resize`: The resize specification to apply to the image.
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// A new `ImageLoader` instance with the specified resize applied.
     pub fn with_resize(
@@ -113,11 +113,11 @@ impl ImageLoader {
 
     /// Extends the `ImageLoader` with a recolor specification.
     ///
-    /// ## Arguments
+    /// # Arguments
     ///
     /// * `recolor`: The color type to convert the image to.
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// A new `ImageLoader` instance with the specified recolor applied.
     pub fn with_recolor(
@@ -132,7 +132,7 @@ impl ImageLoader {
 
     /// Converts this `ImageLoader` configuration into an `OperationPlanner`
     ///
-    /// ## Arguments
+    /// # Arguments
     ///
     /// * `path_column`: The name of the input column containing the image file paths.
     /// * `image_column`: The name of the output column where the loaded images will be stored.

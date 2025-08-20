@@ -63,11 +63,11 @@ impl BlockMlpMeta for BlockMlpConfig {
 impl BlockMlpConfig {
     /// Creates a new `BlockMlp`.
     ///
-    /// ## Arguments
+    /// # Arguments
     ///
     /// - `device`: The device on which the MLP will be initialized.
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// A new `BlockMlp` instance.
     pub fn init<B: Backend>(
@@ -123,6 +123,14 @@ impl<B: Backend> BlockMlpMeta for BlockMlp<B> {
 
 impl<B: Backend> BlockMlp<B> {
     /// Apply the MLP to the input tensor.
+    ///
+    /// # Arguments
+    ///
+    /// - `x`: a tensor of ``[batch = ..., in]``.
+    ///
+    /// # Returns
+    ///
+    /// A tensor of ``[batch = ... out]``
     #[must_use]
     pub fn forward<const D: usize>(
         &self,
@@ -164,12 +172,12 @@ impl<B: Backend> BlockMlp<B> {
 ///
 /// When `swa_enabled` is false, it simply applies the function `f` without any shift.
 ///
-/// ## Parameters
+/// # Arguments
 ///
-/// * `x` - Input tensor of shape (B, H, W, C).
+/// * `x` - Input tensor of ``[batch, height, width, channels]``.
 /// * `f` - Function to apply on the shifted tensor.
 ///
-/// ## Returns
+/// # Returns
 ///
 /// A new tensor of the same shape as `x`, with the function `f` applied after cyclic shifting.
 #[must_use]
@@ -382,13 +390,13 @@ impl ShiftedWindowTransformerBlockConfig {
 
     /// Initializes a new `SwinTransformerBlock`.
     ///
-    /// # Parameters
+    /// # Arguments
     ///
     /// * `device` - The device on which the block will be created.
     ///
     /// # Returns
     ///
-    /// A new `SwinTransformerBlock` instance configured with the specified parameters.
+    /// A new `SwinTransformerBlock` configured with the specified parameters.
     #[must_use]
     pub fn init<B: Backend>(
         &self,
@@ -523,15 +531,17 @@ impl<B: Backend> ShiftedWindowTransformerBlockMeta for ShiftedWindowTransformerB
 impl<B: Backend> ShiftedWindowTransformerBlock<B> {
     /// Applies the forward pass on the input tensor.
     ///
-    /// H and W are the height and width of the input resolution, and D is the input dimension.
+    /// # Arguments
     ///
-    /// # Parameters
-    ///
-    /// * `x` - Input tensor of shape (B, H * W, D), where B is the batch size,
+    /// * `x` - Input tensor of ``[batch, height * width, channels]``.
     ///
     /// # Returns
     ///
-    /// A new tensor of shape (B, H * W, D) with the transformer block applied.
+    /// A new tensor of ``[batch, height * width, channels]``.
+    ///
+    /// # Panics
+    ///
+    /// On shape contract failure.
     #[must_use]
     pub fn forward(
         &self,
@@ -582,14 +592,14 @@ impl<B: Backend> ShiftedWindowTransformerBlock<B> {
     /// This function partitions the input tensor into windows, applies window attention,
     /// and then merges the windows back to the original shape.
     ///
-    /// ## Parameters
+    /// # Arguments
     ///
-    /// * `x` - Input tensor of shape (B, H, W, C).
+    /// * `x` - Input tensor of ``[batch, height, width, channels]``.
     /// * `c` - Number of channels in the input tensor.
     ///
-    /// ## Returns
+    /// # Returns
     ///
-    /// A new tensor of shape (B, H, W, C) with window attention applied.
+    /// A new tensor of ``[batch, height, width, channels]`` with window attention applied.
     #[must_use]
     #[inline(always)]
     fn apply_window(

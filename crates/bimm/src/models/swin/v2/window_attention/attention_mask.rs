@@ -3,7 +3,7 @@ use burn::prelude::{Backend, Bool, Int, Tensor};
 
 /// Apply an attention mask.
 ///
-/// ## Parameters
+/// # Arguments
 ///
 /// - `b_nw`: Batch size times number of windows.
 /// - `n`: Number of elements in the input tensor, Wh*Ww.
@@ -11,7 +11,7 @@ use burn::prelude::{Backend, Bool, Int, Tensor};
 /// - `attn`: Attention logits tensor of shape (`b_nw`, `num_heads`, Wh*Ww, Wh*Ww).
 /// - `mask`: Mask tensor of shape (`num_windows`, Wh*Ww, Wh*Ww).
 ///
-/// ## Returns
+/// # Returns
 ///
 /// - Output tensor of shape (`b_nw`, `num_heads`, Wh*Ww, Wh*Ww).
 #[inline(always)]
@@ -43,14 +43,14 @@ pub fn apply_attention_mask<B: Backend>(
 ///
 /// This function generates a mask for the shifted window attention mechanism.
 ///
-/// ## Parameters
+/// # Arguments
 ///
 /// - `input_shape`: The shape of the input tensor; must be divisible by the window size.
 /// - `window_size`: The size of the window.
 /// - `shift_size`: The size of the shift.
 /// - `device`: The device on which the tensor will be created.
 ///
-/// ## Returns
+/// # Returns
 ///
 /// A tensor representing the shifted window image mask.
 #[must_use]
@@ -111,14 +111,14 @@ fn sw_img_mask<B: Backend>(
 ///
 /// This function generates a mask for the shifted window attention mechanism.
 ///
-/// ## Parameters
+/// # Arguments
 ///
 /// - `input_shape`: The shape of the input tensor.
 /// - `window_size`: The size of the window.
 /// - `shift_size`: The size of the shift.
 /// - `device`: The device on which the tensor will be created.
 ///
-/// ## Returns
+/// # Returns
 ///
 /// A tensor representing the shifted window attention mask.
 #[must_use]

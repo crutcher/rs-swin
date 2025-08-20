@@ -173,7 +173,7 @@ impl DropBlockOptions {
     /// Gamma is the adjusted probability that any given point is the midpoint
     /// of a dropped block; given the desired `drop_rate`, the block size, and the input size.
     ///
-    /// ## Arguments
+    /// # Arguments
     ///
     /// - `shape`: the shape of the target tensor.
     #[inline]

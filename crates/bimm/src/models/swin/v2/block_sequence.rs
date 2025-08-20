@@ -268,11 +268,15 @@ impl<B: Backend> StochasticDepthTransformerBlockSequence<B> {
     ///
     /// # Arguments
     ///
-    /// - `x`: Input tensor of shape (B, H * W, C).
+    /// - `x`: Input tensor of shape: ``[batch, height * width, channels]``.
     ///
     /// # Returns
     ///
-    /// Output tensor of shape (B, H * W, C).
+    /// Output tensor of shape ``[batch, height * width, channels``.
+    ///
+    /// # Panics
+    ///
+    /// If the input tensor fails the shape contract.
     #[must_use]
     pub fn forward(
         &self,

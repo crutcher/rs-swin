@@ -6,13 +6,18 @@ use burn::tensor::BasicOps;
 
 /// Window Partition
 ///
-/// ## Parameters
+/// # Arguments
 ///
-/// - `tensor`: Input tensor of shape (B, H, W, C).
+/// - `tensor`: Input tensor of ``[batch, height, width, channels]``.
 /// - `window_size`: Window size.
 ///
-/// ## Returns
-///   - Output tensor of shape (B * `h_windows` * `w_windows`, `window_size`, `window_size`, C).
+/// # Returns
+///
+/// Output tensor of ``[batch * h_windows * w_windows, window_size, window_size, channels]``.
+///
+/// # Panics
+///
+/// On shape contract failure.
 #[inline]
 #[must_use]
 pub fn window_partition<B: Backend, K>(
@@ -42,27 +47,33 @@ where
 
 /// Window Reverse
 ///
-/// ## Parameters
-/// - `windows`: Input tensor of shape (B * `h_windows` * `w_windows`, `window_size`, `window_size`, C).
-/// - `window_size`: Window size.
-/// - `h`: Height of the original image.
-/// - `w`: Width of the original image.
+/// # Arguments
 ///
-/// ## Returns
-/// - Output tensor of shape (B, H, W, C).
+/// - `windows`: Input tensor of ``[batch * h_windows * w_windows, window_size, window_size, channels]``.
+/// - `window_size`: Window size.
+/// - `height`: Height of the original image.
+/// - `width`: Width of the original image.
+///
+/// # Returns
+///
+/// Output tensor of shape ``[batch, height, width, channels]``.
+///
+/// # Panics
+///
+/// On shape contract failure.
 #[inline]
 #[must_use]
 pub fn window_reverse<B: Backend, K>(
     windows: Tensor<B, 4, K>,
     window_size: usize,
-    h: usize,
-    w: usize,
+    height: usize,
+    width: usize,
 ) -> Tensor<B, 4, K>
 where
     K: BasicOps<B>,
 {
-    let h_wins = h / window_size;
-    let w_wins = w / window_size;
+    let h_wins = height / window_size;
+    let w_wins = width / window_size;
 
     let [b, c] = unpack_shape_contract!(
         [
@@ -83,7 +94,7 @@ where
     windows
         .reshape([b, h_wins, w_wins, window_size, window_size, c])
         .swap_dims(2, 3)
-        .reshape([b, h, w, c])
+        .reshape([b, height, width, c])
 }
 
 #[cfg(test)]
