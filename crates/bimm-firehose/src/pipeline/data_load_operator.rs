@@ -3,7 +3,7 @@ use std::fmt::Debug;
 
 /// Support super-trait for loadable data types.
 ///
-/// ## Trait Requirements
+/// # Trait Requirements
 ///
 /// - `Debug`: the data item must be debuggable.
 /// - `Clone`: the data item must be cloneable.

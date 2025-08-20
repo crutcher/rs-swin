@@ -98,11 +98,11 @@ impl PatchEmbedMeta for PatchEmbedConfig {
 impl PatchEmbedConfig {
     /// Initialize a `PatchEmbed` module with the given configuration.
     ///
-    /// ## Arguments
+    /// # Arguments
     ///
     /// * `device` - The device on which the module will be initialized.
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// * A `PatchEmbed` module configured with the specified parameters.
     #[must_use]
@@ -174,13 +174,13 @@ impl<B: Backend> PatchEmbedMeta for PatchEmbed<B> {
 impl<B: Backend> PatchEmbed<B> {
     /// Apply the `PatchEmbed` module to an input tensor.
     ///
-    /// ## Arguments
+    /// # Arguments
     ///
-    /// * `x` - Input tensor of shape ``(B, C, H, W)``.
+    /// * `x` - Input tensor of shape ``[B, C, H, W]``.
     ///
-    /// ## Returns
+    /// # Returns
     ///
-    /// * Output tensor of shape ``(B, H/patch_size * W/patch_size, d_output)``.
+    /// * Output tensor of shape ``[B, H/patch_size * W/patch_size, d_output]``.
     #[must_use]
     pub fn forward(
         &self,

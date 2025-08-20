@@ -7,7 +7,7 @@ use std::hash::Hash;
 /// The type `M` must implement the `ScheduleItem` trait, which requires it to be
 /// Debug, Serialize, Sync, and Send safe.
 ///
-/// ## Motivation
+/// # Motivation
 ///
 /// This structure is designed to hold the intermediate schedule for a data pipeline
 /// load operation; in a format which can be serialized and deserialized;
@@ -32,7 +32,7 @@ where
 /// blanket implementations of `ScheduleItem` are provided for any type that meets
 /// the requirements.
 ///
-/// ## Trait Requirements
+/// # Trait Requirements
 ///
 /// - `Debug`: the schedule must be displayable.
 /// - `Clone`: the schedule must be cloneable.
@@ -93,11 +93,11 @@ where
 
     /// Filters the items in the schedule based on a provided filter function.
     ///
-    /// ## Arguments
+    /// # Arguments
     ///
     /// - `predicate`: A closure that takes a reference to an item of type `M` and returns a boolean.
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// A new `DataLoadSchedule<M>` containing only the items that match the predicate.
     pub fn filter<P>(
@@ -123,11 +123,11 @@ where
     ///
     /// This function is useful for transforming the schedule items while filtering them.
     ///
-    /// ## Arguments
+    /// # Arguments
     ///
     /// - `predicate`: A closure that takes a reference to an item of type `M` and returns an `Option<R>`.
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// A new `DataLoadSchedule<R>` containing the items that matched the predicate and were transformed to type `R`.
     pub fn filter_map<P, R>(

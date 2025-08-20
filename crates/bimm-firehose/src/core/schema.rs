@@ -71,11 +71,11 @@ impl BuildPlan {
 
     /// Extends the build plan with a description.
     ///
-    /// ## Arguments
+    /// # Arguments
     ///
     /// - `description`: The description to attach to the build plan.
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// A new `ColumnBuildPlan` with the description attached.
     pub fn with_description(
@@ -90,11 +90,11 @@ impl BuildPlan {
 
     /// Extends the build plan with a configuration.
     ///
-    /// ## Arguments
+    /// # Arguments
     ///
     /// - `config`: The configuration to attach to the build plan, serialized as JSON.
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// A new `ColumnBuildPlan` with the configuration attached.
     pub fn with_config<T>(
@@ -112,11 +112,11 @@ impl BuildPlan {
 
     /// Builds a name map from a slice of tuples.
     ///
-    /// ## Arguments
+    /// # Arguments
     ///
     /// - `assoc`: A slice of tuples where each tuple contains a parameter name and a column name.
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// A `BTreeMap<String, String>` mapping parameter names to column names.
     fn build_name_map(assoc: &[(&str, &str)]) -> BTreeMap<String, String> {
@@ -131,11 +131,11 @@ impl BuildPlan {
 
     /// Extends the build plan with input columns.
     ///
-    /// ## Arguments
+    /// # Arguments
     ///
     /// - `inputs`: A slice of tuples where each tuple contains a parameter name and a column name.
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// A new `ColumnBuildPlan` with the input columns attached.
     pub fn with_inputs(
@@ -150,11 +150,11 @@ impl BuildPlan {
 
     /// Extends the build plan with output columns.
     ///
-    /// ## Arguments
+    /// # Arguments
     ///
     /// - `outputs`: A slice of tuples where each tuple contains a parameter name and a column name.
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// A new `ColumnBuildPlan` with the output columns attached.
     pub fn with_outputs(
@@ -188,11 +188,11 @@ impl BuildPlan {
 
     /// Translates an input parameter name to its corresponding column name.
     ///
-    /// ## Arguments
+    /// # Arguments
     ///
     /// - `parameter_name`: The name of the input parameter to translate.
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// An `anyhow::Result<&str>` containing the column name corresponding to the input parameter.
     pub fn translate_input_name(
@@ -204,11 +204,11 @@ impl BuildPlan {
 
     /// Translates an output parameter name to its corresponding column name.
     ///
-    /// ## Arguments
+    /// # Arguments
     ///
     /// - `parameter_name`: The name of the output parameter to translate.
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// An `anyhow::Result<&str>` containing the column name corresponding to the output parameter.
     pub fn translate_output_name(
@@ -255,11 +255,11 @@ impl ColumnSchema {
 
     /// Extends the schema with a description.
     ///
-    /// ## Arguments
+    /// # Arguments
     ///
     /// - `description`: The description to attach to the column.
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// A new `BimmColumnSchema` with the description attached.
     pub fn with_description(
@@ -376,12 +376,12 @@ impl FirehoseTableSchema {
     /// This function verifies the dependencies between build plans
     /// and ensures that all columns can be built in a valid order.
     ///
-    /// ## Arguments
+    /// # Arguments
     ///
     /// - `columns`: A slice of `ColumnSchema` representing the columns in the table.
     /// - `plans`: A slice of `BuildPlan` representing the build plans for the table.
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// An `anyhow::Result<(Vec<String>, Vec<BuildPlan>)>` containing the base columns and the ordered build plans.
     fn check_graph(
@@ -455,7 +455,7 @@ impl FirehoseTableSchema {
     ///
     /// This function checks the build plans and their dependencies to determine the order in which they should be executed.
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// An `anyhow::Result<(Vec<String>, Vec<BuildPlan>)>` containing the base columns and the ordered build plans.
     pub fn build_order(&self) -> anyhow::Result<(Vec<String>, Vec<BuildPlan>)> {
@@ -479,7 +479,7 @@ impl FirehoseTableSchema {
 
     /// Checks if a column name is invalid, or conflicts with existing columns.
     ///
-    /// ## Arguments
+    /// # Arguments
     ///
     /// - `name`: The name of the column to check.
     fn check_name(
@@ -540,12 +540,12 @@ impl FirehoseTableSchema {
 
     /// Adds a build plan and its output columns to the table description.
     ///
-    /// ## Arguments
+    /// # Arguments
     ///
     /// - `plan`: The build plan to add.
     /// - `output_info`: A slice of tuples where each tuple contains the output column name, its data type, and a description.
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// An `anyhow::Result<()>` indicating success or containing an error if the operation fails.
     pub fn add_build_plan_and_outputs(
@@ -569,12 +569,12 @@ impl FirehoseTableSchema {
 
     /// Extends the table schema with a build plan and its output columns.
     ///
-    /// ## Arguments
+    /// # Arguments
     ///
     /// - `plan`: The build plan to extend the schema with.
     /// - `output_columns`: A map of output column names to their schemas.
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// An `anyhow::Result<()>` indicating success or containing an error if the operation fails.
     pub fn extend_via_plan(
@@ -646,11 +646,11 @@ impl FirehoseTableSchema {
 
     /// Returns the index of a column by its name.
     ///
-    /// ## Arguments
+    /// # Arguments
     ///
     /// - `name`: The name of the column to find.
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// An `Option<usize>` containing the index of the column if found, or `None` if not found.
     pub fn column_index(
@@ -667,11 +667,11 @@ impl FirehoseTableSchema {
 
     /// Checks if a column with the given name exists and returns its index.
     ///
-    /// ## Arguments
+    /// # Arguments
     ///
     /// - `name`: The name of the column to check.
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// An `anyhow::Result<usize>` containing the index of the column if it exists.
     pub fn check_column_index(

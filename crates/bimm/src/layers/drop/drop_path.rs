@@ -16,14 +16,14 @@ use burn::tensor::Distribution;
 
 /// `DropPath` (stochastic depth) regularization.
 ///
-/// ## Arguments
+/// # Arguments
 ///
 /// * `x`: Input tensor.
 /// * `drop_prob`: Probability of dropping a path.
 /// * `training`: Whether the model is in training mode.
 /// * `scale_by_keep`: Whether to scale the output by `1 / (1 - drop_prob)`
 ///
-/// ## Returns
+/// # Returns
 ///
 /// * Output tensor with the same shape as the input tensor.
 #[must_use]
@@ -48,7 +48,7 @@ pub fn drop_path<B: Backend, const D: usize>(
 ///
 /// Deferred to a separate function to allow for testing sampling.
 ///
-/// ## Arguments
+/// # Arguments
 ///
 /// * `x`: Input tensor.
 /// * `drop_prob`: Probability of dropping a path.
@@ -56,7 +56,7 @@ pub fn drop_path<B: Backend, const D: usize>(
 /// * `scale_by_keep`: Whether to scale the output by `1 / (1 - drop_prob)`
 /// * `sample`: Sampling function to generate the random tensor.
 ///
-/// ## Returns
+/// # Returns
 ///
 /// * Output tensor with the same shape as the input tensor.
 #[inline(always)]
@@ -175,12 +175,12 @@ impl DropPath {
     ///
     /// This is used for stochastic depth in the transformer block.
     ///
-    /// ## Parameters
+    /// # Parameters
     ///
     /// * `x` - Input tensor of shape (B, D).
     /// * `f` - Function to apply on the input tensor.
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// The result of the function application, with a stochastic skip connection applied.
     #[inline]

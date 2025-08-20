@@ -3,12 +3,12 @@ use burn::tensor::grid::{IndexPos, meshgrid_stack};
 
 /// Creates a grid of 2D offset indices for a given window shape.
 ///
-/// ## Arguments
+/// # Arguments
 ///
 /// * `window_shape`: A (height, width) tuple describing the window shape.
 /// * `device`: The device on which the tensor will be created.
 ///
-/// ## Returns
+/// # Returns
 ///
 /// A 3D tensor of shape (2*height-1, 2*width-1, 2) containing the offset indices.
 ///
@@ -40,12 +40,12 @@ pub fn window_index_offset_grid<B: Backend>(
 ///
 /// Converts `window_index_offset_grid` to ``.float()`` and scales by the maximum offset value.
 ///
-/// ## Arguments
+/// # Arguments
 ///
 /// * `window_shape`: A (height, width) tuple describing the window shape.
 /// * `device`: The device on which the tensor will be created.
 ///
-/// ## Returns
+/// # Returns
 ///
 /// A 3D tensor of shape (2*height-1, 2*width-1, 2) containing the relative offsets.
 #[inline(always)]
@@ -66,13 +66,13 @@ pub fn window_relative_offset_grid<B: Backend>(
 /// This is a variant of `window_relative_offset_grid` that applies a logarithmic transformation
 /// to the relative offsets.
 ///
-/// ## Arguments
+/// # Arguments
 ///
 /// * `window_shape`: A (height, width) tuple describing the window shape.
 /// * `base`: The base for the logarithm.
 /// * `device`: The device on which the tensor will be created.
 ///
-/// ## Returns
+/// # Returns
 ///
 /// A 3D tensor of shape (2*height-1, 2*width-1, 2) containing the log-scaled relative offsets.
 #[inline(always)]
@@ -92,12 +92,12 @@ pub fn window_log1p_relative_offset_grid<B: Backend>(
 
 /// Create a 2D attention bias relative position index for a given window shape.
 ///
-/// ## Arguments
+/// # Arguments
 ///
 /// * `window_shape`: A (height, width) tuple describing the window shape.
 /// * `device`: The device on which the tensor will be created.
 ///
-/// ## Returns
+/// # Returns
 ///
 /// A 2D tensor of shape (height * width, height * width) containing the relative position indices.
 ///
@@ -108,7 +108,7 @@ pub fn window_log1p_relative_offset_grid<B: Backend>(
 /// \forall i, j \in [0, h * w), \text{rel}[i, j] = \text{rel}[i + \Delta_i, j + \Delta_j]
 /// ```
 ///
-/// ## Example
+/// # Example
 ///
 /// ```rust.notest
 /// window_attention_relative_position_index([2, 3], device);

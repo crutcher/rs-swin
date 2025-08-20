@@ -534,11 +534,15 @@ impl<B: Backend> SwinTransformerV2<B> {
     ///
     /// # Arguments
     ///
-    /// * `input`: A 4D tensor representing the input image with shape `[B, C, H, W]`,
+    /// * `input`: A tensor of ``[batch, channels, height, width]``,
     ///
     /// # Returns
     ///
-    /// A 2D tensor of shape `[B, num_classes]` representing the classification logits.
+    /// A 2D tensor of ``[batch, num_classes]`` of the classification logits.
+    ///
+    /// # Panics
+    ///
+    /// On shape contract failure.
     #[must_use]
     pub fn forward(
         &self,

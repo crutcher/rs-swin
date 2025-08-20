@@ -61,11 +61,11 @@ impl RelativePositionBiasMeta for RelativePositionBiasConfig {
 impl RelativePositionBiasConfig {
     /// Initializes an `OffsetGridRelativePositionBias` module.
     ///
-    /// ## Arguments
+    /// # Arguments
     ///
     /// * `device`: The device on which the module will be created.
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// An `OffsetGridRelativePositionBias` module.
     #[inline(always)]
@@ -134,7 +134,7 @@ impl<B: Backend> OffsetGridRelativePositionBias<B> {
     /// This is hashed such that all pairs of locations in the window with the same
     /// inter-pair relative offset will have the same bias across all heads.
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// A 3D tensor of shape (`num_heads`, height * width, height * width)
     /// containing the relative position bias for each head and position
@@ -255,13 +255,13 @@ impl ContinuousPositionBiasMlpConfig {
 impl<B: Backend> ContinuousPositionBiasMlp<B> {
     /// Applies the MLP to the input tensor.
     ///
-    /// ## Arguments
+    /// # Arguments
     ///
-    /// * `x`: A tensor of ``(..., 2)`` of the relative log-offset coordinates table.
+    /// * `x`: A tensor of ``[..., 2]`` of the relative log-offset coordinates table.
     ///
-    /// ## Returns
+    /// # Returns
     ///
-    /// A tensor of ``(..., num_heads)`` of the learned bias table.
+    /// A tensor of ``[..., num_heads]`` of the learned bias table.
     #[must_use]
     pub fn forward<const D: usize>(
         &self,

@@ -68,15 +68,15 @@ impl PatchMergingMeta for PatchMergingConfig {
 impl PatchMergingConfig {
     /// Create a new `PatchMerging` configuration.
     ///
-    /// ## Arguments
+    /// # Arguments
     ///
     /// - `device`: The backend device to initialize the module on.
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// A new `PatchMerging` module initialized with the given configuration.
     ///
-    /// ## Panics
+    /// # Panics
     ///
     /// If the config is invalid.
     #[must_use]
@@ -103,11 +103,12 @@ impl PatchMergingConfig {
 
 /// SWIN-Transformer v2 `PatchMerging` module.
 ///
-/// This module accepts ``(B, (H * W), C)`` inputs, and then:
-/// - Collates interleaved patches of size ``(H/2, W/2)`` into ``(B, H/2 * W/2, 4 * C)``.
-/// - Applies a linear layer to reduce the feature dimension to ``2 * C``.
+/// This module accepts ``[batch, height * width, channels]`` inputs, and then:
+/// - Collates interleaved patches of size ``[height/2, width/2]`` into
+///   ``[batch, height/2 * width/2, 4 * channels]``.
+/// - Applies a linear layer to reduce the feature dimension to ``2 * channels``.
 /// - Applies layer normalization.
-/// - Yields output of shape ``(B, H/2 * W/2, 2 * C)``.
+/// - Yields output of shape ``[batch, height/2 * width/2, 2 * channels]``.
 ///
 /// See: <https://github.com/microsoft/Swin-Transformer/blob/main/models/swin_transformer_v2.py>
 #[derive(Module, Debug)]
@@ -137,13 +138,15 @@ impl<B: Backend> PatchMerging<B> {
     ///
     /// # Arguments
     ///
-    /// - `x` - Input tensor of shape `(B, (H * W), C)`, where `B` is the batch size,
-    ///   `H` is the height, `W` is the width, and `C` is the number of channels.
+    /// - `x` - Input tensor of shape ``[batch, height * width, channels]``.
     ///
     /// # Returns
     ///
-    /// A tensor of shape `(B, (H/2 * W/2), 2 * C)`, where `C` is the number of channels
-    /// after merging patches.
+    /// A tensor of shape ``[batch, height/2 * width/2, 2 * channels]``.
+    ///
+    /// # Panics
+    ///
+    /// On shape contract failure.
     pub fn forward(
         &self,
         x: Tensor<B, 3>,
@@ -179,20 +182,24 @@ impl<B: Backend> PatchMerging<B> {
     }
 }
 
-/// Collate patches from a tensor of shape ``(B, (H * W), C)`` to ``(B, H/2 * W/2, 4 * C)``.
+/// Collate patches from a tensor.
 ///
-/// This splits the input into 4 interleaved patches, each of size ``(H/2, W/2)``;
+/// This splits the input into 4 interleaved patches, each ``[height/2, width/2]``;
 /// and then concatenates them along the last dimension.
 ///
 /// # Arguments
 ///
-/// * `x` - Input tensor of shape (B, (H * W), C).
+/// * `x` - Input tensor of shape ``[batch, height * width, channels]``.
 /// * `h` - Height of the input tensor.
 /// * `w` - Width of the input tensor.
 ///
 /// # Returns
 ///
-/// * A tensor of shape (B, H/2 * W/2, 4 * C).
+/// * A tensor of shape ``[batch, height/2 * width/2, 4 * channels]``.
+///
+/// # Panics
+///
+/// On shape contract failure.
 pub fn collate_patches<B: Backend, K>(
     x: Tensor<B, 3, K>,
     h: usize,
@@ -221,32 +228,36 @@ where
     x.reshape([b, h2w2, 4 * c])
 }
 
-/// Decollate patches from a tensor of shape (B, H/2 * W/2, 4 * C) to (B, (H * W), C).
+/// Decollate patches from a tensor.
 ///
-/// This splits the input into 4 patches, each of size (H/2, W/2);
+/// This splits the input into 4 patches, each ``[height/2, width/2]``;
 /// and interleaves them along the height and width dimensions.
 ///
 /// The inverse operation of `collate_patches`.
 ///
 /// # Arguments
 ///
-/// * `x` - Input tensor of shape (B, H/2 * W/2, 4 * C).
-/// * `h` - Height of the input tensor.
-/// * `w` - Width of the input tensor.
+/// * `x` - Input tensor of shape ``[batch, height/2 * width/2, 4 * channels]``.
+/// * `height` - Height of the input tensor.
+/// * `width` - Width of the input tensor.
 ///
 /// # Returns
 ///
-/// * A tensor of shape (B, (H * W), C).
+/// * A tensor of shape ``[batch, height * width, channels]``.
+///
+/// # Panics
+///
+/// On shape contract failure.
 pub fn decollate_patches<B: Backend, K>(
     x: Tensor<B, 3, K>,
-    h: usize,
-    w: usize,
+    height: usize,
+    width: usize,
 ) -> Tensor<B, 3, K>
 where
     K: BasicOps<B>,
 {
-    let h2 = h / 2;
-    let w2 = w / 2;
+    let h2 = height / 2;
+    let w2 = width / 2;
 
     let [b, c] = unpack_shape_contract!(
         ["batch", "half_height" * "half_width", "channels"],
@@ -258,9 +269,9 @@ where
     let c = c / 4;
 
     let x = x.reshape([b * h2 * w2, 2, 2, c]);
-    let x = window_reverse(x, 2, h, w);
+    let x = window_reverse(x, 2, height, width);
 
-    x.reshape([b, h * w, c])
+    x.reshape([b, height * width, c])
 }
 
 #[cfg(test)]
