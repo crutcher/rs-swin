@@ -3,8 +3,8 @@
 use burn::config::Config;
 use burn::module::Module;
 use burn::nn::conv::{Conv2d, Conv2dConfig};
-use burn::nn::{BatchNorm, BatchNormConfig, PaddingConfig2d};
-use burn::prelude::Backend;
+use burn::nn::{BatchNorm, BatchNormConfig, PaddingConfig2d, Relu};
+use burn::prelude::{Backend, Tensor};
 
 /// `BasicBlock` Config and Model Meta API.
 pub trait BasicBlockMeta {
@@ -111,19 +111,50 @@ impl BasicBlockConfig {
 
         // TODO: aa_layer?
 
-        let conv1_config: Conv2dConfig = Conv2dConfig::new([self.in_planes, first_planes], [3, 3])
+        let conv1 = Conv2dConfig::new([self.in_planes, first_planes], [3, 3])
             .with_stride([self.stride, self.stride])
             .with_padding(PaddingConfig2d::Explicit(first_dilation, first_dilation))
-            .with_bias(false);
+            .with_bias(false)
+            .init(device);
 
-        let conv1 = conv1_config.init(device);
+        let bn1 = BatchNormConfig::new(first_planes).init(device);
 
-        let bn1_config = BatchNormConfig::new(first_planes);
-        let bn1: BatchNorm<B, 2> = bn1_config.init(device);
+        let conv2 = Conv2dConfig::new([first_planes, self.out_planes()], [3, 3])
+            .with_padding(PaddingConfig2d::Explicit(first_dilation, first_dilation))
+            .with_bias(false)
+            .init(device);
 
-        // let out_planes = self.out_planes();
+        let bn2 = BatchNormConfig::new(self.out_planes()).init(device);
 
-        BasicBlock { conv1, bn1 }
+        let act1 = Relu::new();
+        let act2 = Relu::new();
+
+        BasicBlock {
+            conv1,
+            bn1,
+            act1,
+            conv2,
+            bn2,
+            act2,
+        }
+    }
+}
+
+/// Abstract ``forward(x) -> y`` module.
+pub trait ActModule<B: Backend>: Module<B> {
+    /// Forward.
+    fn activate<const D: usize>(
+        &self,
+        input: Tensor<B, D>,
+    ) -> Tensor<B, D>;
+}
+
+impl<B: Backend> ActModule<B> for Relu {
+    fn activate<const D: usize>(
+        &self,
+        input: Tensor<B, D>,
+    ) -> Tensor<B, D> {
+        self.forward(input)
     }
 }
 
@@ -132,6 +163,42 @@ impl BasicBlockConfig {
 pub struct BasicBlock<B: Backend> {
     conv1: Conv2d<B>,
     bn1: BatchNorm<B, 2>,
+    act1: Relu,
+
+    conv2: Conv2d<B>,
+    bn2: BatchNorm<B, 2>,
+    act2: Relu,
+}
+impl<B: Backend> BasicBlock<B> {
+    /// Forward.
+    pub fn forward(
+        &self,
+        input: Tensor<B, 4>,
+    ) -> Tensor<B, 4> {
+        let shortcut = input.clone();
+
+        let x = self.conv1.forward(input);
+        let x = self.bn1.forward(x);
+        // todo: x = drop_block(x)
+        let x = self.act1.forward(x);
+        // todo: x = aa(x)
+
+        let x = self.conv2.forward(x);
+        let x = self.bn2.forward(x);
+
+        // if self.se is not None:
+        //     x = self.se(x)
+
+        // if self.drop_path is not None:
+        //     x = self.drop_path(x)
+
+        // if self.downsample is not None:
+        //     shortcut = self.downsample(shortcut)
+
+        let x = x + shortcut;
+
+        self.act2.forward(x)
+    }
 }
 
 #[cfg(test)]
