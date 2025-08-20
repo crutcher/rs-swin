@@ -1,3 +1,3 @@
-//! # `ResNet`
+//! # `ResNet` Modules.
 
 pub mod block;
