@@ -2,5 +2,6 @@
 
 pub mod clamp;
 pub mod kernels;
+pub mod modwrapper;
 pub mod noise;
 pub mod shape;
