@@ -5,6 +5,8 @@
 
 #### Recent Changes
 
+* **0.3.2**
+  * Fixed visibility for `DropBlock3d` / `drop_block_3d` support.
 * **0.3.1**
   * added `DropBlock2d` / `drop_block_2d` support.
 * **0.2.0**

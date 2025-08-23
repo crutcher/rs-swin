@@ -306,7 +306,7 @@ checksum = "55248b47b0caf0546f7988906588779981c43bb1bc9d0c44087278f80cdb44ba"
 
 [[package]]
 name = "bimm"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "bimm-contracts",
@@ -339,7 +339,7 @@ dependencies = [
 
 [[package]]
 name = "bimm-firehose"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "burn",
@@ -355,7 +355,7 @@ dependencies = [
 
 [[package]]
 name = "bimm-firehose-image"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "bimm-firehose",
