@@ -40,9 +40,9 @@ pub struct DropBlockOptions {
 impl ModuleDisplayDefault for DropBlockOptions {
     fn content(
         &self,
-        _content: Content,
+        content: Content,
     ) -> Option<Content> {
-        None
+        Some(content)
     }
 }
 
@@ -147,6 +147,25 @@ impl DropBlockOptions {
         batchwise: bool,
     ) -> Self {
         Self { batchwise, ..self }
+    }
+
+    /// Set if partial edge blocks should be used.
+    ///
+    /// Partial edge blocks are blocks which overlap the edge;
+    /// and are smaller than the full kernel; but not performing
+    /// the edge-check saves compute time.
+    ///
+    /// # Arguments
+    ///
+    /// - `partial_edge_blocks`: the mode.
+    pub fn with_partial_edge_blocks(
+        self,
+        partial_edge_blocks: bool,
+    ) -> Self {
+        Self {
+            partial_edge_blocks,
+            ..self
+        }
     }
 
     /// Clip the kernel to fit within the shape.
@@ -268,13 +287,17 @@ fn drop_block_2d_drop_filter_<B: Backend>(
 /// The drop probability, block size, and several performance/quality tradeoffs
 /// can be configured.
 ///
-/// Based upon [DropBlock (Ghiasi, et all, 2018)](https://arxiv.org/pdf/1810.12890.pdf);
+/// Based upon [DropBlock (Ghiasi, et al., 2018)](https://arxiv.org/pdf/1810.12890.pdf);
 /// inspired also by the `python-image-models` implementation.
 ///
 /// # Arguments
 ///
-/// * `tensor` - the tensor to operate on.
+/// * `tensor` - the tensor to operate on, ``[batch, channels, height, width]``.
 /// * `options` - the algorithm options.
+///
+/// # Returns
+///
+/// A ``[batch, channels, height, width]`` tensor.
 pub fn drop_block_2d<B: Backend>(
     tensor: Tensor<B, 4>,
     options: &DropBlockOptions,

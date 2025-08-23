@@ -1,9 +1,11 @@
 #![recursion_limit = "256"]
 extern crate core;
 
+use bimm::layers::drop::drop_block::{DropBlock2d, DropBlock2dConfig, DropBlockOptions};
 use bimm::models::swin::v2::transformer::{
     LayerConfig, SwinTransformerV2, SwinTransformerV2Config,
 };
+use bimm::utility::burn::noise::NoiseConfig;
 use bimm_firehose::burn::batcher::{
     BatcherInputAdapter, BatcherOutputAdapter, FirehoseExecutorBatcher,
 };
@@ -34,6 +36,7 @@ use burn::nn::loss::CrossEntropyLossConfig;
 use burn::optim::AdamWConfig;
 use burn::prelude::{Backend, Int, Tensor};
 use burn::record::CompactRecorder;
+use burn::tensor::Distribution;
 use burn::tensor::backend::AutodiffBackend;
 use burn::train::metric::store::{Aggregate, Direction, Split};
 use burn::train::metric::{
@@ -158,7 +161,16 @@ pub fn backend_main<B: AutodiffBackend>(
     B::seed(args.seed);
 
     let training_config = TrainingConfig::new(
-        ModelConfig { swin: swin_config },
+        ModelConfig {
+            drop_block: DropBlock2dConfig::new().with_options(
+                DropBlockOptions::default()
+                    .with_batchwise(true)
+                    .with_partial_edge_blocks(true)
+                    .with_block_size(3)
+                    .with_noise(NoiseConfig::default().with_distribution(Distribution::Default)),
+            ),
+            swin: swin_config,
+        },
         AdamWConfig::new()
             // .with_weight_decay(0.01)
             .with_grad_clipping(Some(GradientClippingConfig::Norm(5.0))),
@@ -318,6 +330,7 @@ pub fn backend_main<B: AutodiffBackend>(
 
 #[derive(Config, Debug)]
 pub struct ModelConfig {
+    pub drop_block: DropBlock2dConfig,
     pub swin: SwinTransformerV2Config,
 }
 
@@ -327,6 +340,7 @@ impl ModelConfig {
         device: &B::Device,
     ) -> Model<B> {
         Model {
+            drop_block: self.drop_block.init(),
             swin: self.swin.init::<B>(device),
         }
     }
@@ -334,6 +348,7 @@ impl ModelConfig {
 
 #[derive(Module, Debug)]
 pub struct Model<B: Backend> {
+    pub drop_block: DropBlock2d,
     pub swin: SwinTransformerV2<B>,
 }
 
@@ -343,6 +358,7 @@ impl<B: Backend> Model<B> {
         images: Tensor<B, 4>,
         targets: Tensor<B, 1, Int>,
     ) -> ClassificationOutput<B> {
+        let images = self.drop_block.forward(images);
         let output = self.swin.forward(images);
 
         let loss = CrossEntropyLossConfig::new()

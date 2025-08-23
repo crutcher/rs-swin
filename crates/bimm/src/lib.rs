@@ -23,4 +23,4 @@ pub mod layers;
 
 /// Common high-level modules for building models in Burn.
 pub mod models;
-mod utility;
+pub mod utility;

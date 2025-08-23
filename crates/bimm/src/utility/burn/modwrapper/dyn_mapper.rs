@@ -30,6 +30,7 @@ where
     }
 }
 
+/// Backend for [`DynModuleMapperBridge`]
 pub trait DynModuleMapper<B: Backend> {
     /// The dynamic equivalent for [`ModuleMapper::map_float`].
     fn map_float_dyn(

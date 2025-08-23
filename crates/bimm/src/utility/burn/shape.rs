@@ -1,3 +1,5 @@
+//! # [`Shape`] utilities.
+
 use burn::prelude::Shape;
 use std::ops::Range;
 
