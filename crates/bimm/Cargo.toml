@@ -12,7 +12,7 @@ description = "burn image models"
 workspace = true
 
 [dependencies]
-bimm-contracts = { workspace = true, features = ["burn"]}
+bimm-contracts = { workspace = true, features = ["burn"] }
 
 burn = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
@@ -22,6 +22,7 @@ num-traits = { workspace = true }
 
 [dev-dependencies]
 burn = { workspace = true, features = ["autodiff", "ndarray"] }
+criterion = { workspace = true }
 
 num-traits = { workspace = true }
 hamcrest = { workspace = true }
@@ -30,3 +31,6 @@ hamcrest = { workspace = true }
 default = []
 std = []
 
+[[bench]]
+name = "drop_block"
+harness = false
