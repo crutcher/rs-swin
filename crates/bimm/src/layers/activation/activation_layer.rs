@@ -37,6 +37,12 @@ pub enum ActivationLayerConfig {
     Linear(LinearConfig),
 }
 
+impl Default for ActivationLayerConfig {
+    fn default() -> Self {
+        Self::Relu
+    }
+}
+
 impl ActivationLayerConfig {
     /// Initialize a wrapped activation layer.
     pub fn init<B: Backend>(
