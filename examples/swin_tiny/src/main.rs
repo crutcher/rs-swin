@@ -5,7 +5,6 @@ use bimm::layers::drop::drop_block::{DropBlock2d, DropBlock2dConfig, DropBlockOp
 use bimm::models::swin::v2::transformer::{
     LayerConfig, SwinTransformerV2, SwinTransformerV2Config,
 };
-use bimm::utility::burn::noise::NoiseConfig;
 use bimm_firehose::burn::batcher::{
     BatcherInputAdapter, BatcherOutputAdapter, FirehoseExecutorBatcher,
 };
@@ -17,10 +16,7 @@ use bimm_firehose::core::{
 };
 use bimm_firehose::ops::init_default_operator_environment;
 use bimm_firehose_image::augmentation::AugmentImageOperation;
-use bimm_firehose_image::augmentation::control::choose_one::ChooseOneStage;
 use bimm_firehose_image::augmentation::control::with_prob::WithProbStage;
-use bimm_firehose_image::augmentation::noise::blur::BlurStage;
-use bimm_firehose_image::augmentation::noise::speckle::SpeckleStage;
 use bimm_firehose_image::augmentation::orientation::flip::HorizontalFlipStage;
 use bimm_firehose_image::burn_support::{ImageToTensorData, stack_tensor_data_column};
 use bimm_firehose_image::loader::{ImageLoader, ResizeSpec};
@@ -29,14 +25,12 @@ use burn::backend::{Autodiff, Cuda};
 use burn::config::Config;
 use burn::data::dataloader::{DataLoaderBuilder, Dataset};
 use burn::data::dataset::transform::SamplerDataset;
-use burn::grad_clipping::GradientClippingConfig;
 use burn::lr_scheduler::exponential::ExponentialLrSchedulerConfig;
 use burn::module::Module;
 use burn::nn::loss::CrossEntropyLossConfig;
 use burn::optim::AdamWConfig;
 use burn::prelude::{Backend, Int, Tensor};
 use burn::record::CompactRecorder;
-use burn::tensor::Distribution;
 use burn::tensor::backend::AutodiffBackend;
 use burn::train::metric::store::{Aggregate, Direction, Split};
 use burn::train::metric::{
@@ -47,7 +41,7 @@ use burn::train::{
     ClassificationOutput, LearnerBuilder, MetricEarlyStoppingStrategy, StoppingCondition,
 };
 use burn::train::{TrainOutput, TrainStep, ValidStep};
-use clap::Parser;
+use clap::{Parser, arg};
 use rand::{Rng, rng};
 use std::sync::Arc;
 
@@ -85,8 +79,12 @@ pub struct Args {
     #[arg(long, default_value = "2.5")]
     oversample_ratio: f64,
 
+    /// Drop Block Rate
+    #[arg(long, default_value = "0.15")]
+    drop_block_rate: f64,
+
     /// Learning rate for the optimizer.
-    #[arg(long, default_value = "1.0e-2")]
+    #[arg(long, default_value = "1.0e-4")]
     learning_rate: f64,
 
     /// Learning rate decay gamma.
@@ -164,16 +162,16 @@ pub fn backend_main<B: AutodiffBackend>(
         ModelConfig {
             drop_block: DropBlock2dConfig::new().with_options(
                 DropBlockOptions::default()
+                    .with_drop_prob(args.drop_block_rate)
                     .with_batchwise(true)
-                    .with_partial_edge_blocks(true)
-                    .with_block_size(3)
-                    .with_noise(NoiseConfig::default().with_distribution(Distribution::Default)),
+                    .with_couple_channels(true)
+                    .with_partial_edge_blocks(false)
+                    .with_block_size(5),
             ),
             swin: swin_config,
         },
-        AdamWConfig::new()
-            // .with_weight_decay(0.01)
-            .with_grad_clipping(Some(GradientClippingConfig::Norm(5.0))),
+        AdamWConfig::new(), // .with_weight_decay(0.01)
+                            // .with_grad_clipping(Some(GradientClippingConfig::Norm(5.0))),
     );
 
     let artifact_dir = args.artifact_dir.as_ref().unwrap().as_ref();
@@ -205,28 +203,20 @@ pub fn backend_main<B: AutodiffBackend>(
         schema
     };
 
+    // let train_size: usize;
     let train_dataloader = {
         let ds = path_scanning::image_dataset_for_folder(args.training_root.clone())?;
         let num_samples = (args.oversample_ratio * (ds.len() as f64)).ceil() as usize;
         let ds = SamplerDataset::with_replacement(ds, num_samples);
+        // train_size = ds.len();
 
         let schema = Arc::new({
             let mut schema = common_schema.clone();
 
-            AugmentImageOperation::new(vec![
-                Arc::new(WithProbStage::new(
-                    0.5,
-                    Arc::new(HorizontalFlipStage::new()),
-                )),
-                Arc::new(WithProbStage::new(0.5, Arc::new(SpeckleStage::default()))),
-                Arc::new(
-                    ChooseOneStage::new()
-                        .with_choice(1.0, Arc::new(BlurStage::Gaussian { sigma: 0.5 }))
-                        .with_choice(1.0, Arc::new(BlurStage::Gaussian { sigma: 1.0 }))
-                        .with_choice(1.0, Arc::new(BlurStage::Gaussian { sigma: 1.5 }))
-                        .with_noop_weight(6.0),
-                ),
-            ])
+            AugmentImageOperation::new(vec![Arc::new(WithProbStage::new(
+                0.5,
+                Arc::new(HorizontalFlipStage::new()),
+            ))])
             .to_plan(SEED_COLUMN, IMAGE_COLUMN, AUG_COLUMN)
             .apply_to_schema(&mut schema, firehose_env.as_ref())?;
 
@@ -287,6 +277,15 @@ pub fn backend_main<B: AutodiffBackend>(
     let lr_scheduler = ExponentialLrSchedulerConfig::new(args.learning_rate, args.lr_gamma)
         .init()
         .map_err(|e| anyhow::anyhow!("Failed to initialize learning rate scheduler: {}", e))?;
+
+    /*
+    let batches_per_epoch = train_size / args.batch_size;
+    let epochs_per_restart = 10;
+    let iters_per_restart = batches_per_epoch * epochs_per_restart;
+    let lr_scheduler = CosineAnnealingLrSchedulerConfig::new(args.learning_rate, iters_per_restart)
+        .init()
+        .map_err(|e| anyhow::anyhow!("Failed to initialize learning rate scheduler: {}", e))?;
+     */
 
     let learner = LearnerBuilder::new(artifact_dir)
         .metric_train_numeric(LossMetric::new())

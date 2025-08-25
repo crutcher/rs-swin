@@ -611,7 +611,12 @@ mod tests {
 
         let module = config.init();
 
-        let shape = [2, 3, 7, 9];
+        let batch_size = 2;
+        let channels = 3;
+        let height = 100;
+        let width = height;
+        let shape = [batch_size, channels, height, width];
+
         let tensor: Tensor<B, 4> = Tensor::ones(shape, &device);
 
         assert_eq!(B::ad_enabled(), false);
@@ -636,7 +641,12 @@ mod tests {
 
         let module = config.init();
 
-        let shape = [2, 3, 7, 9];
+        let batch_size = 2;
+        let channels = 3;
+        let height = 100;
+        let width = height;
+        let shape = [batch_size, channels, height, width];
+
         let tensor: Tensor<B, 4> = Tensor::ones(shape, &device);
 
         assert_eq!(B::ad_enabled(), true);
@@ -649,6 +659,8 @@ mod tests {
         let keep_count = drop.clone().greater_elem(1.0).int().sum().into_scalar() as usize;
         let drop_count = numel - keep_count;
         let drop_ratio = drop_count as f64 / numel as f64;
+        println!("drop_ratio: {}", drop_ratio);
+        println!("drop_prob: {}", drop_prob);
         assert!((drop_ratio - drop_prob).abs() < 0.15);
 
         let total = drop.sum().into_scalar() as f64;
