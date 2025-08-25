@@ -40,19 +40,27 @@ pub struct DropBlockOptions {
     pub partial_edge_blocks: bool,
 
     /// The noise configuration.
-    pub noise_cfg: Option<NoiseConfig>,
+    pub noise: Option<NoiseConfig>,
 }
 
+impl ModuleDisplay for DropBlockOptions {}
 impl ModuleDisplayDefault for DropBlockOptions {
     fn content(
         &self,
         content: Content,
     ) -> Option<Content> {
-        Some(content)
+        Some(
+            content
+                .add("drop_prob", &self.drop_prob)
+                .add("kernel", &self.kernel)
+                .add("gamma_scale", &self.gamma_scale)
+                .add("batchwise", &self.batchwise)
+                .add("couple_channels", &self.couple_channels)
+                .add("partial_edge_blocks", &self.partial_edge_blocks)
+                .add("noise_cfg", &self.noise),
+        )
     }
 }
-
-impl ModuleDisplay for DropBlockOptions {}
 
 impl Default for DropBlockOptions {
     fn default() -> Self {
@@ -60,7 +68,7 @@ impl Default for DropBlockOptions {
             drop_prob: 0.1,
             kernel: [7; 2],
             gamma_scale: 1.0,
-            noise_cfg: None,
+            noise: None,
             batchwise: true,
             couple_channels: true,
             partial_edge_blocks: false,
@@ -134,7 +142,7 @@ impl DropBlockOptions {
         N: Into<Option<NoiseConfig>>,
     {
         Self {
-            noise_cfg: noise_cfg.into(),
+            noise: noise_cfg.into(),
             ..self
         }
     }
@@ -345,7 +353,7 @@ pub fn drop_block_2d<B: Backend>(
         drop_block_2d_drop_filter_(gamma_noise, kernel, options.partial_edge_blocks).cast(dtype);
     let keep_filter: Tensor<B, 4> = 1.0 - drop_filter.clone();
 
-    if let Some(noise_cfg) = &options.noise_cfg {
+    if let Some(noise_cfg) = &options.noise {
         // Fill in the dropped regions with sampled noise.
         let noise: Tensor<B, 4> = noise_cfg.noise(noise_shape, device).cast(dtype);
         let noise = noise * drop_filter;
@@ -419,6 +427,7 @@ mod tests {
 
     use crate::utility::burn::noise::NoiseConfig;
     use burn::backend::{Autodiff, NdArray};
+    use burn::module::DisplaySettings;
     use burn::prelude::TensorData;
 
     #[test]
@@ -427,7 +436,7 @@ mod tests {
         assert_eq!(options.drop_prob, 0.1);
         assert_eq!(options.kernel, [7; 2]);
         assert_eq!(options.gamma_scale, 1.0);
-        assert!(options.noise_cfg.is_none());
+        assert!(options.noise.is_none());
         assert_eq!(options.batchwise, true);
 
         let options = options.with_drop_prob(0.2);
@@ -441,6 +450,33 @@ mod tests {
 
         let options = options.with_batchwise(false);
         assert_eq!(options.batchwise, false);
+    }
+
+    #[test]
+    fn test_drop_block_options_display() {
+        let options = DropBlockOptions::default().with_noise(NoiseConfig::default());
+        let settings = DisplaySettings::default();
+
+        assert_eq!(
+            options.format(settings),
+            indoc::indoc! {r#"
+                DropBlockOptions {
+                  drop_prob: 0.1
+                  kernel: [0..2] {
+                    0: 7
+                    1: 7
+                  }
+                  gamma_scale: 1
+                  batchwise: true
+                  couple_channels: true
+                  partial_edge_blocks: false
+                  noise_cfg: NoiseConfig {
+                      distribution: Default
+                      clamp: None
+                    }
+                }"#
+            }
+        )
     }
 
     #[test]

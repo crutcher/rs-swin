@@ -1,5 +1,6 @@
 //! # Tensor Clamping Support
 
+use burn::module::{Content, ModuleDisplay, ModuleDisplayDefault};
 use burn::prelude::{Backend, Tensor};
 use serde::{Deserialize, Serialize};
 
@@ -13,7 +14,27 @@ pub struct ClampConfig {
     max: Option<f64>,
 }
 
+impl ModuleDisplay for ClampConfig {}
+impl ModuleDisplayDefault for ClampConfig {
+    fn content(
+        &self,
+        content: Content,
+    ) -> Option<Content> {
+        Some(content.add("min", &self.min).add("max", &self.max))
+    }
+}
+
 impl ClampConfig {
+    /// Create a new clamp with both minimum and maximum values.
+    pub fn min_max(
+        min: f64,
+        max: f64,
+    ) -> Self {
+        Self {
+            min: Some(min),
+            max: Some(max),
+        }
+    }
     /// Extend the clamp with a minimum value.
     pub fn with_min(
         self,
@@ -53,9 +74,40 @@ impl ClampConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::layers::drop::drop_block::DropBlockOptions;
     use burn::backend::NdArray;
+    use burn::module::{DisplaySettings, ModuleDisplay};
     use burn::tensor::TensorData;
     use num_traits::clamp;
+
+    #[test]
+    fn test_clamp_config_display() {
+        let config = ClampConfig::default().with_min(0.5);
+        let settings = DisplaySettings::default();
+
+        assert_eq!(
+            config.format(settings),
+            indoc::indoc! {
+                r#"
+                ClampConfig {
+                  min: 0.5
+                  max: None
+                }"#
+            }
+        )
+    }
+
+    #[test]
+    fn test_config_min_max() {
+        let cfg = ClampConfig::min_max(-1.0, 1.0);
+        assert_eq!(
+            cfg,
+            ClampConfig {
+                min: Some(-1.0),
+                max: Some(1.0),
+            }
+        );
+    }
 
     #[test]
     fn test_config() {

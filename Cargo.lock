@@ -319,6 +319,7 @@ dependencies = [
  "burn",
  "criterion",
  "hamcrest",
+ "indoc",
  "num-traits",
  "serde",
 ]
