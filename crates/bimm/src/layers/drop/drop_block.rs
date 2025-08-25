@@ -27,10 +27,16 @@ pub struct DropBlockOptions {
     /// The gamma scale.
     pub gamma_scale: f64,
 
-    /// Whether to drop batchwise.
+    /// Whether to compute batchwise blocks selection noise.
+    /// The alternative is to compute per-image/channel noise.
+    /// This results in a speedup proportional to the batchsize.
     pub batchwise: bool,
 
-    /// Permit partial blocks at the edges, faster.
+    /// Should color drop be coupled, or independent?
+    pub couple_channels: bool,
+
+    /// Permit partial blocks at the edges.
+    /// This results in a significant speedup when using noise.
     pub partial_edge_blocks: bool,
 
     /// The noise configuration.
@@ -55,7 +61,8 @@ impl Default for DropBlockOptions {
             kernel: [7; 2],
             gamma_scale: 1.0,
             noise_cfg: None,
-            batchwise: false,
+            batchwise: true,
+            couple_channels: true,
             partial_edge_blocks: false,
         }
     }
@@ -147,6 +154,17 @@ impl DropBlockOptions {
         batchwise: bool,
     ) -> Self {
         Self { batchwise, ..self }
+    }
+
+    /// Set if channels should be coupled.
+    pub fn with_couple_channels(
+        self,
+        couple_channels: bool,
+    ) -> Self {
+        Self {
+            couple_channels,
+            ..self
+        }
     }
 
     /// Set if partial edge blocks should be used.
@@ -314,7 +332,12 @@ pub fn drop_block_2d<B: Backend>(
     let device = &tensor.device();
     let dtype = tensor.dtype();
 
-    let noise_shape = [if options.batchwise { 1 } else { b }, c, h, w];
+    let noise_shape = [
+        if options.batchwise { 1 } else { b },
+        if options.couple_channels { 1 } else { c },
+        h,
+        w,
+    ];
 
     let gamma_noise = options.gamma_noise(noise_shape, device);
 
@@ -405,7 +428,7 @@ mod tests {
         assert_eq!(options.kernel, [7; 2]);
         assert_eq!(options.gamma_scale, 1.0);
         assert!(options.noise_cfg.is_none());
-        assert_eq!(options.batchwise, false);
+        assert_eq!(options.batchwise, true);
 
         let options = options.with_drop_prob(0.2);
         assert_eq!(options.drop_prob, 0.2);
@@ -416,8 +439,8 @@ mod tests {
         let options = options.with_gamma_scale(0.5);
         assert_eq!(options.gamma_scale, 0.5);
 
-        let options = options.with_batchwise(true);
-        assert_eq!(options.batchwise, true);
+        let options = options.with_batchwise(false);
+        assert_eq!(options.batchwise, false);
     }
 
     #[test]
@@ -517,7 +540,7 @@ mod tests {
         type B = NdArray;
         let device = Default::default();
 
-        let shape = [2, 3, 7, 9];
+        let shape = [2, 3, 100, 100];
         let tensor: Tensor<B, 4> = Tensor::ones(shape, &device);
 
         let drop_prob = 0.1;
@@ -525,6 +548,7 @@ mod tests {
         let drop = drop_block_2d(
             tensor,
             &DropBlockOptions::default()
+                .with_partial_edge_blocks(false)
                 .with_drop_prob(drop_prob)
                 .with_kernel([2, 3]),
         );
@@ -536,6 +560,8 @@ mod tests {
         let keep_count = drop.clone().greater_elem(1.0).int().sum().into_scalar() as usize;
         let drop_count = numel - keep_count;
         let drop_ratio = drop_count as f64 / numel as f64;
+        println!("drop_ratio: {}", drop_ratio);
+        println!("drop_prob: {}", drop_prob);
         assert!((drop_ratio - drop_prob).abs() < 0.15);
 
         let total = drop.sum().into_scalar() as f64;
@@ -548,7 +574,7 @@ mod tests {
         type B = NdArray;
         let device = Default::default();
 
-        let shape = [2, 3, 7, 9];
+        let shape = [2, 3, 100, 100];
         let tensor: Tensor<B, 4> = Tensor::ones(shape, &device);
 
         let drop_prob = 0.1;
@@ -557,6 +583,7 @@ mod tests {
             tensor,
             &DropBlockOptions::default()
                 .with_noise(NoiseConfig::default())
+                .with_partial_edge_blocks(false)
                 .with_drop_prob(drop_prob)
                 .with_kernel([2, 3]),
         );

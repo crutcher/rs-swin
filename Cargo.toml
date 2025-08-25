@@ -4,8 +4,8 @@
 resolver = "2"
 
 members = [
-  "crates/*",
-  "examples/*",
+    "crates/*",
+    "examples/*",
 ]
 
 [workspace.package]
@@ -30,16 +30,16 @@ doc_markdown = "warn"
 [workspace.dependencies]
 burn = { version = "^0.18.0" }
 
-bimm-contracts = { version = "^0.4.1"}
+bimm-contracts = { version = "^0.4.1" }
 
 # Burn coupled-dependencies
 globwalk = { version = "^0.9.1" }
 serde = { version = "^1.0.219" }
 serde_json = { version = "^1.0.143" }
 
-clap = { version = "^4.5.45"}
+clap = { version = "^4.5.45" }
 
-rand = {  version = "^0.9.2"  }
+rand = { version = "^0.9.2" }
 regex = { version = "^1.11.1" }
 regex-macro = { version = "^0.3.0" }
 anyhow = { version = "^1.0.99" }
@@ -50,7 +50,7 @@ image = { version = "^0.25.6" }
 inventory = { version = "^0.3.20" }
 
 # Test and/or Examples dependencies
-# criterion = { version = "^0.7.0" }
+criterion = { version = "^0.7.0" }
 hamcrest = { version = "^0.1.5" }
 image-compare = { version = "^0.5.0" }
 indoc = { version = "^2.0.6" }
