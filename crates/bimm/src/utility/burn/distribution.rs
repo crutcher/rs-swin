@@ -21,14 +21,16 @@ impl ModuleDisplayDefault for DistributionDisplayAdapter {
         content: Content,
     ) -> Option<Content> {
         Some(match self.0 {
-            Distribution::Default => content.set_top_level_type("Default"),
-            Distribution::Bernoulli(p) => content.set_top_level_type("Bernoulli").add("p", &p),
+            Distribution::Default => content.set_top_level_type("Distribution::Default"),
+            Distribution::Bernoulli(p) => content
+                .set_top_level_type("Distribution::Bernoulli")
+                .add("p", &p),
             Distribution::Uniform(low, high) => content
-                .set_top_level_type("Uniform")
+                .set_top_level_type("Distribution::Uniform")
                 .add("low", &low)
                 .add("high", &high),
             Distribution::Normal(mean, std) => content
-                .set_top_level_type("Normal")
+                .set_top_level_type("Distribution::Normal")
                 .add("mean", &mean)
                 .add("std", &std),
         })
@@ -45,13 +47,13 @@ mod tests {
 
         assert_eq!(
             DistributionDisplayAdapter(Distribution::Default).format(settings.clone()),
-            "Default",
+            "Distribution::Default",
         );
 
         assert_eq!(
             DistributionDisplayAdapter(Distribution::Bernoulli(0.5)).format(settings.clone()),
             indoc::indoc! {r#"
-                Bernoulli {
+                Distribution::Bernoulli {
                   p: 0.5
                 }"#}
         );
@@ -59,7 +61,7 @@ mod tests {
         assert_eq!(
             DistributionDisplayAdapter(Distribution::Uniform(0.0, 1.0)).format(settings.clone()),
             indoc::indoc! {r#"
-                Uniform {
+                Distribution::Uniform {
                   low: 0
                   high: 1
                 }"#}
@@ -68,7 +70,7 @@ mod tests {
         assert_eq!(
             DistributionDisplayAdapter(Distribution::Normal(0.0, 1.0)).format(settings.clone()),
             indoc::indoc! {r#"
-                Normal {
+                Distribution::Normal {
                   mean: 0
                   std: 1
                 }"#}

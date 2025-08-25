@@ -130,7 +130,7 @@ mod tests {
             config.format(settings),
             indoc::indoc! {r#"
                 NoiseConfig {
-                  distribution: Default
+                  distribution: Distribution::Default
                   clamp: ClampConfig {
                       min: 0.5
                       max: 1

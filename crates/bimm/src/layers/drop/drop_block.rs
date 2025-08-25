@@ -471,7 +471,7 @@ mod tests {
                   couple_channels: true
                   partial_edge_blocks: false
                   noise_cfg: NoiseConfig {
-                      distribution: Default
+                      distribution: Distribution::Default
                       clamp: None
                     }
                 }"#
