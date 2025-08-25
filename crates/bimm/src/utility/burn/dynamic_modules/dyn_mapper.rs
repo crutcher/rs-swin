@@ -106,7 +106,9 @@ impl<'a, B: Backend, M: ModuleMapper<B>> DynModuleMapper<B> for DynModuleMapperB
 mod tests {
     use super::*;
     use crate::utility;
-    use crate::utility::burn::modwrapper::dyn_visitor::{DynModuleVisitor, DynModuleVisitorBridge};
+    use crate::utility::burn::dynamic_modules::dyn_visitor::{
+        DynModuleVisitor, DynModuleVisitorBridge,
+    };
     use burn::backend::NdArray;
     use burn::backend::ndarray::NdArrayDevice;
     use burn::prelude::{Bool, Float, Int, Shape, Tensor};
