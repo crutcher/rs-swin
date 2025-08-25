@@ -1,4 +1,4 @@
-/// Image blur stages.
+//! # Image noise stages.
+
 pub mod blur;
-/// Image speckle noise stages.
 pub mod speckle;

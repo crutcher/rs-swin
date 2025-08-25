@@ -1,3 +1,4 @@
+//! Image to tensor data conversion functions.
 use crate::burn_support::{IMAGE_TO_TENSOR_DATA, pixeldepth_support};
 use bimm_firehose::core::operations::operator::FirehoseOperator;
 use bimm_firehose::core::operations::planner::OperationPlan;

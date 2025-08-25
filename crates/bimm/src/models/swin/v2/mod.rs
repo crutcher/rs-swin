@@ -1,4 +1,5 @@
-// https://github.com/microsoft/Swin-Transformer/blob/main/models/swin_transformer_v2.py
+//! Implementation of the Swin Transformer V2 model.
+//! See: [SWIN-V2](https://github.com/microsoft/Swin-Transformer/blob/main/models/swin_transformer_v2.py)
 
 /// Block Sequence operations for Swin Transformer v2.
 pub mod block_sequence;

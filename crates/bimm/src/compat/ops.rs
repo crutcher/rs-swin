@@ -1,3 +1,4 @@
+//! [`Tensor`] ops.
 use burn::prelude::{Backend, Tensor};
 use std::f64;
 

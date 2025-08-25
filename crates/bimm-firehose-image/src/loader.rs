@@ -1,3 +1,4 @@
+/// # # [`Image`] loader operators.
 use crate::{ImageShape, colortype_support};
 use anyhow::Context;
 use bimm_firehose::core::operations::factory::SimpleConfigOperatorFactory;

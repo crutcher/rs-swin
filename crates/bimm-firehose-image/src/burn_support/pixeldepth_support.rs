@@ -1,3 +1,4 @@
+//! Pixel depth conversion functions.
 use burn::data::dataset::vision::PixelDepth;
 use image::{ColorType, DynamicImage};
 

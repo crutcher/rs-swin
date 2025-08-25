@@ -1,3 +1,4 @@
+//! # Image test utilities.
 use crate::ImageShape;
 use image::{DynamicImage, ImageBuffer, Rgb, RgbImage};
 use image_compare::BlendInput;

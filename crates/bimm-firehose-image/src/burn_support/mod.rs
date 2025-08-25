@@ -1,3 +1,4 @@
+//! # Image/Tensor conversion utilities.
 use bimm_firehose::core::operations::factory::SimpleConfigOperatorFactory;
 use bimm_firehose::core::operations::signature::{FirehoseOperatorSignature, ParameterSpec};
 use bimm_firehose::core::{FirehoseRowBatch, FirehoseRowReader};
@@ -6,10 +7,8 @@ use burn::prelude::{Backend, Tensor};
 use burn::tensor::TensorData;
 use image::DynamicImage;
 
-/// Image to tensor data conversion functions.
-mod image_to_tensor_data;
+pub mod image_to_tensor_data;
 
-/// Pixel depth conversion functions.
 pub mod pixeldepth_support;
 
 pub use image_to_tensor_data::*;

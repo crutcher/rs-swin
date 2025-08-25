@@ -1,3 +1,4 @@
+//! Stage that randomly selects one of its children.
 use crate::augmentation::{
     AugmentationStage, AugmentationStageConfig, ImageAugContext, PluginBuilder,
     WithAugmentationStageBuilder,

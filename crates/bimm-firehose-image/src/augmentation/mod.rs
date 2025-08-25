@@ -1,3 +1,4 @@
+//! # Image augmentation operators.
 use anyhow::Context;
 use bimm_firehose::core::operations::factory::{
     FirehoseOperatorFactory, FirehoseOperatorInitContext,
@@ -14,12 +15,9 @@ use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::sync::Arc;
 
-/// Control flow plugins.
 pub mod control;
 
-/// Image noise stages.
 pub mod noise;
-/// Image orientation augmentation.
 pub mod orientation;
 
 /// Defines an ID and registers a [`AugmentationStage`].

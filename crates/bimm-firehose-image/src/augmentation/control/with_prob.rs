@@ -1,3 +1,4 @@
+//! Stage that randomly runs, or skips, a child.
 use crate::augmentation::{
     AugmentationStage, AugmentationStageConfig, ImageAugContext, PluginBuilder,
     WithAugmentationStageBuilder,

@@ -1,3 +1,4 @@
+//! Stage that runs a sequence of stages.
 use crate::augmentation::{
     AugmentationStage, AugmentationStageConfig, ImageAugContext, PluginBuilder,
     WithAugmentationStageBuilder,

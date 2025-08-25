@@ -1,3 +1,4 @@
+//! # [`ColorType`] Utilities
 use image::{ColorType, DynamicImage};
 
 /// Convert an `image::DynamicImage` to a specific `ColorType`.
@@ -32,12 +33,13 @@ pub fn convert_to_colortype(
     }
 }
 
-/// Serde serialization support for `image::ColorType`.
-///
-/// Upstream `image::ColorType` has Serde support for Serialize/Deserialize
-/// at head; but not in the current released crate. These mechanisms
-/// provide a Serialization / Deserialization workaround.
 pub mod serialization {
+    //! Serde serialization support for `image::ColorType`.
+    //!
+    //! Upstream `image::ColorType` has Serde support for Serialize/Deserialize
+    //! at head; but not in the current released crate. These mechanisms
+    //! provide a Serialization / Deserialization workaround.
+
     use image::ColorType;
     use serde::{Deserialize, Serialize};
 

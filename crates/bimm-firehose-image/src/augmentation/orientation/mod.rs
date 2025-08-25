@@ -1,2 +1,3 @@
-/// Image flip stages.
+//! # Image orientation augmentation.
+
 pub mod flip;

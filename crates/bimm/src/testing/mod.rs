@@ -1,3 +1,4 @@
+//! Private module for internal use in the `bimm` crate.
 use num_traits::float::Float;
 use std::fmt::Debug;
 

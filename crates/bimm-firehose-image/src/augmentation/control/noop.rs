@@ -1,3 +1,4 @@
+//! Stage that does nothing.
 use crate::augmentation::{
     AugmentationStage, AugmentationStageConfig, ImageAugContext, PluginBuilder,
     WithAugmentationStageBuilder,
