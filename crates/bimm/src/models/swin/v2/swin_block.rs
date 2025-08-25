@@ -5,10 +5,11 @@ use crate::models::swin::v2::window_attention::{
 use crate::models::swin::v2::windowing::{window_partition, window_reverse};
 use burn::config::Config;
 use burn::module::Module;
-use burn::nn::{Dropout, DropoutConfig, Gelu, LayerNorm, LayerNormConfig, Linear, LinearConfig};
+use burn::nn::{Dropout, DropoutConfig, LayerNorm, LayerNormConfig, Linear, LinearConfig};
 use burn::prelude::{Backend, Tensor};
 use burn::tensor::BasicOps;
 
+use crate::layers::activation::{ActivationLayer, ActivationLayerConfig};
 use crate::layers::drop::drop_path::{DropPath, DropPathConfig};
 use bimm_contracts::{assert_shape_contract_periodically, define_shape_contract};
 
@@ -40,6 +41,10 @@ pub struct BlockMlpConfig {
 
     #[config(default = 0.)]
     drop: f64,
+
+    /// The activation layer configuration.
+    #[config(default = "ActivationLayerConfig::Relu")]
+    pub activation: ActivationLayerConfig,
 }
 
 impl BlockMlpMeta for BlockMlpConfig {
@@ -81,7 +86,7 @@ impl BlockMlpConfig {
         BlockMlp {
             fc1: LinearConfig::new(d_input, d_hidden).init(device),
             fc2: LinearConfig::new(d_hidden, d_output).init(device),
-            act: Gelu::new(),
+            act: self.activation.init(device),
             drop: DropoutConfig { prob: self.drop }.init(),
         }
     }
@@ -97,7 +102,7 @@ pub struct BlockMlp<B: Backend> {
     fc2: Linear<B>,
 
     /// Activation function.
-    act: Gelu,
+    act: ActivationLayer<B>,
 
     /// Dropout layer.
     drop: Dropout,
@@ -314,6 +319,14 @@ pub struct ShiftedWindowTransformerBlockConfig {
     #[config(default = 0.0)]
     pub attn_drop_rate: f64,
 
+    /// The hidden dimension of the MLP.
+    #[config(default = 512)]
+    pub attn_rpb_mlp_hidden_dim: usize,
+
+    /// The activation layer configuration.
+    #[config(default = "ActivationLayerConfig::Relu")]
+    pub attn_rpb_mlp_activation: ActivationLayerConfig,
+
     /// Drop path rate for stochastic depth.
     #[config(default = 0.0)]
     pub drop_path_rate: f64,
@@ -418,6 +431,8 @@ impl ShiftedWindowTransformerBlockConfig {
         .with_enable_qkv_bias(self.enable_qkv_bias)
         .with_attn_drop(self.attn_drop_rate)
         .with_proj_drop(self.drop_rate)
+        .with_rpb_mlp_hidden_dim(self.attn_rpb_mlp_hidden_dim)
+        .with_rpb_mlp_activation(self.attn_rpb_mlp_activation.clone())
         .init(device);
 
         let shift_mask = if self.shift_size == 0 {

@@ -1,3 +1,4 @@
+use crate::layers::activation::{ActivationLayer, ActivationLayerConfig};
 use crate::models::swin::v2::window_attention::{
     window_attention_relative_position_index, window_log1p_relative_offset_grid,
 };
@@ -10,9 +11,6 @@ use burn::tensor::activation::sigmoid;
 
 /// Common introspection interface for relative position bias modules.
 pub trait RelativePositionBiasMeta {
-    /// Returns the base value for the relative position bias.
-    fn base(&self) -> f64;
-
     /// Returns the number of attention heads.
     fn num_heads(&self) -> usize;
 
@@ -28,33 +26,43 @@ pub trait RelativePositionBiasMeta {
     fn window_width(&self) -> usize {
         self.window_shape()[1]
     }
+
+    /// Returns the base value for the relative position bias.
+    fn base(&self) -> f64;
 }
 
 /// Configuration for the relative position bias module.
-#[derive(Config, Debug, Copy)]
+#[derive(Config, Debug)]
 pub struct RelativePositionBiasConfig {
-    /// The base value for the relative position bias.
-    #[config(default = 8.0)]
-    pub base: f64,
-
     /// The number of attention heads.
     pub num_heads: usize,
 
     /// The shape of the window ``[height, width]``.
     pub window_shape: [usize; 2],
+
+    /// The base value for the relative position bias.
+    #[config(default = 8.0)]
+    pub base: f64,
+
+    /// The hidden dimension of the MLP.
+    #[config(default = 512)]
+    pub mlp_hidden_dim: usize,
+
+    /// The activation layer configuration.
+    #[config(default = "ActivationLayerConfig::Relu")]
+    pub mlp_activation: ActivationLayerConfig,
 }
 
 impl RelativePositionBiasMeta for RelativePositionBiasConfig {
-    fn base(&self) -> f64 {
-        self.base
-    }
-
     fn num_heads(&self) -> usize {
         self.num_heads
     }
 
     fn window_shape(&self) -> [usize; 2] {
         self.window_shape
+    }
+    fn base(&self) -> f64 {
+        self.base
     }
 }
 
@@ -84,9 +92,13 @@ impl RelativePositionBiasConfig {
                 self.base,
                 device,
             ),
+
             rel_index: window_attention_relative_position_index::<B>(self.window_shape, device),
 
-            cbp: ContinuousPositionBiasMlpConfig::new(self.num_heads).init(device),
+            cbp: ContinuousPositionBiasMlpConfig::new(self.num_heads)
+                .with_d_hidden(self.mlp_hidden_dim)
+                .with_activation(self.mlp_activation.clone())
+                .init(device),
         }
     }
 }
@@ -199,14 +211,18 @@ pub trait ContinuousPositionBiasMlpMeta {
 }
 
 /// Configuration for `ContinuousPositionBiasMlp`.
-#[derive(Config, Debug, Copy)]
+#[derive(Config, Debug)]
 pub struct ContinuousPositionBiasMlpConfig {
+    /// The number of heads.
+    pub num_heads: usize,
+
     /// The hidden dimension of the MLP.
     #[config(default = 512)]
     pub d_hidden: usize,
 
-    /// The number of heads.
-    pub num_heads: usize,
+    /// The activation layer configuration.
+    #[config(default = "ActivationLayerConfig::Relu")]
+    pub activation: ActivationLayerConfig,
 }
 
 impl ContinuousPositionBiasMlpMeta for ContinuousPositionBiasMlpConfig {
@@ -223,6 +239,7 @@ impl ContinuousPositionBiasMlpMeta for ContinuousPositionBiasMlpConfig {
 #[derive(Module, Debug)]
 pub struct ContinuousPositionBiasMlp<B: Backend> {
     l1: nn::Linear<B>,
+    act: ActivationLayer<B>,
     l2: nn::Linear<B>,
 }
 
@@ -244,6 +261,8 @@ impl ContinuousPositionBiasMlpConfig {
     ) -> ContinuousPositionBiasMlp<B> {
         ContinuousPositionBiasMlp {
             l1: nn::LinearConfig::new(2, self.d_hidden).init(device),
+
+            act: self.activation.init(device),
 
             l2: nn::LinearConfig::new(self.d_hidden, self.num_heads)
                 .with_bias(false)
@@ -268,8 +287,7 @@ impl<B: Backend> ContinuousPositionBiasMlp<B> {
         x: Tensor<B, D>,
     ) -> Tensor<B, D> {
         let x = self.l1.forward(x);
-        let x = burn::tensor::activation::relu(x);
-
+        let x = self.act.forward(x);
         self.l2.forward(x)
     }
 }
@@ -285,11 +303,7 @@ mod tests {
 
     #[test]
     fn test_rpb_meta() {
-        let config = RelativePositionBiasConfig {
-            base: 8.0,
-            num_heads: 12,
-            window_shape: [3, 2],
-        };
+        let config = RelativePositionBiasConfig::new(12, [3, 2]);
 
         assert_eq!(config.base(), 8.0);
         assert_eq!(config.num_heads(), 12);
@@ -349,10 +363,7 @@ mod tests {
 
     #[test]
     fn test_cpb_mlp_meta() {
-        let config = ContinuousPositionBiasMlpConfig {
-            d_hidden: 512,
-            num_heads: 8,
-        };
+        let config = ContinuousPositionBiasMlpConfig::new(8).with_d_hidden(512);
 
         assert_eq!(config.d_hidden(), 512);
         assert_eq!(config.num_heads(), 8);

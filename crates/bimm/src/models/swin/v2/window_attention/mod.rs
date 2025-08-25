@@ -6,6 +6,7 @@ pub use attention_mask::*;
 pub use pos_bias::*;
 pub use pos_grid::*;
 
+use crate::layers::activation::ActivationLayerConfig;
 use bimm_contracts::{assert_shape_contract_periodically, unpack_shape_contract};
 use burn::config::Config;
 use burn::module::{Module, Param, ParamId};
@@ -71,6 +72,14 @@ pub struct WindowAttentionConfig {
     /// Dropout rate for projection.
     #[config(default = 0.)]
     pub proj_drop: f64,
+
+    /// The hidden dimension of the MLP.
+    #[config(default = 512)]
+    pub rpb_mlp_hidden_dim: usize,
+
+    /// The activation layer configuration.
+    #[config(default = "ActivationLayerConfig::Relu")]
+    pub rpb_mlp_activation: ActivationLayerConfig,
 }
 
 impl WindowAttentionMeta for WindowAttentionConfig {
@@ -366,6 +375,8 @@ impl WindowAttentionConfig {
             }
             .init(),
             rpb_module: RelativePositionBiasConfig::new(num_heads, window_size)
+                .with_mlp_hidden_dim(self.rpb_mlp_hidden_dim)
+                .with_mlp_activation(self.rpb_mlp_activation.clone())
                 .init_offset_grid_rpb(device),
             proj: LinearConfig::new(d_input, d_input)
                 .with_bias(false)
